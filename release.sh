@@ -10,8 +10,10 @@ NOTES="${1:-Improvements and fixes.}"
 APP="$HOME/Applications/Fusebox.app"
 V=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
 B=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist")
-TAG="v$V-$B"
+BETA=""; [[ "$V" == 0.* ]] && BETA="-beta"   # 0.x = beta
+TAG="v$V$BETA-$B"
 git tag "$TAG"
-git push origin HEAD "$TAG"
-gh release create "$TAG" Fusebox.zip --title "Fusebox $V" --notes "$NOTES"
+git symbolic-ref -q HEAD >/dev/null && git push origin HEAD
+git push origin "$TAG"
+gh release create "$TAG" Fusebox.zip --title "Fusebox $V${BETA:+ beta}" --notes "$NOTES"
 echo "gepubliceerd: $TAG"

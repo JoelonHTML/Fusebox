@@ -19,7 +19,8 @@ import AppKit
     static var repo: String? { Bundle.main.object(forInfoDictionaryKey: "FuseboxUpdateRepo") as? String }
     static var currentBuild: Int { Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
     static var currentVersion: String {
-        "\(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?") (\(currentBuild))"
+        let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
+        return "\(v)\(v.hasPrefix("0.") ? " beta" : "") (\(currentBuild))"
     }
     private var auto: Bool { UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true }
 
@@ -93,7 +94,7 @@ import AppKit
 
     // MARK: Puur (testbaar)
 
-    /// Uit de GitHub-API: tag, bouwnummer (laatste getal ≥ 8 cijfers in de tag, bijv. "v1.1-202611162309") en de URL van Fusebox.zip.
+    /// Uit de GitHub-API: tag, bouwnummer (laatste getal ≥ 8 cijfers in de tag, bijv. "v0.1-beta-202611162309") en de URL van Fusebox.zip.
     nonisolated static func parseRelease(_ data: Data?) -> (tag: String, build: Int, zip: URL)? {
         guard let data, data.count < 2_000_000,
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
@@ -133,8 +134,8 @@ import AppKit
     nonisolated private static func err(_ s: String) -> NSError { NSError(domain: "Fusebox", code: 1, userInfo: [NSLocalizedDescriptionKey: s]) }
 
     nonisolated static func selfTest() {
-        precondition(buildNumber(in: "v1.1-202611162309") == 202611162309, "tag")
-        precondition(buildNumber(in: "v1.1") == nil, "kort")
+        precondition(buildNumber(in: "v0.1-beta-202611162309") == 202611162309, "tag")
+        precondition(buildNumber(in: "v0.1-beta") == nil, "kort")
         let json = #"{"tag_name":"v1.2-202611200101","assets":[{"name":"Fusebox.zip","browser_download_url":"https://github.com/x/y/releases/download/v1.2-202611200101/Fusebox.zip"}]}"#
         precondition(parseRelease(Data(json.utf8))?.build == 202611200101, "release")
         let evil = #"{"tag_name":"v9-209912312359","assets":[{"name":"Fusebox.zip","browser_download_url":"http://evil.example/Fusebox.zip"}]}"#

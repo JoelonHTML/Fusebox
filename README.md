@@ -1,6 +1,8 @@
-# Fusebox
+# Fusebox (beta)
 
 A lightweight activity monitor for your Mac: live CPU, GPU, RAM, temperature, internet and SSD, which apps use the most, and advice.
+
+> **Beta.** Fusebox is still in development. Expect rough edges; updates arrive automatically.
 
 **Runs on:** a Mac with Apple silicon (M1 or newer) and macOS 26 or newer.
 
