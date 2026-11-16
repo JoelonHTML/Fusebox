@@ -1,0 +1,4 @@
+# Bouwresultaten (worden met ./build.sh en ./share.sh gemaakt)
+Fusebox.zip
+*.app
+.DS_Store
