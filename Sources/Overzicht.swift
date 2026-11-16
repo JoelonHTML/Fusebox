@@ -182,7 +182,7 @@ struct MetricView: View {
                     Text(stats).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if graphs && !data.values.isEmpty {
-                    SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil)
+                    SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
                         .frame(minHeight: 16, maxHeight: tier >= .l ? 320 : .infinity)
                 }
             }
@@ -207,6 +207,7 @@ struct SparkView: View {
     var bottom = 0.0
     let fill: Double
     var axis: String?           // nil = geen aslabels
+    var order = 0               // volgorde bij het inschuiven: grafiekjes komen één voor één, net als de rijen
     @State private var shift: CGFloat = 0
     @State private var count: CGFloat = 0
     @State private var drawn: CGFloat = 1        // 0…1: hoeveel van de lijn getekend is (opstart-animatie)
@@ -225,12 +226,11 @@ struct SparkView: View {
             }
         }
         .clipped()
-        // Grafiek verschijnt (opstarten, tabwissel, venster groter): één keer vanaf rechts in beeld schuiven, alle tegelijk
+        // Grafiek verschijnt (opstarten, tabwissel, venster groter): vanaf rechts in beeld schuiven, één voor één
         .mask(alignment: .trailing) { Rectangle().scaleEffect(x: drawn, anchor: .trailing) }
-        .onAppear {
-            drawn = 0
-            withAnimation(.easeOut(duration: 0.6).delay(LaunchOnce.intro ? 0.15 : 0)) { drawn = 1 }
-        }
+        // Bij het opstarten is er nog geen lijn (minstens 2 metingen nodig): dan pas inschuiven als hij er is
+        .onAppear { drawn = 0; if values.count > 1 { reveal() } }
+        .onChange(of: values.count > 1) { _, has in if has { reveal() } }
         // Glijden: na een nieuwe meting begint de lijn precies waar hij stond (nieuw punt nog rechts buiten beeld)
         // en schuift/rekt hij in ~2 s rustig naar de nieuwe stand. Werkt zowel bij een vol als bij een groeiend venster.
         .onAppear { count = CGFloat(values.count) }
@@ -251,6 +251,13 @@ struct SparkView: View {
             if let axis { HStack { Text(axis); Spacer(); Text("now") }.padding(2) }
         }
         .font(theme.label(9)).foregroundStyle(theme.onRow(true))
+    }
+}
+
+extension SparkView {
+    /// Zachte curve: snel in, rustig uitlopen; grafiekjes één voor één
+    fileprivate func reveal() {
+        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.9).delay(0.1 + Double(order) * 0.12)) { drawn = 1 }
     }
 }
 
