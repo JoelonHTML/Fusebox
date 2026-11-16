@@ -586,7 +586,7 @@ struct UpdateSection: View {
         case .idle: updater.lastCheck.map { "Last checked \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
         case .checking: "Checking…"
         case .upToDate: "You're up to date"
-        case .available(let tag): "New version \(tag) available"
+        case .available(let tag): "Fusebox \(Updater.pretty(tag)) available"
         case .installing: "Installing…"
         case .failed(let why): why
         }

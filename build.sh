@@ -51,7 +51,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>NSHighResolutionCapable</key><true/>
   <key>FuseboxUpdateRepo</key><string>JoelonHTML/Fusebox</string>
   <key>NSLocalNetworkUsageDescription</key><string>Fusebox scans your local network to show which devices are connected.</string>
-  <key>NSBonjourServices</key><array><string>_companion-link._tcp</string><string>_device-info._tcp</string><string>_airplay._tcp</string><string>_raop._tcp</string><string>_googlecast._tcp</string><string>_sonos._tcp</string><string>_spotify-connect._tcp</string><string>_ipp._tcp</string><string>_printer._tcp</string><string>_smb._tcp</string><string>_hap._tcp</string><string>_homekit._tcp</string><string>_http._tcp</string></array>
+  <key>NSBonjourServices</key><array><string>_companion-link._tcp</string><string>_device-info._tcp</string><string>_airplay._tcp</string><string>_raop._tcp</string><string>_googlecast._tcp</string><string>_sonos._tcp</string><string>_spotify-connect._tcp</string><string>_ipp._tcp</string><string>_printer._tcp</string><string>_smb._tcp</string><string>_hap._tcp</string><string>_homekit._tcp</string><string>_http._tcp</string><string>_scanner._tcp</string><string>_afpovertcp._tcp</string><string>_workstation._tcp</string><string>_ssh._tcp</string><string>_sftp-ssh._tcp</string><string>_rfb._tcp</string><string>_hap._udp</string><string>_meshcop._udp</string><string>_matter._tcp</string></array>
 </dict></plist>
 EOF
 # Bouwnummer = datum+tijd: zo weet een nieuwe Fusebox dat hij nieuwer is en werkt hij de oude bij (Installer.swift)

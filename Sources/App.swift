@@ -1,10 +1,16 @@
 import SwiftUI
 import ServiceManagement
+import UserNotifications
 
 // MARK: - App
 
 /// Venster dicht ≠ app stoppen: zo blijft Meterkast meten (instelling "keepRunning", standaard aan). Alleen ⌘Q stopt echt.
-final class AppDelegate: NSObject, NSApplicationDelegate {
+final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
+    /// Meldingen ook tonen als Fusebox vooraan staat (anders laat macOS ze stil weg).
+    func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
+        [.banner, .sound]
+    }
+
     /// Na de naamswijziging (Meterkast → Fusebox) "Open at login" eenmalig opnieuw aanmelden, zodat macOS de nieuwe app start.
     /// Nieuwe versie geopend terwijl er al één in Programma's staat? Dan bijwerken i.p.v. een tweede kopie (Installer.swift).
     func applicationWillFinishLaunching(_ notification: Notification) {
@@ -12,6 +18,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     func applicationDidFinishLaunching(_ notification: Notification) {
+        UNUserNotificationCenter.current().delegate = self
         MainActor.assumeIsolated { Updater.shared.start() }   // automatisch bijwerken via GitHub Releases
         let d = UserDefaults.standard
         guard !d.bool(forKey: "loginRefreshedFusebox") else { return }

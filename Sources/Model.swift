@@ -65,6 +65,8 @@ final class Meter: ObservableObject {
             if !m.split(separator: ",").contains("fan") { d.set(m.isEmpty ? "fan" : m + ",fan", forKey: "metrics") }
         }
         _ = sampler.sample() // eerste meting = nulpunt voor de deltas
+        // Eerste echte waarden snel tonen (de getallen flippen dan binnen), daarna elke 2 s
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.tick() }
         let t = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.tick() }
         t.tolerance = 0.5 // laat macOS wake-ups bundelen
         RunLoop.main.add(t, forMode: .common)

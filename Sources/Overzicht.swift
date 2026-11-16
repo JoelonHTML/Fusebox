@@ -97,7 +97,7 @@ struct OverviewView: View {
                                 if i < metrics.count {
                                     let m = metrics[i]
                                     MetricView(data: m.row(meter.latest, h, abs: absolute.contains(m.rawValue)), tier: t, fill: fill, index: i,
-                                               stats: "", axis: nil, graphs: graphs != .never)
+                                               stats: "", axis: nil, graphs: graphs != .never, ready: !meter.recent.isEmpty)
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
                                         .onTapGesture { toggleAbsolute(m) }
@@ -144,6 +144,7 @@ struct MetricView: View {
     var stats = ""              // L+: min/gem/max over de periode
     var axis: String?           // L+: aslabel links onder ("−5 min")
     var graphs = true
+    var ready = true            // false tot de eerste echte meting binnen is
 
     var body: some View {
         let xs = tier == .xs
@@ -155,7 +156,7 @@ struct MetricView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(data.label).font(theme.label(xs ? 11 : 13)).foregroundStyle(labelColor).fixedSize()   // label valt nooit weg
                 if !data.side.isEmpty {   // temperatuur / ms / laden: klein naast het label, zodat het getal echt rechts staat
-                    ChangingText(text: data.side, delay: stagger).font(theme.number(xs ? 11 : 13)).foregroundStyle(data.sideLevel > 0 ? color(data.sideLevel) : theme.onRow(true))
+                    ChangingText(text: data.side, delay: stagger, ready: ready).font(theme.number(xs ? 11 : 13)).foregroundStyle(data.sideLevel > 0 ? color(data.sideLevel) : theme.onRow(true))
                         .lineLimit(1).fixedSize()
                 }
                 if data.level > 0 && theme.rowStyle == .blocks { Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.white) }
@@ -165,7 +166,7 @@ struct MetricView: View {
                 // Past het niet (heel smal venster), dan krimpt het getal i.p.v. dat alle vakjes over de rand gaan
                 ZStack(alignment: .trailing) {
                     Text(data.template).font(valueFont).hidden().lineLimit(1).minimumScaleFactor(0.5)
-                    ChangingText(text: data.value, delay: stagger).font(valueFont).foregroundStyle(color(data.level))
+                    ChangingText(text: data.value, delay: stagger, ready: ready).font(valueFont).foregroundStyle(color(data.level))
                         .lineLimit(1).minimumScaleFactor(0.5)
                 }
                 .layoutPriority(1)
@@ -181,7 +182,7 @@ struct MetricView: View {
                     Text(stats).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.8)
                 }
                 if graphs && !data.values.isEmpty {
-                    SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
+                    SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil)
                         .frame(minHeight: 16, maxHeight: tier >= .l ? 320 : .infinity)
                 }
             }
@@ -206,7 +207,6 @@ struct SparkView: View {
     var bottom = 0.0
     let fill: Double
     var axis: String?           // nil = geen aslabels
-    var order = 0               // volgorde bij het intekenen: lijnen tekenen zich na elkaar, net als de rijen
     @State private var shift: CGFloat = 0
     @State private var count: CGFloat = 0
     @State private var drawn: CGFloat = 1        // 0…1: hoeveel van de lijn getekend is (opstart-animatie)
@@ -216,21 +216,20 @@ struct SparkView: View {
         let scale = top ?? max(values.max() ?? 1, second.max() ?? 1, 1)
         let color = theme.rowStyle == .blocks ? Color.white : theme.accent
         ZStack {
-            Spark(values: values, top: scale, fill: fill, closed: true, bottom: bottom, shift: shift, count: count).fill(color.opacity(0.15 * drawn))
+            Spark(values: values, top: scale, fill: fill, closed: true, bottom: bottom, shift: shift, count: count).fill(color.opacity(0.15))
             Spark(values: values, top: scale, fill: fill, closed: false, bottom: bottom, shift: shift, count: count)
-                .trim(from: 0, to: drawn).stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
+                .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
             if !second.isEmpty {
                 Spark(values: second, top: scale, fill: fill, closed: false, bottom: bottom, shift: shift, count: count)
-                    .trim(from: 0, to: drawn).stroke(color.opacity(0.5), lineWidth: 1)
+                    .stroke(color.opacity(0.5), lineWidth: 1)
             }
         }
         .clipped()
-        // Opstart-animatie: de lijn tekent zichzelf van links naar rechts
-        // Grafiek verschijnt (opstarten, tabwissel of venster groter gesleept): lijn tekent zichzelf in
+        // Grafiek verschijnt (opstarten, tabwissel, venster groter): één keer vanaf rechts in beeld schuiven, alle tegelijk
+        .mask(alignment: .trailing) { Rectangle().scaleEffect(x: drawn, anchor: .trailing) }
         .onAppear {
             drawn = 0
-            let delay = LaunchOnce.intro ? 0.12 + Double(order) * 0.1 : Double(order) * 0.06
-            withAnimation(.easeOut(duration: 0.45).delay(delay)) { drawn = 1 }
+            withAnimation(.easeOut(duration: 0.6).delay(LaunchOnce.intro ? 0.15 : 0)) { drawn = 1 }
         }
         // Glijden: na een nieuwe meting begint de lijn precies waar hij stond (nieuw punt nog rechts buiten beeld)
         // en schuift/rekt hij in ~2 s rustig naar de nieuwe stand. Werkt zowel bij een vol als bij een groeiend venster.
@@ -279,30 +278,37 @@ struct ChangingText: View {
     let text: String
     /// Wachttijd voor deze tekst de nieuwe waarde toont: zo verspringen niet alle getallen tegelijk.
     var delay: Double = 0
+    /// false = nog geen echte meting (net opgestart): leeg laten i.p.v. "0%".
+    var ready = true
     @AppStorage("numberStyle") private var style: NumberStyle = .fade
     @State private var shown: String?
+    @State private var flip = false   // eerste echte waarde komt eenmalig binnen met een flip, daarna het gekozen effect
 
     var body: some View {
-        let t = shown ?? text
+        let t = shown ?? ""
         Group {
-            switch style {
-            // countsDown: nieuwe cijfers schuiven van boven naar beneden in beeld
-            case .roll:
+            if flip || style == .roll {
+                // countsDown: nieuwe cijfers schuiven van boven naar beneden in beeld
                 Text(t).contentTransition(.numericText(countsDown: true)).animation(.snappy(duration: 0.35), value: t)
-            case .fade:
+            } else if style == .fade {
                 // Zacht overvloeien van getal naar getal, op exact dezelfde plek (rechts uitgelijnd), geen dip naar zwart
                 ZStack(alignment: .trailing) {
                     Text(t).id(t).transition(.opacity)
                 }
                 .animation(.easeInOut(duration: 0.5), value: t)
-            case .instant:
+            } else {
                 Text(t)
             }
         }
-        .onAppear { shown = text }
-        .onChange(of: text) { _, new in
-            guard delay > 0 else { shown = new; return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + delay) { shown = new }
+        .onAppear { if ready { shown = text } }
+        .onChange(of: ready ? text : nil) { _, new in
+            guard let new else { return }
+            let first = shown == nil
+            if first { flip = true }
+            DispatchQueue.main.asyncAfter(deadline: .now() + (first ? 0.1 + delay / 3 : delay)) {
+                shown = new
+                if first { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { flip = false } }
+            }
         }
     }
 }

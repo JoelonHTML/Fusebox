@@ -53,9 +53,24 @@ import AppKit
                 guard r.build > Self.currentBuild else { self.state = .upToDate; return }
                 self.latest = r
                 self.state = .available(r.tag)
+                if !userInitiated { self.notify(r.tag) }
                 if self.auto || userInitiated { self.install() }
             }
         }.resume()
+    }
+
+    /// Eén melding per nieuwe versie (niet elke 6 uur opnieuw); volgt de meldingen-schakelaar.
+    private func notify(_ tag: String) {
+        let d = UserDefaults.standard
+        guard d.bool(forKey: "notify"), d.string(forKey: "notifiedUpdate") != tag else { return }
+        d.set(tag, forKey: "notifiedUpdate")
+        Notify.send(title: "Fusebox \(Self.pretty(tag)) is available",
+                    body: auto ? "Installing now. Fusebox restarts in a moment." : "Open Settings › About to install it.")
+    }
+
+    /// "v0.1-beta-202611162337" → "0.1 beta"
+    nonisolated static func pretty(_ tag: String) -> String {
+        tag.drop(while: { $0 == "v" }).split(separator: "-").dropLast().joined(separator: " ")
     }
 
     /// Downloaden, controleren, vervangen en opnieuw starten.
@@ -136,6 +151,7 @@ import AppKit
     nonisolated static func selfTest() {
         precondition(buildNumber(in: "v0.1-beta-202611162309") == 202611162309, "tag")
         precondition(buildNumber(in: "v0.1-beta") == nil, "kort")
+        precondition(pretty("v0.1-beta-202611162337") == "0.1 beta" && pretty("v1.0-202701010000") == "1.0", "mooie naam")
         let json = #"{"tag_name":"v1.2-202611200101","assets":[{"name":"Fusebox.zip","browser_download_url":"https://github.com/x/y/releases/download/v1.2-202611200101/Fusebox.zip"}]}"#
         precondition(parseRelease(Data(json.utf8))?.build == 202611200101, "release")
         let evil = #"{"tag_name":"v9-209912312359","assets":[{"name":"Fusebox.zip","browser_download_url":"http://evil.example/Fusebox.zip"}]}"#

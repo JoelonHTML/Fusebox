@@ -28,7 +28,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .overview: NSSize(width: 300, height: 340)
         case .programs: NSSize(width: 640, height: 600)
         case .analysis: NSSize(width: 760, height: 720)   // opent in 2 kolommen
-        case .network: NSSize(width: 680, height: 620)
+        case .network: NSSize(width: 820, height: 780)
         }
     }
 }

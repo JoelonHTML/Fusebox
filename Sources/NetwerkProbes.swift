@@ -252,9 +252,13 @@ enum NetProbe {
         return out
     }
 
-    /// Eén mDNS-vraag per adres naar 224.0.0.251:5353; apparaten antwoorden rechtstreeks met hun .local-naam.
+    /// Per adres een mDNS-vraag (QU) naar 224.0.0.251:5353 én rechtstreeks naar het apparaat (dat beantwoorden sommige
+    /// beter); apparaten antwoorden rechtstreeks met hun .local-naam.
     static func mdnsReverse(_ ips: [UInt32], iface: UInt32, wait: Double) -> [UInt32: String] {
-        let packets = ips.enumerated().map { (mdnsGroup, UInt16(5353), dnsQuery(reverseName($1), type: 12, id: UInt16(truncatingIfNeeded: $0 + 1))) }
+        let packets = ips.enumerated().flatMap { i, ip in
+            let q = dnsQuery(reverseName(ip), type: 12, id: UInt16(truncatingIfNeeded: i + 1))
+            return [(mdnsGroup, UInt16(5353), q), (ip, UInt16(5353), q)]
+        }
         var out: [UInt32: String] = [:]
         for r in udp(packets, wait: wait, gap: 0.005, iface: iface, ttl: 255).replies {
             out.merge(reverseAnswers(r.data)) { a, _ in a }
@@ -497,7 +501,7 @@ enum NetProbe {
         let map: [(String, String)] = [("MacBookPro", "MacBook Pro"), ("MacBookAir", "MacBook Air"), ("MacBook", "MacBook"),
                                        ("iMac", "iMac"), ("Macmini", "Mac mini"), ("MacPro", "Mac Pro"), ("Mac", "Mac"),
                                        ("iPhone", "iPhone"), ("iPad", "iPad"), ("iPod", "iPod touch"), ("AppleTV", "Apple TV"),
-                                       ("AudioAccessory5", "HomePod mini"), ("AudioAccessory", "HomePod"), ("Watch", "Apple Watch"),
+                                       ("AudioAccessory5,", "HomePod mini"), ("AudioAccessory", "HomePod"), ("Watch", "Apple Watch"),
                                        ("RealityDevice", "Apple Vision Pro")]
         for (prefix, name) in map where id.hasPrefix(prefix) && id.dropFirst(prefix.count).first?.isNumber == true { return name }
         return nil

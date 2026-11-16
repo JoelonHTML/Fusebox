@@ -4,55 +4,47 @@ import CoreWLAN
 import SystemConfiguration
 import Darwin
 
-// MARK: - Netwerk: welke apparaten zitten er op je netwerk, en waar zit een vertraging (router of provider)
+// MARK: - Netwerk: welke apparaten zitten er op je netwerk, hoe heten ze, en hoe goed is je internet
 //
-// Scant alleen als dit tabblad open is of na "Scan"; niets in de 2-s-tik. Alles blijft op de Mac:
-// er gaan alleen ping-pakketjes het lokale netwerk op (+ één TCP-verbinding naar `pingHost`, als die aan staat).
+// Scant alleen als dit tabblad open is of na "Scan"; niets in de 2-s-tik. Op het lokale netwerk gaan alleen kleine
+// vragen rond (ping, ARP, Bonjour/mDNS, NetBIOS, SSDP/UPnP, poortcheck op verzoek). Internet: zie NetwerkInternet.swift.
 
 struct NetworkView: View {
     @StateObject private var scanner = NetScanner()
     @Environment(\.theme) private var theme
-    @AppStorage("pingHost") private var pingHost = "1.1.1.1"
+    @AppStorage("notifyNewDevice") private var notifyNew = false
     @State private var sort = NetColumn.ip
     @State private var ascending = true
     @State private var width = NetWidth.kind
     @State private var open: String?
+    @State private var filter = NetFilter.all
+    @State private var renaming: NetDevice?
+    @State private var newName = ""
 
-    static let ipW: CGFloat = 104, vendorW: CGFloat = 118, kindW: CGFloat = 104, msW: CGFloat = 42
+    static let ipW: CGFloat = 104, macW: CGFloat = 124, vendorW: CGFloat = 118, kindW: CGFloat = 104, msW: CGFloat = 42
 
     var body: some View {
-        let rows = sorted(scanner.devices)
+        let all = scanner.devices
+        let rows = sorted(all.filter(filter.matches))
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
         VStack(spacing: 8) {
-            summary
-            HStack(spacing: 8) {
-                Text(countText(rows)).font(theme.label(11)).foregroundStyle(theme.secondary)
-                Spacer()
-                if let start = scanner.scanStart {
-                    ProgressView(timerInterval: start...start.addingTimeInterval(NetScanner.expected), countsDown: false,
-                                 label: { EmptyView() }, currentValueLabel: { EmptyView() })
-                        .progressViewStyle(.linear).frame(width: 90)
-                }
-                Button { scanner.scan() } label: {
-                    Label(scanner.scanStart == nil ? "Scan" : "Scanning…", systemImage: "arrow.clockwise")
-                        .font(theme.label(11)).foregroundStyle(theme.accent)
-                        .padding(.horizontal, 7).padding(.vertical, 3)
-                        .background(theme.accent.opacity(0.15), in: .rect(cornerRadius: 6))
-                        .contentShape(.rect)
-                }
-                .buttonStyle(.plain).disabled(scanner.scanStart != nil).help("Look for devices on this network")
-            }
+            InternetPanel(wide: width >= .kind)
+            toolbar(all)
             if scanner.localBlocked { blockedHint }
             columnHeader.padding(.horizontal, tight ? 0 : 10)
             ScrollView {
                 LazyVStack(spacing: tight ? 0 : 6) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, d in
-                        NetRow(device: d, width: width, index: i, isOpen: open == d.id) {
+                        NetRow(device: d, width: width, index: i + 1, isOpen: open == d.id, scanner: scanner) {
                             withAnimation(.snappy(duration: 0.25)) { open = open == d.id ? nil : d.id }
+                        } onRename: {
+                            newName = d.custom ?? d.name
+                            renaming = d
                         }
                     }
                     if rows.isEmpty {
-                        Text(scanner.info == nil ? "Not connected to a network" : scanner.scanStart != nil ? "Looking for devices…" : "No devices found")
+                        Text(scanner.info == nil ? "Not connected to a network" : scanner.scanStart != nil ? "Looking for devices…"
+                             : filter == .all ? "No devices found" : "No \(filter.title.lowercased()) devices")
                             .font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
                     }
                 }
@@ -62,48 +54,49 @@ struct NetworkView: View {
         .onGeometryChange(for: NetWidth.self) { NetWidth($0.size.width) } action: { width = $0 }
         .onAppear { scanner.scan() }
         .onDisappear { scanner.stop() }
+        .alert("Rename device", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
+            TextField("Name", text: $newName)
+            Button("Save") { if let d = renaming { scanner.rename(d, to: newName) }; renaming = nil }
+            Button("Cancel", role: .cancel) { renaming = nil }
+        } message: {
+            Text("Leave empty to use the name Fusebox finds itself.")
+        }
     }
 
-    private func countText(_ rows: [NetDevice]) -> String {
-        let new = rows.filter(\.isNew).count
-        return "\(rows.count) device\(rows.count == 1 ? "" : "s")" + (new > 0 ? " · \(new) new" : "")
-    }
-
-    // MARK: Samenvatting bovenaan
-
-    private var summary: some View {
-        VStack(alignment: .leading, spacing: 5) {
-            if let info = scanner.info {
-                line("desktopcomputer", "This Mac \(ipString(info.ip)) on \(info.networkLabel) · \(info.wifi == nil ? "wired" : "Wi-Fi")")
-                HStack(spacing: 18) {
-                    stat("Router", info.router.map(ipString) ?? "unknown", scanner.routerMs)
-                    stat("Internet", pingHost.isEmpty ? "check off" : pingHost, pingHost.isEmpty ? nil : scanner.internetMs)
-                }
-                if scanner.scanStart == nil, scanner.measured {
-                    let v = NetScanner.verdict(router: scanner.routerMs, internet: scanner.internetMs, internetCheck: !pingHost.isEmpty)
-                    line(v.ok == false ? "exclamationmark.triangle" : v.ok == true ? "checkmark.circle" : "info.circle", v.text)
-                        .foregroundStyle(theme.rowStyle == .blocks ? .white : v.ok == false ? theme.warn : v.ok == true ? theme.good : theme.onRow(true))
-                }
-                if let w = info.wifi { line("wifi", w.text) }
-            } else {
-                line("wifi.slash", "Not connected to a network")
+    private func toolbar(_ all: [NetDevice]) -> some View {
+        HStack(spacing: 8) {
+            Picker("", selection: $filter) {
+                ForEach(NetFilter.allCases) { Text($0.title).tag($0) }
             }
+            .pickerStyle(.segmented).labelsHidden().fixedSize()
+            if width >= .vendor { Text(countText(all)).font(theme.label(11)).foregroundStyle(theme.secondary).lineLimit(1) }
+            Spacer(minLength: 4)
+            if let start = scanner.scanStart {
+                if width >= .kind { Text(scanner.phase).font(theme.label(10)).foregroundStyle(theme.secondary).lineLimit(1) }
+                ProgressView(timerInterval: start...start.addingTimeInterval(NetScanner.expected), countsDown: false,
+                             label: { EmptyView() }, currentValueLabel: { EmptyView() })
+                    .progressViewStyle(.linear).frame(width: 70)
+            }
+            Button {
+                notifyNew.toggle()
+                if notifyNew { Notify.ask() }
+            } label: {
+                Image(systemName: notifyNew ? "bell.fill" : "bell.slash").font(.system(size: 12))
+                    .foregroundStyle(notifyNew ? theme.accent : theme.secondary).frame(width: 22, height: 20).contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            .help(notifyNew ? "Notifying you when a new device shows up (while Fusebox scans). Click to turn off."
+                  : "Get a notification when a new device shows up on your network (while this page scans)")
+            Button { scanner.scan() } label: {
+                NetPill(title: scanner.scanStart == nil ? "Scan" : "Scanning…", icon: "arrow.clockwise")
+            }
+            .buttonStyle(.plain).disabled(scanner.scanStart != nil).help("Look for devices on this network")
         }
-        .font(theme.label(11)).foregroundStyle(theme.onRow(true))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .themedRow(theme, index: 0)
     }
 
-    private func stat(_ title: String, _ sub: String, _ ms: Double?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(title).font(theme.label(11)).foregroundStyle(theme.onRow())
-            Text(scanner.scanStart != nil && ms == nil ? "…" : msText(ms)).font(theme.number(15)).foregroundStyle(theme.onRow())
-            Text(sub).lineLimit(1).foregroundStyle(theme.onRow(true))
-        }
-    }
-
-    private func line(_ icon: String, _ text: String) -> some View {
-        Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon).frame(width: 14) }
+    private func countText(_ all: [NetDevice]) -> String {
+        let on = all.filter(\.online).count, new = all.filter(\.isNew).count, off = all.count - on
+        return "\(on) online" + (new > 0 ? " · \(new) new" : "") + (off > 0 ? " · \(off) offline" : "")
     }
 
     private var blockedHint: some View {
@@ -126,6 +119,7 @@ struct NetworkView: View {
         HStack(spacing: 8) {
             head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("IP", .ip).frame(width: Self.ipW, alignment: .leading)
+            if width >= .mac { head("MAC", .mac).frame(width: Self.macW, alignment: .leading).help("Hardware address") }
             if width >= .vendor { head("Vendor", .vendor).frame(width: Self.vendorW, alignment: .leading) }
             if width >= .kind { head("Type", .kind).frame(width: Self.kindW, alignment: .leading) }
             head("ms", .ms).frame(width: Self.msW, alignment: .trailing).help("Reply time in milliseconds")
@@ -146,11 +140,14 @@ struct NetworkView: View {
         .buttonStyle(.plain)
     }
 
+    /// Online eerst; daarbinnen op de gekozen kolom.
     private func sorted(_ list: [NetDevice]) -> [NetDevice] {
         list.sorted { a, b in
+            if a.online != b.online { return a.online }
             let less: Bool = switch sort {
             case .name: a.name.localizedStandardCompare(b.name) == .orderedAscending
             case .ip: a.ip < b.ip
+            case .mac: (a.mac.map(macString) ?? "~") < (b.mac.map(macString) ?? "~")
             case .vendor: a.vendor.localizedStandardCompare(b.vendor) == .orderedAscending
             case .kind: a.kind.title < b.kind.title
             case .ms: (a.ms ?? .infinity) < (b.ms ?? .infinity)
@@ -160,23 +157,80 @@ struct NetworkView: View {
     }
 }
 
-private enum NetColumn { case name, ip, vendor, kind, ms }
-/// Breedte-banden: smal Naam/IP/ms, + Vendor, + Type.
-private enum NetWidth: Int, Comparable {
-    case narrow, vendor, kind
-    init(_ w: CGFloat) { self = w >= 600 ? .kind : w >= 470 ? .vendor : .narrow }
+private enum NetColumn { case name, ip, mac, vendor, kind, ms }
+/// Breedte-banden: smal Naam/IP/ms, + Vendor, + Type, + MAC.
+enum NetWidth: Int, Comparable {
+    case narrow, vendor, kind, mac
+    init(_ w: CGFloat) { self = w >= 760 ? .mac : w >= 600 ? .kind : w >= 470 ? .vendor : .narrow }
     static func < (a: NetWidth, b: NetWidth) -> Bool { a.rawValue < b.rawValue }
 }
 
-private func msText(_ ms: Double?) -> String { ms.map { $0 < 1 ? "<1" : "\(Int($0.rounded()))" } ?? "–" }
+private enum NetFilter: String, CaseIterable, Identifiable {
+    case all, online, new, offline
+    var id: String { rawValue }
+    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    func matches(_ d: NetDevice) -> Bool {
+        switch self {
+        case .all: true
+        case .online: d.online
+        case .new: d.isNew
+        case .offline: !d.online
+        }
+    }
+}
+
+func msText(_ ms: Double?) -> String { ms.map { $0 < 1 ? "<1" : "\(Int($0.rounded()))" } ?? "–" }
+func agoText(_ d: Date) -> String {
+    let s = max(0, -d.timeIntervalSinceNow)
+    return s < 3600 ? "\(max(1, Int(s / 60))) min ago" : s < 86_400 ? "\(Int(s / 3600)) h ago" : "\(Int(s / 86_400)) d ago"
+}
+
+/// Knop-label in de stijl van de pagina (accentkleur, licht vlak).
+struct NetPill: View {
+    let title: String, icon: String
+    @Environment(\.theme) private var theme
+    var body: some View {
+        let c = theme.rowStyle == .blocks ? Color.white : theme.accent
+        Label(title, systemImage: icon)
+            .font(theme.label(11)).foregroundStyle(c).lineLimit(1)
+            .padding(.horizontal, 7).padding(.vertical, 3)
+            .background(c.opacity(0.15), in: .rect(cornerRadius: 6))
+            .contentShape(.rect)
+    }
+}
+
+/// Eenvoudige regel-omloop voor chips.
+struct NetFlow: Layout {
+    var spacing: CGFloat = 4
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        arrange(proposal.width ?? .infinity, subviews).size
+    }
+    func placeSubviews(in b: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        for (s, p) in zip(subviews, arrange(b.width, subviews).points) { s.place(at: CGPoint(x: b.minX + p.x, y: b.minY + p.y), proposal: .unspecified) }
+    }
+    private func arrange(_ maxW: CGFloat, _ subviews: Subviews) -> (size: CGSize, points: [CGPoint]) {
+        var x: CGFloat = 0, y: CGFloat = 0, rowH: CGFloat = 0, widest: CGFloat = 0, pts: [CGPoint] = []
+        for s in subviews {
+            let sz = s.sizeThatFits(.unspecified)
+            if x > 0, x + sz.width > maxW { y += rowH + spacing; x = 0; rowH = 0 }
+            pts.append(CGPoint(x: x, y: y))
+            x += sz.width + spacing; rowH = max(rowH, sz.height); widest = max(widest, x - spacing)
+        }
+        return (CGSize(width: widest, height: y + rowH), pts)
+    }
+}
 
 private struct NetRow: View {
-    let device: NetDevice, width: NetWidth, index: Int, isOpen: Bool, onTap: () -> Void
+    let device: NetDevice, width: NetWidth, index: Int, isOpen: Bool
+    let scanner: NetScanner
+    let onTap: () -> Void, onRename: () -> Void
     @Environment(\.theme) private var theme
+    @State private var feedback: String?
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             summary.contentShape(.rect).onTapGesture(perform: onTap)
+                .opacity(device.online ? 1 : 0.5)
             if isOpen { details.transition(.opacity.combined(with: .move(edge: .top))) }
         }
         .font(theme.number(12)).foregroundStyle(theme.onRow())
@@ -197,36 +251,112 @@ private struct NetRow: View {
                         .foregroundStyle(theme.rowStyle == .blocks ? .white : theme.accent)
                         .background((theme.rowStyle == .blocks ? Color.white : theme.accent).opacity(0.18), in: .capsule)
                 }
+                if !device.online, let l = device.lastSeen {
+                    Text("last seen \(agoText(l))").font(theme.label(10)).foregroundStyle(theme.onRow(true))
+                }
             }
             .lineLimit(1).truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
-            Text(ipString(device.ip)).frame(width: NetworkView.ipW, alignment: .leading)
+            Text(device.ip == 0 ? "–" : ipString(device.ip)).frame(width: NetworkView.ipW, alignment: .leading)
+            if width >= .mac {
+                Text(device.mac.map(macString) ?? "–").font(.system(size: 11 * theme.scale, design: .monospaced))
+                    .lineLimit(1).frame(width: NetworkView.macW, alignment: .leading)
+            }
             if width >= .vendor { Text(device.vendor).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.vendorW, alignment: .leading) }
             if width >= .kind { Text(device.kind.title).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.kindW, alignment: .leading) }
-            Text(msText(device.ms)).frame(width: NetworkView.msW, alignment: .trailing)
+            Text(device.online ? msText(device.ms) : "off")
+                .foregroundStyle((device.loss ?? 0) > 0 && theme.rowStyle != .blocks ? theme.warn : theme.onRow())
+                .frame(width: NetworkView.msW, alignment: .trailing)
+                .help((device.loss ?? 0) > 0 ? "Some pings got no answer" : device.viaTCP ? "Measured with a TCP connection (no ping answer)" : "")
         }
     }
 
     private var details: some View {
         VStack(alignment: .leading, spacing: 5) {
-            line("network", "IP address \(ipString(device.ip))")
+            if let first = device.names.first {
+                line("tag", "Name from \(first.source.lowercased() == "your name" ? "you" : first.source)"
+                     + (device.names.count > 1 ? " · also: " + device.names.dropFirst().map { "\($0.name) (\($0.source))" }.joined(separator: ", ") : ""))
+            } else {
+                line("tag", "No name found; this is a guess from the maker")
+            }
+            if device.ip != 0 { line("network", (device.online ? "IP address " : "Last IP address ") + ipString(device.ip)) }
             line("barcode", device.mac.map { "Hardware address \(macString($0))" } ?? "Hardware address unknown")
             if let mac = device.mac, NetScanner.isPrivate(mac) {
                 line("lock", "Private address: a phone or laptop that hides its real address (Wi-Fi privacy). The maker can't be seen.")
             } else {
                 line("building.2", "Made by \(device.vendor == "–" ? "an unknown maker" : device.vendor)")
             }
-            line(device.kind.icon, "Looks like: \(device.kind.title.lowercased())" + (device.model.map { " (\($0))" } ?? ""))
+            if let m = device.model { line("info.circle", "Model: \(m)") }
+            line(device.kind.icon, "Looks like: \(device.kind.title.lowercased())")
             if !device.services.isEmpty {
-                line("dot.radiowaves.left.and.right", "Offers: " + device.services.map(NetScanner.serviceTitle).sorted().joined(separator: ", "))
+                chips("dot.radiowaves.left.and.right", "Offers", Array(Set(device.services.map(NetScanner.serviceTitle))).sorted().map { ($0, nil) })
             }
-            line("timer", device.ms.map { "Answers in \(msText($0)) ms" } ?? "Doesn't answer pings (many phones and TVs don't; that's normal)")
+            if let ports = device.ports {
+                if ports.isEmpty { line("door.left.hand.closed", "No common ports open") }
+                else { chips("door.left.hand.open", "Open ports", ports.map { ("\(NetProbe.portName($0)) \($0)", NetProbe.webURL(device.ip, $0)) }) }
+            }
+            if device.online, !device.isMe { line("timer", latencyText) }
             if let f = device.firstSeen { line("clock", "First seen \(f.formatted(date: .abbreviated, time: .shortened))") }
             if let l = device.lastSeen { line("clock.arrow.circlepath", "Last seen \(l.formatted(date: .abbreviated, time: .shortened))") }
+            actions.padding(.top, 3)
         }
         .font(theme.label(11)).foregroundStyle(theme.onRow(true))
         .padding(.leading, 26).padding(.top, 6).padding(.bottom, 2)
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var latencyText: String {
+        guard let ms = device.ms else { return "Doesn't answer (many phones and TVs sleep or ignore pings; that's normal)" }
+        if device.viaTCP { return "Answers in \(msText(ms)) ms (via a TCP connection; it ignores pings)" }
+        guard let loss = device.loss else { return "Answers in \(msText(ms)) ms" }
+        let lost = Int((loss * 3).rounded())
+        return "Answers in \(msText(ms)) ms · " + (lost == 0 ? "no packet loss (3 pings)" : "\(lost) of 3 pings lost")
+    }
+
+    private var actions: some View {
+        HStack(spacing: 6) {
+            if device.online, !device.isMe, device.ip != 0 {
+                Button { scanner.checkPorts(device.ip) } label: {
+                    NetPill(title: device.checkingPorts ? "Checking…" : device.ports == nil ? "Check ports" : "Check again", icon: "door.left.hand.open")
+                }
+                .buttonStyle(.plain).disabled(device.checkingPorts).help("Try \(NetProbe.ports.count) common ports (web, file sharing, printing, …)")
+            }
+            if let mac = device.mac, !device.isMe, !NetScanner.isPrivate(mac) {
+                Button {
+                    Task { feedback = await scanner.wake(mac) ? "Wake-up packet sent" : "Couldn't send the wake-up packet" }
+                } label: { NetPill(title: "Wake on LAN", icon: "power") }
+                .buttonStyle(.plain).help("Send a wake-up packet; works for computers and NAS that have Wake on LAN turned on")
+            }
+            if device.mac != nil {
+                Button(action: onRename) { NetPill(title: "Rename…", icon: "pencil") }.buttonStyle(.plain)
+                if !device.isMe {
+                    Button { scanner.forget(device) } label: { NetPill(title: "Forget", icon: "trash") }
+                        .buttonStyle(.plain).help("Remove from the remembered devices")
+                }
+            }
+            if let feedback { Text(feedback).font(theme.label(10)) }
+        }
+    }
+
+    private func chips(_ icon: String, _ title: String, _ items: [(String, URL?)]) -> some View {
+        let c = theme.rowStyle == .blocks ? Color.white : theme.accent
+        return Label {
+            NetFlow {
+                Text(title + ":")
+                ForEach(items, id: \.0) { text, url in
+                    HStack(spacing: 4) {
+                        Text(text)
+                        if let url {
+                            Button("Open") { NSWorkspace.shared.open(url) }.buttonStyle(.plain).foregroundStyle(c).underline()
+                                .help(url.absoluteString)
+                        }
+                    }
+                    .font(theme.label(10)).foregroundStyle(theme.onRow())
+                    .padding(.horizontal, 6).padding(.vertical, 2)
+                    .background(c.opacity(0.15), in: .capsule)
+                }
+            }
+        } icon: { Image(systemName: icon).frame(width: 14) }
     }
 
     private func line(_ icon: String, _ text: String) -> some View {
@@ -252,6 +382,21 @@ enum DeviceKind: String {
         case .unknown: "Unknown"
         }
     }
+    /// Voor namen als "Sonos speaker".
+    var noun: String {
+        switch self {
+        case .phone: "phone"
+        case .computer: "computer"
+        case .tv: "TV"
+        case .speaker: "speaker"
+        case .printer: "printer"
+        case .router: "router"
+        case .nas: "NAS"
+        case .smartHome: "smart device"
+        case .console: "console"
+        case .unknown: "device"
+        }
+    }
     var icon: String {
         switch self {
         case .phone: "iphone"
@@ -269,34 +414,29 @@ enum DeviceKind: String {
 }
 
 struct NetDevice: Identifiable {
-    var id: String { ipString(ip) }
-    let ip: UInt32
+    let id: String
+    var ip: UInt32                       // 0 = onbekend (offline zonder bekend adres)
     var mac: [UInt8]?
-    var ms: Double?
+    var online = true
+    var ms: Double?, loss: Double?       // loss 0…1 over 3 pings
+    var viaTCP = false
     var isMe = false, isRouter = false
-    var name = "", vendor = "–", model: String?
+    var name = "", custom: String?
+    var names: [(source: String, name: String)] = []   // alle gevonden namen, beste eerst
+    var vendor = "–", model: String?
     var services: Set<String> = []
     var kind = DeviceKind.unknown
+    var ports: [UInt16]?, checkingPorts = false
     var firstSeen: Date?, lastSeen: Date?
     var isNew = false
 }
 
 /// Deze Mac op het netwerk: interface, adres, masker, router en (bij Wi-Fi) signaal.
 struct NetInfo {
-    let iface: String, ip: UInt32, mask: UInt32, mac: [UInt8]?, router: UInt32?, wifi: Wifi?
-    struct Wifi {
-        let rssi: Int, noise: Int, rate: Double
-        var text: String {
-            let word = rssi >= -60 ? "good" : rssi >= -70 ? "fair" : "weak"
-            return "Signal: \(word) (\(minus(rssi)) dBm)" + (noise < 0 ? " · noise \(minus(noise)) dBm" : "") + (rate > 0 ? " · \(Int(rate)) Mbit/s" : "")
-        }
-        private func minus(_ v: Int) -> String { v < 0 ? "−\(-v)" : "\(v)" }
-    }
+    let iface: String, ip: UInt32, mask: UInt32, mac: [UInt8]?, router: UInt32?
     var hosts: [UInt32] { NetScanner.hosts(ip: ip, mask: mask).filter { $0 != ip } }
-    var networkLabel: String {
-        let real = "\(ipString(ip & mask))/\(mask.nonzeroBitCount)"
-        return mask.nonzeroBitCount < 24 ? real + " (scanning \(ipString(ip & 0xFFFF_FF00))/24)" : real
-    }
+    /// Herkent "hetzelfde netwerk" voor offline apparaten (thuis vs. kantoor).
+    var networkKey: String { "\(ipString(ip & mask))/\(mask.nonzeroBitCount) via \(router.map(ipString) ?? "-")" }
 
     static func current() -> NetInfo? {
         let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
@@ -324,108 +464,203 @@ struct NetInfo {
             }
         }
         guard let ip, ip != 0 else { return nil }
-        var wifi: Wifi?
-        if CWWiFiClient.shared().interfaceNames()?.contains(iface) == true, let w = CWWiFiClient.shared().interface(withName: iface), w.rssiValue() != 0 {
-            wifi = Wifi(rssi: w.rssiValue(), noise: w.noiseMeasurement(), rate: w.transmitRate())
-        }
-        return NetInfo(iface: iface, ip: ip, mask: mask, mac: mac, router: router, wifi: wifi)
+        return NetInfo(iface: iface, ip: ip, mask: mask, mac: mac, router: router)
     }
 }
 
 func ipString(_ ip: UInt32) -> String { "\(ip >> 24).\(ip >> 16 & 255).\(ip >> 8 & 255).\(ip & 255)" }
 func parseIP(_ s: String) -> UInt32? {
-    let p = s.split(separator: ".").compactMap { UInt32($0) }
-    guard p.count == 4, p.allSatisfy({ $0 < 256 }) else { return nil }
-    return p[0] << 24 | p[1] << 16 | p[2] << 8 | p[3]
+    let p = s.split(separator: ".", omittingEmptySubsequences: false).map { UInt32($0) }
+    guard p.count == 4, p.allSatisfy({ ($0 ?? 256) < 256 }) else { return nil }
+    return p[0]! << 24 | p[1]! << 16 | p[2]! << 8 | p[3]!
 }
 func macString(_ m: [UInt8]) -> String { m.map { String(format: "%02X", $0) }.joined(separator: ":") }
+func parseMAC(_ s: String) -> [UInt8]? {
+    let b = s.split(separator: ":").compactMap { UInt8($0, radix: 16) }
+    return b.count == 6 ? b : nil
+}
 
 // MARK: - Scanner
 
 @MainActor
 final class NetScanner: ObservableObject {
     /// Verwachte duur van een scan (voor de voortgangsbalk).
-    static let expected: TimeInterval = 4.5
+    static let expected: TimeInterval = 8
     @Published private(set) var info: NetInfo?
     @Published private(set) var scanStart: Date?
-    @Published private(set) var routerMs: Double?
-    @Published private(set) var internetMs: Double?
-    @Published private(set) var measured = false
+    @Published private(set) var phase = ""
     @Published private(set) var localBlocked = false
-    @Published private var found: [UInt32: (mac: [UInt8]?, ms: Double?)] = [:]
+    @Published private var found: [UInt32: Found] = [:]
+    @Published private var arpDone = false
     @Published private var bonjour: [UInt32: Bonjour] = [:]
-    @Published private var rdns: [UInt32: String] = [:]
-    private var store = NetDeviceStore.load()
+    @Published private var names: [UInt32: [String: String]] = [:]   // bron (NetBIOS, mDNS, DNS) → naam
+    @Published private var upnp: [UInt32: NetProbe.UPnPInfo] = [:]
+    @Published private var ports: [UInt32: [UInt16]] = [:]
+    @Published private var checking: Set<UInt32> = []
+    @Published private var ouiReady = false
+    @Published private var store = NetDeviceStore.load()
     private var work: Task<Void, Never>?
+    private var side: [Task<Void, Never>] = []
     private var browsers: [NWBrowser] = []
     private var resolving: [NWEndpoint: NWConnection] = [:]
+    private lazy var computerName = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "This Mac"
 
+    struct Found { var mac: [UInt8]?; var ms: Double?; var loss: Double?; var viaTCP = false }
     struct Bonjour { var name: String?; var types: Set<String> = []; var model: String? }
 
     var devices: [NetDevice] {
         guard let info else { return [] }
-        let subnet = Set(info.hosts)
+        _ = ouiReady   // opnieuw tekenen zodra de IEEE-lijst er is
+        let subnet = Set(info.hosts), net = info.networkKey
         var ips = Set(found.keys)
         ips.formUnion(bonjour.keys.filter(subnet.contains))
+        ips.formUnion(upnp.keys.filter(subnet.contains))
         if !ips.isEmpty || scanStart == nil { ips.insert(info.ip) }
-        return ips.map { ip in
-            var d = NetDevice(ip: ip)
-            d.isMe = ip == info.ip
-            d.isRouter = ip == info.router
-            d.mac = d.isMe ? info.mac : found[ip]?.mac
-            d.ms = d.isMe ? nil : found[ip]?.ms
-            let bj = bonjour[ip]
-            d.services = bj?.types ?? []
-            d.model = bj?.model
-            let privateMAC = d.mac.map(Self.isPrivate) ?? false
-            d.vendor = privateMAC ? "Private address" : d.mac.flatMap(Self.vendor) ?? "–"
-            let known = d.mac.flatMap { store.devices[macString($0)] }
-            d.name = d.isMe ? (SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "This Mac")
-                : bj?.name ?? rdns[ip] ?? known?.name ?? (d.isRouter ? "Router" : d.vendor != "–" && !privateMAC ? "\(d.vendor) device" : "Unknown device")
-            d.kind = Self.guess(name: d.name, vendor: d.vendor, services: d.services, model: d.model, isRouter: d.isRouter, isMe: d.isMe, privateMAC: privateMAC)
-            d.firstSeen = known?.first
-            d.lastSeen = known?.last
-            d.isNew = known.map { Calendar.current.isDateInToday($0.first) && $0.first > store.created.addingTimeInterval(60) } ?? false
-            return d
+        var out = ips.map { device($0, info) }
+        // Onthouden apparaten die nu niet te zien zijn (alleen van dit netwerk, en alleen als we de ARP-tabel echt konden lezen)
+        if arpDone, !localBlocked {
+            let seen = Set(out.compactMap { $0.mac.map(macString) })
+            for (key, k) in store.devices where !seen.contains(key) && (k.net == nil || k.net == net) {
+                var d = NetDevice(id: "off " + key, ip: k.ip.flatMap(parseIP) ?? 0)
+                d.mac = parseMAC(key)
+                d.online = false
+                let privateMAC = d.mac.map(Self.isPrivate) ?? false
+                d.vendor = privateMAC ? "Private address" : d.mac.flatMap(Self.vendor) ?? "–"
+                d.custom = k.custom
+                d.names = [("Your name", k.custom), ("Remembered", k.name)].compactMap { s, n in n.map { (s, $0) } }
+                d.kind = Self.guess(name: d.names.map(\.name).joined(separator: " "), vendor: d.vendor, services: [], model: nil,
+                                    isRouter: false, isMe: false, privateMAC: privateMAC)
+                d.name = d.names.first?.name ?? Self.fallbackName(vendor: d.vendor, kind: d.kind, isRouter: false, privateMAC: privateMAC)
+                d.firstSeen = k.first; d.lastSeen = k.last
+                out.append(d)
+            }
         }
+        return out
     }
+
+    private func device(_ ip: UInt32, _ info: NetInfo) -> NetDevice {
+        var d = NetDevice(id: ipString(ip), ip: ip)
+        d.isMe = ip == info.ip
+        d.isRouter = ip == info.router
+        let f = found[ip], bj = bonjour[ip], up = upnp[ip]
+        d.mac = d.isMe ? info.mac : f?.mac
+        if !d.isMe { d.ms = f?.ms; d.loss = f?.loss; d.viaTCP = f?.viaTCP ?? false }
+        d.services = bj?.types ?? []
+        let privateMAC = d.mac.map(Self.isPrivate) ?? false
+        d.vendor = privateMAC ? "Private address" : d.mac.flatMap(Self.vendor) ?? up?.manufacturer.map { String($0.prefix(40)) } ?? "–"
+        d.model = Self.modelText(bonjour: bj?.model, upnp: up)
+        let known = d.mac.flatMap { store.devices[macString($0)] }
+        d.custom = known?.custom
+        // Namen op volgorde van betrouwbaarheid; dubbele weg
+        var cands: [(String, String?)] = [("Your name", known?.custom), ("This Mac", d.isMe ? computerName : nil), ("Bonjour", bj?.name)]
+        cands += ["NetBIOS", "mDNS", "DNS"].map { ($0, names[ip]?[$0]) }
+        cands += [("UPnP", up?.friendlyName), ("Remembered", known?.name)]
+        var seen = Set<String>()
+        d.names = cands.compactMap { s, n in n.flatMap { seen.insert($0.lowercased()).inserted ? (s, $0) : nil } }
+        let text = (d.names.map(\.name) + [up?.modelName, up?.deviceType, up?.manufacturer].compactMap { $0 }).joined(separator: " ")
+        d.kind = Self.guess(name: text, vendor: d.vendor, services: d.services, model: bj?.model, isRouter: d.isRouter, isMe: d.isMe, privateMAC: privateMAC)
+        d.name = d.names.first?.name ?? Self.fallbackName(vendor: d.vendor, kind: d.kind, isRouter: d.isRouter, privateMAC: privateMAC)
+        d.ports = ports[ip]
+        d.checkingPorts = checking.contains(ip)
+        d.firstSeen = known?.first
+        d.lastSeen = known?.last
+        d.isNew = known.map { Calendar.current.isDateInToday($0.first) && $0.first > store.created.addingTimeInterval(60) } ?? false
+        return d
+    }
+
+    nonisolated static func fallbackName(vendor: String, kind: DeviceKind, isRouter: Bool, privateMAC: Bool) -> String {
+        if isRouter { return "Router" }
+        guard vendor != "–", !privateMAC else { return "Unknown device" }
+        let short = vendor.count <= 16 ? vendor : String(vendor.split(separator: " ").first ?? "")
+        return "\(short) \(kind.noun)"
+    }
+
+    nonisolated static func modelText(bonjour: String?, upnp: NetProbe.UPnPInfo?) -> String? {
+        var parts: [String] = []
+        if let m = bonjour { parts.append(NetProbe.appleModel(m).map { "\($0) (\(m))" } ?? m) }
+        if let m = upnp?.modelName, !parts.contains(where: { $0.localizedCaseInsensitiveContains(m) }) {
+            parts.append(m + (upnp?.manufacturer.map { " by \($0)" } ?? ""))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    // MARK: Scannen
 
     func scan() {
         stop()
         info = NetInfo.current()
-        found = [:]; bonjour = [:]; rdns = [:]; routerMs = nil; internetMs = nil; measured = false; localBlocked = false
+        found = [:]; bonjour = [:]; names = [:]; upnp = [:]; ports = [:]; checking = []
+        arpDone = false; localBlocked = false
         guard let info else { return }
-        scanStart = Date()
+        let start = Date()
+        scanStart = start
+        phase = "Pinging…"
         browse()
-        let hosts = info.hosts, router = info.router
-        let pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? ""
+        let hosts = info.hosts, me = info.ip, subnet = Set(hosts)
         let ifindex = UInt16(truncatingIfNeeded: if_nametoindex(info.iface))
         work = Task { [weak self] in
-            async let internet = Self.tcpPing(pingHost)
-            let sweep = await Self.offMain { Self.sweep(hosts) }
+            async let oui: Void = Self.offMain { NetProbe.loadOUI() }
+            async let ssdp = Self.offMain { NetProbe.ssdp(iface: me, wait: 3) }
+            // 1. Iedereen pingen (vult ook de ARP-tabel), daarna ARP lezen
+            let sweep = await Self.offMain { NetProbe.ping(hosts, rounds: 2, every: 1.0, linger: 0.85) }
+            await oui
             guard !Task.isCancelled, let self else { return }
-            let subnet = Set(hosts)
+            self.ouiReady = true
             let arp = await Self.offMain { Self.arpTable() }.filter { $0.ifindex == ifindex && subnet.contains($0.ip) }
-            var f: [UInt32: (mac: [UInt8]?, ms: Double?)] = [:]
-            for e in arp { f[e.ip] = (e.mac, sweep.ms[e.ip]) }
-            for (ip, ms) in sweep.ms where f[ip] == nil { f[ip] = (nil, ms) }
+            var f: [UInt32: Found] = [:]
+            for e in arp { f[e.ip] = Found(mac: e.mac) }
+            for (ip, r) in sweep.rtt { f[ip, default: Found()].ms = r.min() }
+            for ip in self.bonjour.keys where subnet.contains(ip) && f[ip] == nil { f[ip] = Found() }
             self.found = f
+            self.arpDone = true
             // Antwoorden maar lege ARP-tabel: macOS verbergt die zonder Lokaal netwerk-toestemming
-            self.localBlocked = self.localBlocked || sweep.blocked || (arp.isEmpty && !sweep.ms.isEmpty)
-            self.routerMs = router.flatMap { sweep.ms[$0] }
-            self.internetMs = await internet
-            self.measured = true
-            let names = await Self.reverseNames(Array(f.keys), timeout: 1.5)
+            self.localBlocked = self.localBlocked || sweep.blocked || (arp.isEmpty && !sweep.rtt.isEmpty)
+            // 2. Namen (mDNS, NetBIOS, DNS) en reactietijd (3 pings per apparaat) tegelijk
+            self.phase = "Looking up names…"
+            let alive = Array(f.keys).filter { $0 != me }
+            async let mdns = Self.offMain { NetProbe.mdnsReverse(alive, iface: me, wait: 1.5) }
+            async let nb = Self.offMain { NetProbe.netbios(alive, wait: 1.5) }
+            async let dns = Self.reverseNames(alive, timeout: 1.5)
+            let lat = await Self.offMain { NetProbe.ping(alive, rounds: 3, every: 0.3, linger: 1.0) }
             guard !Task.isCancelled else { return }
-            self.rdns = names
-            self.remember()
+            for (ip, r) in lat.rtt where !r.isEmpty {
+                self.found[ip]?.ms = r.reduce(0, +) / Double(r.count)
+                self.found[ip]?.loss = Double(3 - min(r.count, 3)) / 3
+            }
+            // Geen ping-antwoord: reactietijd via een TCP-verbinding (SYN-ACK of RST telt allebei)
+            let silent = alive.filter { lat.rtt[$0] == nil }
+            let targets = silent.flatMap { ip in NetProbe.latencyPorts.map { (ip: ip, port: $0) } }
+            let tcp = await Self.offMain { NetProbe.tcpProbe(targets, timeout: 0.5, batch: 64) }
+            guard !Task.isCancelled else { return }
+            for (i, a) in tcp where a.ms < (self.found[targets[i].ip]?.viaTCP == true ? self.found[targets[i].ip]?.ms ?? .infinity : .infinity) {
+                self.found[targets[i].ip]?.ms = a.ms
+                self.found[targets[i].ip]?.viaTCP = true
+            }
+            for (key, list) in [("mDNS", await mdns), ("NetBIOS", await nb), ("DNS", await dns)] {
+                guard !Task.isCancelled else { return }
+                for (ip, n) in list { self.names[ip, default: [:]][key] = String(n.prefix(64)) }
+            }
+            // 3. UPnP-beschrijvingen van wat op SSDP antwoordde
+            self.phase = "Asking devices…"
+            let urls = await ssdp
+            let up = await Self.offMain { NetProbe.upnp(urls.filter { subnet.contains($0.key) }) }
+            guard !Task.isCancelled else { return }
+            self.upnp = up
+            // 4. Bonjour nog even laten lopen (namen komen druppelsgewijs binnen), dan klaar
+            let left = 7.5 - Date().timeIntervalSince(start)
+            if left > 0 { try? await Task.sleep(for: .seconds(left)) }
+            guard !Task.isCancelled else { return }
             self.stopBrowsing()
+            self.remember()
             self.scanStart = nil
+            self.phase = ""
         }
     }
 
     func stop() {
         work?.cancel(); work = nil
+        side.forEach { $0.cancel() }; side = []
+        checking = []
         stopBrowsing()
         scanStart = nil
     }
@@ -435,25 +670,77 @@ final class NetScanner: ObservableObject {
         resolving.values.forEach { $0.cancel() }; resolving = [:]
     }
 
-    /// Gezien-lijst bijwerken (MAC → naam, eerst/laatst gezien) en opslaan.
+    // MARK: Acties per apparaat
+
+    func checkPorts(_ ip: UInt32) {
+        guard !checking.contains(ip) else { return }
+        checking.insert(ip)
+        let targets = NetProbe.ports.map { (ip: ip, port: $0.port) }
+        side.append(Task { [weak self] in
+            let r = await Self.offMain { NetProbe.tcpProbe(targets, timeout: 0.3) }
+            guard let self else { return }
+            self.checking.remove(ip)
+            guard !Task.isCancelled else { return }
+            self.ports[ip] = r.filter { $0.value.isOpen }.map { targets[$0.key].port }.sorted()
+            if self.found[ip]?.ms == nil, let best = r.values.map(\.ms).min() {
+                self.found[ip]?.ms = best
+                self.found[ip]?.viaTCP = true
+            }
+        })
+    }
+
+    func wake(_ mac: [UInt8]) async -> Bool {
+        guard let info else { return false }
+        let bc = info.ip | ~info.mask
+        return await Self.offMain { NetProbe.wake(mac, broadcast: bc) }
+    }
+
+    func rename(_ d: NetDevice, to name: String) {
+        guard let mac = d.mac else { return }
+        let key = macString(mac), now = Date()
+        let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
+        var k = store.devices[key] ?? NetDeviceStore.Known(first: now, last: now)
+        k.custom = clean.isEmpty ? nil : clean
+        store.devices[key] = k
+        store.save()
+    }
+
+    func forget(_ d: NetDevice) {
+        guard let mac = d.mac else { return }
+        store.devices[macString(mac)] = nil
+        store.save()
+    }
+
+    /// Gezien-lijst bijwerken (MAC → naam, IP, netwerk, eerst/laatst gezien), opslaan en eventueel melden.
     private func remember() {
-        let now = Date()
-        for d in devices {
+        guard let info else { return }
+        let now = Date(), net = info.networkKey
+        var fresh: [NetDevice] = []
+        for d in devices where d.online {
             guard let mac = d.mac else { continue }
             let key = macString(mac)
-            var k = store.devices[key] ?? NetDeviceStore.Known(name: nil, first: now, last: now)
-            if !["Unknown device", "Router"].contains(d.name), !d.name.hasSuffix(" device") { k.name = d.name }
-            k.last = now
+            var k = store.devices[key] ?? NetDeviceStore.Known(first: now, last: now)
+            if store.devices[key] == nil, !d.isMe { fresh.append(d) }
+            if let n = d.names.first(where: { !["Your name", "Remembered", "This Mac"].contains($0.source) }) { k.name = n.name }
+            k.last = now; k.ip = ipString(d.ip); k.net = net
             store.devices[key] = k
         }
         store.save()
+        // Melding alleen als het aan staat en dit niet de allereerste scan is (dan is alles "nieuw")
+        if UserDefaults.standard.bool(forKey: "notifyNewDevice"), store.created < now.addingTimeInterval(-60) {
+            for d in fresh.prefix(3) {
+                Notify.send(title: "New device on your network", body: "\(d.name) · \(ipString(d.ip))" + (d.vendor == "–" ? "" : " · \(d.vendor)"))
+            }
+        }
     }
 
     // MARK: Bonjour
 
-    static let serviceTypes = ["_companion-link._tcp", "_device-info._tcp", "_airplay._tcp", "_raop._tcp", "_googlecast._tcp",
-                               "_sonos._tcp", "_spotify-connect._tcp", "_ipp._tcp", "_printer._tcp", "_smb._tcp",
-                               "_hap._tcp", "_homekit._tcp", "_http._tcp"]
+    /// Volgorde = voorrang voor de naam (Apple-apparaatnaam > AirPlay > … > http).
+    static let serviceTypes = ["_device-info._tcp", "_companion-link._tcp", "_airplay._tcp", "_raop._tcp", "_googlecast._tcp",
+                               "_sonos._tcp", "_spotify-connect._tcp", "_ipp._tcp", "_printer._tcp", "_scanner._tcp",
+                               "_smb._tcp", "_afpovertcp._tcp", "_workstation._tcp", "_ssh._tcp", "_sftp-ssh._tcp", "_rfb._tcp",
+                               "_hap._tcp", "_hap._udp", "_homekit._tcp", "_http._tcp", "_meshcop._udp", "_matter._tcp"]
 
     static func serviceTitle(_ type: String) -> String {
         switch type {
@@ -464,16 +751,22 @@ final class NetScanner: ObservableObject {
         case "_sonos._tcp": "Sonos"
         case "_spotify-connect._tcp": "Spotify Connect"
         case "_ipp._tcp", "_printer._tcp": "Printing"
-        case "_smb._tcp": "File sharing"
-        case "_hap._tcp", "_homekit._tcp": "HomeKit"
+        case "_scanner._tcp": "Scanning"
+        case "_smb._tcp", "_afpovertcp._tcp": "File sharing"
+        case "_workstation._tcp": "Computer"
+        case "_ssh._tcp", "_sftp-ssh._tcp": "Remote login (SSH)"
+        case "_rfb._tcp": "Screen sharing"
+        case "_hap._tcp", "_hap._udp", "_homekit._tcp": "HomeKit"
         case "_http._tcp": "Web page"
+        case "_matter._tcp": "Matter"
+        case "_meshcop._udp": "Thread border router"
         default: type
         }
     }
 
     private func browse() {
         for type in Self.serviceTypes {
-            let b = NWBrowser(for: .bonjourWithTXTRecord(type: type, domain: "local."), using: .tcp)
+            let b = NWBrowser(for: .bonjourWithTXTRecord(type: type, domain: "local."), using: type.hasSuffix("._udp") ? .udp : .tcp)
             b.browseResultsChangedHandler = { [weak self] results, _ in
                 MainActor.assumeIsolated { self?.resolve(results, type: type) }
             }
@@ -489,7 +782,7 @@ final class NetScanner: ObservableObject {
 
     /// Bonjour-dienst → IPv4 via een UDP-"verbinding" (stuurt niets naar het apparaat, alleen mDNS-opzoeken).
     private func resolve(_ results: Set<NWBrowser.Result>, type: String) {
-        for r in results where resolving[r.endpoint] == nil {
+        for r in results where resolving[r.endpoint] == nil && resolving.count < 400 {
             guard case let .service(rawName, _, _, _) = r.endpoint else { continue }
             var txt: [String: String] = [:]
             if case let .bonjour(t) = r.metadata { txt = t.dictionary }
@@ -512,97 +805,30 @@ final class NetScanner: ObservableObject {
     private func add(_ ip: UInt32, name: String?, type: String, txt: [String: String]) {
         var b = bonjour[ip] ?? Bonjour()
         b.types.insert(type)
-        // Naam: eerste dienst in `serviceTypes`-volgorde wint (Apple-namen > AirPlay > ... > http)
+        // Naam: eerste dienst in `serviceTypes`-volgorde wint
         let rank = { (t: String) in Self.serviceTypes.firstIndex(of: t) ?? 99 }
-        if let name, b.name == nil || b.types.filter({ $0 != type }).allSatisfy({ rank($0) > rank(type) }) { b.name = name }
-        if b.model == nil { b.model = txt["model"] ?? txt["md"] ?? txt["rpMd"] }
+        if let name, b.name == nil || b.types.filter({ $0 != type }).allSatisfy({ rank($0) > rank(type) }) { b.name = String(name.prefix(64)) }
+        let model = txt["model"] ?? txt["am"] ?? txt["rpMd"] ?? txt["md"] ?? txt["ty"] ?? txt["usb_MDL"]
+        if let model, !model.isEmpty, model.count < 64, b.model == nil || type == "_device-info._tcp" { b.model = model }
         bonjour[ip] = b
     }
 
     nonisolated static func friendlyName(_ raw: String, type: String, txt: [String: String]) -> String? {
+        if type == "_matter._tcp" { return nil }   // alleen een hex-id
         if type == "_googlecast._tcp", let fn = txt["fn"], !fn.isEmpty { return fn }
-        // RAOP: "A1B2C3D4E5F6@Woonkamer" → "Woonkamer"
-        let name = type == "_raop._tcp" ? String(raw.split(separator: "@", maxSplits: 1).last ?? "") : raw
+        var name = raw
+        // RAOP/Sonos: "A1B2C3D4E5F6@Woonkamer" → "Woonkamer"
+        if type == "_raop._tcp" || type == "_sonos._tcp" { name = String(raw.split(separator: "@", maxSplits: 1).last ?? "") }
+        // Werkstation: "alex-pc [aa:bb:cc:dd:ee:ff]" → "alex-pc"
+        if type == "_workstation._tcp", let b = name.firstIndex(of: "[") { name = name[..<b].trimmingCharacters(in: .whitespaces) }
         return name.isEmpty ? nil : name
     }
 
-    // MARK: Pings, ARP, namen (los van de main thread)
+    // MARK: Hulp: los van de main thread, ARP, omgekeerde DNS
 
     nonisolated static func offMain<T: Sendable>(_ body: @escaping @Sendable () -> T) async -> T {
         let t = Task.detached(priority: .utility, operation: body)
         return await withTaskCancellationHandler { await t.value } onCancel: { t.cancel() }
-    }
-
-    /// Reactietijd naar het internet: TCP-verbinding naar poort 443 (zoals de Live-ping), beste van 2. "" = uit.
-    nonisolated static func tcpPing(_ host: String) async -> Double? {
-        guard !host.isEmpty else { return nil }
-        var best: Double?
-        for _ in 0..<2 {
-            guard !Task.isCancelled else { return nil }
-            let ms: Double? = await withCheckedContinuation { cont in
-                DispatchQueue.main.async {
-                    let start = DispatchTime.now()
-                    let c = NWConnection(host: NWEndpoint.Host(host), port: 443, using: .tcp)
-                    var done = false
-                    func finish(_ ms: Double?) { guard !done else { return }; done = true; c.cancel(); cont.resume(returning: ms) }
-                    c.stateUpdateHandler = { state in
-                        switch state {
-                        case .ready: finish(Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6)
-                        case .failed, .waiting: finish(nil)
-                        default: break
-                        }
-                    }
-                    c.start(queue: .main)
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 2) { finish(nil) }
-                }
-            }
-            if let ms { best = min(best ?? ms, ms) } else if best == nil { return nil }
-        }
-        return best
-    }
-
-    /// ICMP-echo naar elk adres (onbevoegde datagram-socket, geen root). Dat vult meteen de ARP-tabel.
-    /// Twee rondes (de tweede zonder ARP-vertraging); per adres de snelste reactie in ms.
-    /// `blocked`: niets kon verstuurd worden (meestal: Lokaal netwerk-toestemming ontbreekt).
-    nonisolated static func sweep(_ hosts: [UInt32], wait: Double = 2.6) -> (ms: [UInt32: Double], blocked: Bool) {
-        let fd = socket(AF_INET, SOCK_DGRAM, IPPROTO_ICMP)
-        guard fd >= 0, !hosts.isEmpty else { return ([:], false) }
-        defer { close(fd) }
-        _ = fcntl(fd, F_SETFL, O_NONBLOCK)
-        let ident = UInt16.random(in: 1...0xFFFF)
-        let gap: UInt64 = 3_000_000, round2: UInt64 = 1_000_000_000   // 3 ms tussen pakketjes, 2e ronde na 1 s
-        let start = DispatchTime.now().uptimeNanoseconds, end = start + UInt64(wait * 1e9)
-        var sentAt = [Int: UInt64](), best = [UInt32: Double](), ok = 0, failed = 0, next = 0
-        var buf = [UInt8](repeating: 0, count: 1500)
-        while !Task.isCancelled {
-            let now = DispatchTime.now().uptimeNanoseconds
-            if now >= end { break }
-            while next < hosts.count * 2 {
-                let i = next % hosts.count
-                guard start + (next < hosts.count ? 0 : round2) + UInt64(i) * gap <= now else { break }
-                let packet = echoPacket(id: ident, seq: UInt16(next))
-                var to = sockaddr_in()
-                to.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-                to.sin_family = sa_family_t(AF_INET)
-                to.sin_addr.s_addr = hosts[i].bigEndian
-                let n = withUnsafePointer(to: &to) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
-                    sendto(fd, packet, packet.count, 0, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
-                if n == packet.count { ok += 1; sentAt[next] = DispatchTime.now().uptimeNanoseconds } else { failed += 1 }
-                next += 1
-            }
-            var p = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
-            _ = poll(&p, 1, 2)
-            while true {
-                var from = sockaddr_in(), len = socklen_t(MemoryLayout<sockaddr_in>.size)
-                let n = withUnsafeMutablePointer(to: &from) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { recvfrom(fd, &buf, buf.count, 0, $0, &len) } }
-                guard n > 0 else { break }
-                let t = DispatchTime.now().uptimeNanoseconds
-                guard let r = parseEchoReply(buf[0..<n]), r.id == ident, let s = sentAt[Int(r.seq)] else { continue }
-                let ip = UInt32(bigEndian: from.sin_addr.s_addr)
-                best[ip] = min(best[ip] ?? .infinity, Double(t - s) / 1e6)
-            }
-        }
-        return (best, ok == 0 && failed > 0)
     }
 
     nonisolated static func echoPacket(id: UInt16, seq: UInt16) -> [UInt8] {
@@ -665,19 +891,18 @@ final class NetScanner: ObservableObject {
         return out
     }
 
-    /// Omgekeerde DNS (vaak de naam die de router via DHCP kent), alle tegelijk, hooguit `timeout` s.
+    /// Omgekeerde DNS (vaak de naam die de router via DHCP kent), alle tegelijk (hooguit 16 tegelijk), hooguit `timeout` s.
     nonisolated static func reverseNames(_ ips: [UInt32], timeout: Double) async -> [UInt32: String] {
         final class Box: @unchecked Sendable { let lock = NSLock(); var names: [UInt32: String] = [:] }
         let box = Box()
-        let group = DispatchGroup()
+        let group = DispatchGroup(), sem = DispatchSemaphore(value: 16)
         for ip in ips {
             group.enter()
             DispatchQueue.global(qos: .utility).async {
                 defer { group.leave() }
-                var a = sockaddr_in()
-                a.sin_len = UInt8(MemoryLayout<sockaddr_in>.size)
-                a.sin_family = sa_family_t(AF_INET)
-                a.sin_addr.s_addr = ip.bigEndian
+                guard sem.wait(timeout: .now() + timeout) == .success else { return }
+                defer { sem.signal() }
+                var a = NetProbe.sockaddrIn(ip)
                 var host = [CChar](repeating: 0, count: Int(NI_MAXHOST))
                 let r = withUnsafePointer(to: &a) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) {
                     getnameinfo($0, socklen_t(MemoryLayout<sockaddr_in>.size), &host, socklen_t(host.count), nil, 0, NI_NAMEREQD) } }
@@ -713,50 +938,36 @@ final class NetScanner: ObservableObject {
     /// Lokaal beheerd adres (bit 2 van de eerste byte): willekeurig MAC-adres van iPhone/Android/Mac met Wi-Fi-privacy.
     nonisolated static func isPrivate(_ mac: [UInt8]) -> Bool { (mac.first ?? 0) & 0x02 != 0 }
 
+    /// Eigen korte namen eerst (die herkent `guess`), anders de officiële IEEE-lijst.
     nonisolated static func vendor(_ mac: [UInt8]) -> String? {
         guard mac.count >= 3 else { return nil }
-        return ouiTable[UInt32(mac[0]) << 16 | UInt32(mac[1]) << 8 | UInt32(mac[2])]
+        let key = UInt32(mac[0]) << 16 | UInt32(mac[1]) << 8 | UInt32(mac[2])
+        return ouiTable[key] ?? NetProbe.ieeeVendor(key)
     }
 
-    /// Router en internet vergelijken → wie is de boosdoener. ok: true = goed, false = probleem, nil = weet niet.
-    nonisolated static func verdict(router r: Double?, internet i: Double?, internetCheck: Bool) -> (text: String, ok: Bool?) {
-        let rSlow = (r ?? 0) > 30, iSlow = (i ?? 0) > 100   // ms; thuis-Wi-Fi naar router is meestal < 10
-        guard internetCheck else {
-            guard r != nil else { return ("Router doesn't answer pings; internet check is off", nil) }
-            return rSlow ? ("Router slow → Wi-Fi signal or router", false) : ("Router fast (internet check is off in Settings)", true)
-        }
-        switch (r, i) {
-        case (nil, nil): return ("No answer from router or internet → check the connection", false)
-        case (_?, nil): return ("Router answers, internet doesn't → your provider or modem", false)
-        case (nil, _?): return iSlow ? ("Internet slow (router doesn't answer pings)", false) : ("Internet fast (router doesn't answer pings)", true)
-        case (_?, _?):
-            if rSlow && iSlow { return ("Both slow → Wi-Fi or router", false) }
-            if rSlow { return ("Router slow → Wi-Fi signal or router", false) }
-            if iSlow { return ("Router fast, internet slow → your provider", false) }
-            return ("Router fast, internet fast → all good", true)
-        }
-    }
-
-    /// Soort apparaat raden uit diensten, model, naam en maker. ponytail: simpele trefwoorden; volgorde bepaalt de winnaar.
+    /// Soort apparaat raden uit diensten, model, namen en maker. ponytail: simpele trefwoorden; volgorde bepaalt de winnaar.
     nonisolated static func guess(name: String, vendor: String, services: Set<String>, model: String?,
                                   isRouter: Bool, isMe: Bool, privateMAC: Bool) -> DeviceKind {
         if isRouter { return .router }
         if isMe { return .computer }
-        let n = (name + " " + (model ?? "")).lowercased()
+        let n = (name + " " + (model ?? "")).lowercased(), v = vendor.lowercased()
         func has(_ words: String...) -> Bool { words.contains { n.contains($0) } }
         func offers(_ types: String...) -> Bool { types.contains { services.contains($0) } }
-        if offers("_ipp._tcp", "_printer._tcp") || ["HP", "Canon", "Epson", "Brother"].contains(vendor) { return .printer }
-        if has("xbox", "playstation", "nintendo") || vendor == "Nintendo" { return .console }
+        func made(_ prefixes: String...) -> Bool { prefixes.contains { v.hasPrefix($0) } }
+        if offers("_ipp._tcp", "_printer._tcp", "_scanner._tcp") || made("hp", "hewlett packard", "canon", "epson", "seiko epson", "brother", "xerox", "lexmark", "kyocera") { return .printer }
+        if has("xbox", "playstation", "nintendo") || made("nintendo") { return .console }
         if has("iphone", "ipad", "galaxy", "pixel", "android", "phone") { return .phone }
         if has("mac", "laptop", "desktop", "thinkpad", "-pc", "windows") { return .computer }
-        if has("homepod", "audioaccessory", "sonos", "speaker", "echo", "nest mini", "home mini", "soundbar") || ["Sonos", "Bose"].contains(vendor) { return .speaker }
-        if has("appletv", "apple tv", "tv", "chromecast", "roku", "bravia", "fire") || offers("_googlecast._tcp") || vendor == "Roku" { return .tv }
+        if has("homepod", "audioaccessory", "sonos", "speaker", "echo", "nest mini", "home mini", "soundbar", "zoneplayer") || made("sonos", "bose") { return .speaker }
+        if has("appletv", "apple tv", "tv", "chromecast", "roku", "bravia", "fire", "mediarenderer") || offers("_googlecast._tcp") || made("roku") { return .tv }
         if offers("_sonos._tcp", "_spotify-connect._tcp", "_raop._tcp") { return .speaker }
-        if offers("_hap._tcp", "_homekit._tcp") || has("hue", "plug", "bulb", "thermostat", "camera", "doorbell", "esp")
-            || ["Signify (Philips Hue)", "Espressif", "Ring", "Google Nest", "Tado"].contains(vendor) { return .smartHome }
-        if has("nas", "diskstation", "synology", "qnap") || ["Synology", "QNAP"].contains(vendor) { return .nas }
-        if ["Intel", "ASUS", "Microsoft", "Raspberry Pi"].contains(vendor) { return .computer }
-        if ["TP-Link", "Ubiquiti", "Netgear", "AVM (Fritz!)"].contains(vendor) { return .router }
+        if has("internetgatewaydevice", "router", "access point") { return .router }
+        if offers("_hap._tcp", "_hap._udp", "_homekit._tcp", "_matter._tcp", "_meshcop._udp") || has("hue", "plug", "bulb", "thermostat", "camera", "doorbell", "esp", "bridge")
+            || made("signify", "philips lighting", "espressif", "ring", "google nest", "nest labs", "tado", "shelly", "tuya", "ikea", "lumi") { return .smartHome }
+        if has("nas", "diskstation", "synology", "qnap") || made("synology", "qnap") { return .nas }
+        if offers("_rfb._tcp", "_workstation._tcp", "_ssh._tcp", "_sftp-ssh._tcp", "_afpovertcp._tcp", "_smb._tcp")
+            || made("intel", "asus", "microsoft", "raspberry pi", "dell", "lenovo", "hon hai", "liteon", "azurewave") { return .computer }
+        if made("tp-link", "ubiquiti", "netgear", "avm", "eero", "zyxel", "sagemcom", "arcadyan", "technicolor") { return .router }
         if privateMAC { return .phone }
         return .unknown
     }
@@ -809,7 +1020,7 @@ final class NetScanner: ObservableObject {
     // MARK: Zelftest (Fusebox --selftest)
 
     nonisolated static func selfTest() {
-        // OUI-tabel: geen dubbele prefixen over makers heen, en opzoeken werkt
+        // Eigen OUI-tabel: geen dubbele prefixen over makers heen, en opzoeken werkt
         var seen = [String: String]()
         for line in ouiText.split(separator: "\n") {
             let parts = line.split(separator: ":", maxSplits: 1)
@@ -821,14 +1032,21 @@ final class NetScanner: ObservableObject {
         precondition(vendor([0xB8, 0x27, 0xEB, 1, 2, 3]) == "Raspberry Pi" && vendor([0x00, 0x17, 0x88, 0, 0, 0]) == "Signify (Philips Hue)", "oui")
         precondition(vendor([0x12, 0x34, 0x56, 0, 0, 0]) == nil, "oui onbekend")
         precondition(isPrivate([0xDA, 0, 0, 0, 0, 0]) && isPrivate([0x02, 0, 0, 0, 0, 0]) && !isPrivate([0xB8, 0x27, 0xEB, 0, 0, 0]), "lokaal beheerd")
-        // Subnet
+        // IEEE-lijst (TSV)
+        let tsv = NetProbe.parseOUI("000000\tXEROX\n00000C\tCisco Systems\r\n001132\tSynology\nzzzzzz\tKapot\n1234\tTe kort\nAABBCC\tIEEE Registration Authority\nFCFCFC\t  NETGEAR  \n")
+        precondition(tsv.count == 4 && tsv[0] == "Xerox" && tsv[0x00000C] == "Cisco Systems" && tsv[0x001132] == "Synology" && tsv[0xFCFCFC] == "Netgear", "oui tsv \(tsv)")
+        precondition(NetProbe.tidyVendor("TP-LINK") == "TP-LINK" && NetProbe.tidyVendor("HUAWEI TECHNOLOGIES") == "Huawei Technologies" && NetProbe.tidyVendor("LG") == "LG", "maker netjes")
+        // Subnet, MAC
         let ip = parseIP("192.168.1.23")!
-        precondition(ipString(ip) == "192.168.1.23" && parseIP("1.2.3") == nil && parseIP("1.2.3.256") == nil, "ip")
+        precondition(ipString(ip) == "192.168.1.23" && parseIP("1.2.3") == nil && parseIP("1.2.3.256") == nil && parseIP("1..2.3") == nil && parseIP("a.1.2.3.4") == nil, "ip")
+        precondition(parseMAC("B8:27:EB:01:02:03") == [0xB8, 0x27, 0xEB, 1, 2, 3] && parseMAC("B8:27") == nil && macString(parseMAC("0a:0b:0c:0d:0e:0f")!) == "0A:0B:0C:0D:0E:0F", "mac")
         let h24 = hosts(ip: ip, mask: 0xFFFF_FF00)
         precondition(h24.count == 254 && h24.first == parseIP("192.168.1.1") && h24.last == parseIP("192.168.1.254"), "/24")
         let h16 = hosts(ip: parseIP("10.0.5.9")!, mask: 0xFFFF_0000)
         precondition(h16.count == 254 && h16.first == parseIP("10.0.5.1"), "/16 → /24 rond eigen adres")
         precondition(hosts(ip: ip, mask: 0xFFFF_FFF0).count == 14 && hosts(ip: ip, mask: 0xFFFF_FFFF).isEmpty, "/28, /32")
+        precondition(NetProbe.isLAN(ip) && NetProbe.isLAN(parseIP("10.1.2.3")!) && NetProbe.isLAN(parseIP("172.20.0.1")!)
+                     && !NetProbe.isLAN(parseIP("172.32.0.1")!) && !NetProbe.isLAN(parseIP("8.8.8.8")!), "lan")
         // ICMP
         let pkt = echoPacket(id: 0xBEEF, seq: 7)
         precondition(checksum(pkt) == 0, "icmp checksum")
@@ -846,25 +1064,114 @@ final class NetScanner: ObservableObject {
         }
         let arp = parseARP(msg([192, 168, 1, 5], mac: [0xB8, 0x27, 0xEB, 1, 2, 3]) + msg([192, 168, 1, 6], mac: []))
         precondition(arp.count == 1 && arp[0].ip == parseIP("192.168.1.5") && arp[0].mac == [0xB8, 0x27, 0xEB, 1, 2, 3] && arp[0].ifindex == 4, "arp")
+        // mDNS: vraag opbouwen, antwoord (met compressie) ontleden
+        let q = NetProbe.dnsQuery(NetProbe.reverseName(parseIP("192.168.1.5")!), type: 12, id: 9)
+        precondition(NetProbe.reverseName(parseIP("192.168.1.5")!) == "5.1.168.192.in-addr.arpa", "reverse naam")
+        precondition(q.count == 12 + 26 + 4 && q[1] == 9 && q[5] == 1 && q[q.count - 4] == 0 && q[q.count - 3] == 12 && q[q.count - 2] == 0x80 && q[q.count - 1] == 1, "mdns vraag")
+        var off = 12
+        precondition(NetProbe.readName(q, &off) == "5.1.168.192.in-addr.arpa" && off == q.count - 4, "dns naam lezen")
+        // Antwoord: kop (1 vraag, 1 antwoord), vraag, antwoord met naam-verwijzing naar de vraag, PTR "alex-iphone.local"
+        var resp = q
+        resp[2] = 0x84; resp[7] = 1
+        let target: [UInt8] = [11] + Array("alex-iphone".utf8) + [5] + Array("local".utf8) + [0]
+        resp += [0xC0, 12, 0, 12, 0x80, 1, 0, 0, 0, 120, 0, UInt8(target.count)] + target
+        precondition(NetProbe.reverseAnswers(resp) == [parseIP("192.168.1.5")!: "alex-iphone"], "mdns antwoord")
+        var loop: [UInt8] = [0xC0, 0]; var o2 = 0
+        precondition(NetProbe.readName(loop, &o2) == nil, "dns lus")
+        loop = Array(resp.prefix(20))
+        precondition(NetProbe.reverseAnswers(loop).isEmpty && NetProbe.reverseAnswers([1, 2, 3]).isEmpty, "dns afgekapt")
+        // NetBIOS: vraag + status-antwoord (groepsnaam overslaan, computernaam pakken)
+        let nq = NetProbe.netbiosQuery
+        precondition(nq.count == 50 && nq[12] == 0x20 && nq[13] == 0x43 && nq[14] == 0x4B && nq[15] == 0x41 && nq[47] == 0x21, "netbios vraag")
+        func nbName(_ s: String, suffix: UInt8, group: Bool) -> [UInt8] {
+            Array(s.utf8) + [UInt8](repeating: 0x20, count: 15 - s.utf8.count) + [suffix, group ? 0x84 : 0x04, 0]
+        }
+        let nbResp: [UInt8] = [0x46, 0x42, 0x84, 0, 0, 0, 0, 1, 0, 0, 0, 0] + Array(nq[12..<46]) + [0, 0x21, 0, 1, 0, 0, 0, 0, 0, 41, 2]
+            + nbName("WORKGROUP", suffix: 0, group: true) + nbName("OFFICE-PC", suffix: 0, group: false) + [UInt8](repeating: 0, count: 6)
+        precondition(NetProbe.netbiosName(nbResp) == "OFFICE-PC" && NetProbe.netbiosName(Array(nbResp.prefix(60))) == nil, "netbios antwoord")
+        // SSDP + UPnP
+        let ssdp = NetProbe.ssdpHeaders(Array("HTTP/1.1 200 OK\r\nCACHE-CONTROL: max-age=1800\r\nLocation: http://192.168.1.40:1400/xml/device_description.xml\r\nST: upnp:rootdevice\r\n\r\n".utf8))
+        precondition(ssdp["location"] == "http://192.168.1.40:1400/xml/device_description.xml" && ssdp["st"] == "upnp:rootdevice", "ssdp kop")
+        precondition(NetProbe.ssdpHeaders(Array("M-SEARCH * HTTP/1.1\r\nLOCATION: http://x\r\n".utf8)).isEmpty, "ssdp geen antwoord")
+        let dev = parseIP("192.168.1.40")!
+        precondition(NetProbe.lanURL("http://192.168.1.40:1400/desc.xml", from: dev) != nil, "lan-url")
+        precondition(NetProbe.lanURL("http://8.8.8.8/desc.xml", from: parseIP("8.8.8.8")!) == nil
+                     && NetProbe.lanURL("http://192.168.1.41/desc.xml", from: dev) == nil
+                     && NetProbe.lanURL("https://192.168.1.40/desc.xml", from: dev) == nil
+                     && NetProbe.lanURL("http://evil.example/desc.xml", from: dev) == nil, "lan-url weigeren")
+        let xml = Array("""
+        <?xml version="1.0"?><root xmlns="urn:schemas-upnp-org:device-1-0"><device>
+        <deviceType>urn:schemas-upnp-org:device:ZonePlayer:1</deviceType><friendlyName> Living Room </friendlyName>
+        <manufacturer>Sonos, Inc.</manufacturer><modelName>Sonos One</modelName>
+        <deviceList><device><friendlyName>Sub device</friendlyName></device></deviceList></device></root>
+        """.utf8)
+        precondition(NetProbe.parseUPnP(xml) == NetProbe.UPnPInfo(friendlyName: "Living Room", manufacturer: "Sonos, Inc.", modelName: "Sonos One",
+                                                                  deviceType: "urn:schemas-upnp-org:device:ZonePlayer:1"), "upnp xml")
+        precondition(NetProbe.parseUPnP(Array("<!DOCTYPE x [<!ENTITY a \"aaaa\">]><root><friendlyName>&a;</friendlyName></root>".utf8)) == nil, "upnp dtd")
+        precondition(NetProbe.parseUPnP([UInt8](repeating: 0x20, count: 70_000)) == nil && NetProbe.parseUPnP(Array("not xml".utf8)) == nil, "upnp groot/kapot")
+        // Wake on LAN, poorten, modellen
+        let mac: [UInt8] = [0x00, 0x11, 0x32, 0xAA, 0xBB, 0xCC]
+        let magic = NetProbe.magicPacket(mac)!
+        precondition(magic.count == 102 && magic.prefix(6).allSatisfy { $0 == 0xFF } && Array(magic[6..<12]) == mac && Array(magic[96..<102]) == mac
+                     && NetProbe.magicPacket([1, 2, 3]) == nil, "wol")
+        let portNumbers = NetProbe.ports.map(\.port)
+        precondition(Set(portNumbers).count == portNumbers.count && portNumbers.count == 15
+                     && [22, 80, 443, 445, 548, 631, 3389, 5000, 5001, 8080, 9100, 62078, 32400, 1883, 554].allSatisfy(portNumbers.contains), "poorten")
+        precondition(NetProbe.webURL(dev, 80)?.absoluteString == "http://192.168.1.40/" && NetProbe.webURL(dev, 5001)?.absoluteString == "https://192.168.1.40:5001/"
+                     && NetProbe.webURL(dev, 22) == nil, "open-link")
+        precondition(NetProbe.appleModel("MacBookPro18,3") == "MacBook Pro" && NetProbe.appleModel("Mac15,3") == "Mac" && NetProbe.appleModel("Macmini9,1") == "Mac mini"
+                     && NetProbe.appleModel("AudioAccessory5,1") == "HomePod mini" && NetProbe.appleModel("iPhone16,2") == "iPhone" && NetProbe.appleModel("Pixel 8") == nil, "apple-model")
+        precondition(modelText(bonjour: "MacBookPro18,3", upnp: nil) == "MacBook Pro (MacBookPro18,3)", "modeltekst")
+        // Ping-statistiek
+        let s = PingStats([10, 12, 11, 15], sent: 5)
+        precondition(s.got == 4 && abs(s.loss - 0.2) < 1e-9 && s.avg == 12 && s.min == 10 && s.max == 15 && abs(s.jitter! - 7.0 / 3) < 1e-9, "ping-statistiek")
+        precondition(PingStats([], sent: 3).loss == 1 && PingStats([], sent: 3).avg == nil && PingStats([5], sent: 1).jitter == nil, "ping leeg")
         // Namen, soort, oordeel
         precondition(friendlyName("A1B2C3D4E5F6@Living Room", type: "_raop._tcp", txt: [:]) == "Living Room", "raop-naam")
         precondition(friendlyName("Chromecast-abc", type: "_googlecast._tcp", txt: ["fn": "Bedroom TV"]) == "Bedroom TV", "cast-naam")
+        precondition(friendlyName("alex-pc [aa:bb:cc:dd:ee:ff]", type: "_workstation._tcp", txt: [:]) == "alex-pc"
+                     && friendlyName("ABCDEF0123-0000000000000001", type: "_matter._tcp", txt: [:]) == nil, "werkstation/matter")
         precondition(cleanHostname("alex-iphone.fritz.box") == "alex-iphone" && cleanHostname("192.168.1.5") == nil, "hostnaam")
         precondition(guess(name: "Living Room", vendor: "Apple", services: ["_airplay._tcp", "_raop._tcp"], model: "AppleTV14,1", isRouter: false, isMe: false, privateMAC: false) == .tv, "apple tv")
         precondition(guess(name: "Alex's MacBook Pro", vendor: "Apple", services: ["_raop._tcp"], model: "Mac15,3", isRouter: false, isMe: false, privateMAC: false) == .computer, "mac")
         precondition(guess(name: "Unknown device", vendor: "Private address", services: [], model: nil, isRouter: false, isMe: false, privateMAC: true) == .phone, "privé")
         precondition(guess(name: "HL-L2350DW", vendor: "Brother", services: ["_ipp._tcp"], model: nil, isRouter: false, isMe: false, privateMAC: false) == .printer, "printer")
-        precondition(verdict(router: 3, internet: 15, internetCheck: true).ok == true, "alles goed")
-        precondition(verdict(router: 3, internet: 300, internetCheck: true).text.contains("provider"), "provider")
-        precondition(verdict(router: 80, internet: 300, internetCheck: true).text.hasPrefix("Both slow"), "beide traag")
-        print("netwerk: ok (\(ouiTable.count) OUI-prefixen)")
+        precondition(guess(name: "Living Room Sonos One urn:schemas-upnp-org:device:ZonePlayer:1", vendor: "Sonos", services: [], model: nil, isRouter: false, isMe: false, privateMAC: false) == .speaker, "sonos")
+        precondition(guess(name: "OFFICE-PC", vendor: "Hon Hai Precision Ind", services: [], model: nil, isRouter: false, isMe: false, privateMAC: false) == .computer, "netbios-pc")
+        precondition(fallbackName(vendor: "Sonos", kind: .speaker, isRouter: false, privateMAC: false) == "Sonos speaker"
+                     && fallbackName(vendor: "Samsung Electronics Co", kind: .tv, isRouter: false, privateMAC: false) == "Samsung TV"
+                     && fallbackName(vendor: "–", kind: .unknown, isRouter: false, privateMAC: false) == "Unknown device", "terugvalnaam")
+        let good = PingStats([3, 3, 4, 3, 3, 3, 3, 3, 3, 3], sent: 10), net = PingStats([15, 14, 16, 15, 15, 15, 14, 15, 16, 15], sent: 10)
+        precondition(InternetStats.verdict(wired: false, rssi: -55, snr: 40, router: good, internet: net, dnsMs: 12, internetCheck: true).ok == true, "alles goed")
+        let lossy = PingStats([3, 3, 4, 3, 3, 3, 3, 3, 3], sent: 10)
+        let weak = InternetStats.verdict(wired: false, rssi: -78, snr: 15, router: lossy, internet: net, dnsMs: 12, internetCheck: true)
+        precondition(weak.ok == false && weak.text.hasPrefix("Wi-Fi signal weak and 10% packet loss to the router") && weak.text.contains("cable"), "zwak wifi: \(weak.text)")
+        let slowNet = InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: good, internet: PingStats([300, 310, 290], sent: 3), dnsMs: nil, internetCheck: true)
+        precondition(slowNet.ok == false && slowNet.text.contains("provider"), "provider")
+        precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: PingStats([], sent: 10), internet: PingStats([], sent: 10), dnsMs: nil, internetCheck: true).text.hasPrefix("No answer"), "niets")
+        precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: good, internet: nil, dnsMs: nil, internetCheck: false).ok == true, "internet uit")
+        precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: good, internet: net, dnsMs: 400, internetCheck: true).text.contains("DNS"), "trage dns")
+        let meta = InternetStats.parseMeta(Data(#"{"clientIp":"203.0.113.7","asOrganization":"Example ISP","city":"Utrecht","country":"NL","colo":"AMS"}"#.utf8))
+        precondition(meta?.ip == "203.0.113.7" && meta?.isp == "Example ISP" && meta?.place == "Utrecht, NL (Cloudflare AMS)" && InternetStats.parseMeta(Data("[]".utf8)) == nil, "meta")
+        // Opslag: oude bestanden (zonder nieuwe velden) blijven leesbaar
+        let old = Data(#"{"created":"2025-01-01T00:00:00Z","devices":{"B8:27:EB:01:02:03":{"name":"pi","first":"2025-01-01T00:00:00Z","last":"2025-01-02T00:00:00Z"}}}"#.utf8)
+        let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
+        let st = try? dec.decode(NetDeviceStore.self, from: old)
+        precondition(st?.devices["B8:27:EB:01:02:03"]?.name == "pi" && st?.devices["B8:27:EB:01:02:03"]?.custom == nil, "opslag oud formaat")
+        precondition(agoText(Date().addingTimeInterval(-3 * 86_400 - 5)) == "3 d ago" && agoText(Date().addingTimeInterval(-7200)) == "2 h ago", "geleden")
+        print("netwerk: ok (\(ouiTable.count) eigen OUI-prefixen)")
     }
 }
 
 // MARK: - Onthouden apparaten (~/Documents/Fusebox/network-devices.json)
 
 struct NetDeviceStore: Codable {
-    struct Known: Codable { var name: String?; var first: Date; var last: Date }
+    struct Known: Codable {
+        var name: String?        // laatst gevonden naam
+        var custom: String?      // eigen naam ("Rename…")
+        var ip: String?, net: String?
+        var first: Date, last: Date
+    }
     var created = Date()
     var devices: [String: Known] = [:]   // MAC "AA:BB:…" → naam, eerst/laatst gezien
 
