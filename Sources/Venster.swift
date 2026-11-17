@@ -142,13 +142,15 @@ struct RootView: View {
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEndLiveResizeNotification)) { n in
             guard let w = window, n.object as? NSWindow === w, !fullScreen(w) else { return }
             saveTopLeft(w)
-            UserDefaults.standard.set(NSStringFromSize(w.frame.size), forKey: "windowSize")
+            // Live heeft zijn eigen grootte; de andere tabbladen delen er samen één
+            UserDefaults.standard.set(NSStringFromSize(w.frame.size), forKey: page == .overview ? "liveSize" : "windowSize")
         }
         .onChange(of: onTop) { if let window { applyOnTop(window) } }
         .onChange(of: page) { _, new in
             LaunchOnce.launched = Date()   // inloop-animatie (rijen, lijnen) opnieuw afspelen op de nieuwe pagina
+            LaunchOnce.tabSwitch = true    // … maar sneller dan bij het opstarten
             meter.programsVisible = new == .programs
-            grow(for: new)
+            resize(to: new)
         }
     }
 
@@ -220,10 +222,13 @@ struct RootView: View {
 
     private func fullScreen(_ w: NSWindow) -> Bool { w.styleMask.contains(.fullScreen) }
 
-    /// Tabblad dat meer ruimte nodig heeft: venster alleen groter maken (nooit kleiner), linksboven blijft staan.
-    private func grow(for p: Page) {
+    /// Naar Live: terug naar de Live-grootte die je zelf gaf. Naar een ander tabblad: de gedeelde grootte van
+    /// die tabbladen (nog nooit gesleept: de huidige), minstens zo groot als dat tabblad nodig heeft. Linksboven blijft staan.
+    private func resize(to p: Page) {
         guard let w = window, !fullScreen(w), !w.inLiveResize else { return }
-        let s = NSSize(width: max(w.frame.width, p.minSize.width), height: max(w.frame.height, p.minSize.height))
+        let d = UserDefaults.standard
+        let saved = d.string(forKey: p == .overview ? "liveSize" : "windowSize").map(NSSizeFromString) ?? w.frame.size
+        let s = NSSize(width: max(saved.width, p.minSize.width), height: max(saved.height, p.minSize.height))
         if s != w.frame.size { place(w, size: s, animate: true) }
     }
 
@@ -239,12 +244,12 @@ struct RootView: View {
         return p
     }
 
-    /// Onthouden vensterformaat. Eenmalig overgezet van de oude grootte per tabblad (die van Live: daarmee opende hij al).
+    /// Onthouden Live-grootte (daarmee opent hij). Eenmalig overgezet van de oudere instellingen.
     private func savedSize() -> NSSize {
         let d = UserDefaults.standard
-        if d.string(forKey: "windowSize") == nil, let old = d.string(forKey: "size.live") { d.set(old, forKey: "windowSize") }
+        if d.string(forKey: "liveSize") == nil, let old = d.string(forKey: "size.live") ?? d.string(forKey: "windowSize") { d.set(old, forKey: "liveSize") }
         for p in Page.allCases { d.removeObject(forKey: "size.\(p.rawValue)") }
-        return d.string(forKey: "windowSize").map(NSSizeFromString) ?? NSSize(width: 300, height: 340)
+        return d.string(forKey: "liveSize").map(NSSizeFromString) ?? NSSize(width: 300, height: 340)
     }
 
     /// Venster naar `size`, linksboven op zijn plek, nooit voorbij de rand van het scherm (dan kleiner i.p.v. verschuiven).
@@ -272,6 +277,9 @@ enum LaunchOnce {
     /// Moment van starten of van een tabwissel; de inloop-animaties spelen alleen vlak daarna.
     nonisolated(unsafe) static var launched = Date()
     static var intro: Bool { Date().timeIntervalSince(launched) < 1.2 }
+    /// Na een tabwissel: dezelfde inloop, maar ruim twee keer zo snel (alleen het opstarten krijgt de rustige versie).
+    nonisolated(unsafe) static var tabSwitch = false
+    static var pace: Double { tabSwitch ? 0.4 : 1 }
 }
 
 /// Wisselen tussen labelstijlen (alleen icoon / icoon + naam) zonder twee views te schrijven.

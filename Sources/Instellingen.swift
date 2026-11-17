@@ -443,6 +443,16 @@ struct AlertSettings: View {
         Section {
             Toggle("Show notifications", isOn: $notify).onChange(of: notify) { _, on in if on { Notify.ask() } }
             Stepper("Same kind at most once every \(cooldown) min", value: $cooldown, in: 5...240, step: 5).disabled(!notify)
+            LabeledContent {
+                Button("Send test notification") {
+                    Notify.ask()
+                    Notify.send(title: "Fusebox update available (test)", body: "This is how Fusebox tells you about a new version.")
+                }
+                .disabled(!notify)
+            } label: {
+                Text("Test")
+                Text("No notification? Allow Fusebox in System Settings › Notifications.")
+            }
         }
         Section("Per kind: limit and how many minutes in a row") {
             ForEach(Alert.allCases) { AlertRow(alert: $0) }

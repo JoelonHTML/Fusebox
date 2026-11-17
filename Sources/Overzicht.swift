@@ -110,6 +110,7 @@ struct OverviewView: View {
                                     let m = metrics[i]
                                     MetricView(data: m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps), tier: t, fill: fill, index: i,
                                                side: l.side, graphs: graphs != .never, ready: !meter.recent.isEmpty)
+                                        .id(m)   // kaart hoort bij de meting, niet bij de plek: anders toont NET even de I/O-waarde na een andere indeling
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
                                         .onTapGesture { withAnimation(.snappy(duration: 0.3)) { detail = m } }
@@ -338,7 +339,8 @@ struct CoreBars: View {
 extension SparkView {
     /// Zachte curve: snel in, rustig uitlopen; grafiekjes één voor één
     fileprivate func reveal() {
-        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.8).delay(0.05 + Double(order) * 0.25)) { drawn = 1 }
+        let p = LaunchOnce.pace
+        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.8 * p).delay((0.05 + Double(order) * 0.25) * p)) { drawn = 1 }
     }
 }
 
@@ -452,7 +454,7 @@ struct IntroIn: ViewModifier {
             .offset(y: shown ? 0 : 14)
             .onAppear {
                 guard !shown else { return }
-                withAnimation(.spring(duration: 0.35, bounce: 0.2).delay(0.03 + Double(index) * 0.04)) { shown = true }
+                withAnimation(.spring(duration: 0.35 * LaunchOnce.pace, bounce: 0.2).delay((0.03 + Double(index) * 0.04) * LaunchOnce.pace)) { shown = true }
             }
     }
 }
