@@ -40,6 +40,7 @@ struct MetricDetail: View {
             }
             .padding(.horizontal, 14).padding(.bottom, 14)
         }
+        .clipped()   // niet onder de doorzichtige werkbalk doorschuiven (dan verdwijnen de tab-iconen)
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .background { Button("", action: close).keyboardShortcut(.cancelAction).hidden() }   // Esc = terug
         .task { if metric == .battery { battery = await Task.detached { Diag.battery() }.value } }

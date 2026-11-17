@@ -648,6 +648,7 @@ struct AnalysisView: View {
             .padding(.horizontal, 12).padding(.bottom, 12)
         }
         .scrollIndicators(.never)
+        .clipped()   // niet onder de doorzichtige werkbalk doorschuiven (dan verdwijnen de tab-iconen)
         .onGeometryChange(for: Int.self) { $0.size.width >= 1080 ? 3 : $0.size.width >= 700 ? 2 : 1 } action: { columns = $0 }
         .task(id: "\(period.rawValue)#\(reload)") {
             loading = true
