@@ -23,7 +23,7 @@ enum SelfLog {
         }
         guard ok == 0 else { return }
         let gpu = AppMonitor.gpuTimes()
-        let ws = gpu.first { name($0.key) == "WindowServer" }?.value ?? 0
+        let ws = gpu.first { AppMonitor.gpuNames[$0.key] == "WindowServer" }?.value ?? 0
         let now = Mark(t: ProcessInfo.processInfo.systemUptime, cpuNs: Double(ri.ri_user_time + ri.ri_system_time) * tick,
                        energyNj: ri.ri_energy_nj, wakeups: ri.ri_interrupt_wkups + ri.ri_pkg_idle_wkups,
                        gpuNs: gpu[getpid()] ?? 0, wsNs: ws)

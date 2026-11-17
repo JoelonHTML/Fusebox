@@ -116,6 +116,7 @@ final class AppMonitor: ObservableObject {
     /// GPU-tijd (ns) per pid: elke GPU-client in de IORegistry (kind van een IOAccelerator) heeft "AppUsage"
     /// met "accumulatedGPUTime", en "IOUserClientCreator" = "pid 123, naam". Zelfde bron als `ioreg`, geen toestemming nodig.
     /// Niet gedocumenteerd: ontbreekt het (andere GPU, ander macOS), dan is alles 0. ~3 ms per keer.
+    nonisolated(unsafe) static var gpuNames: [pid_t: String] = [:]
     static func gpuTimes() -> [pid_t: UInt64] {
         var out: [pid_t: UInt64] = [:], it: io_iterator_t = 0
         guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else { return out }
@@ -131,6 +132,9 @@ final class AppMonitor: ObservableObject {
                 guard let usage = prop("AppUsage") as? [[String: Any]], !usage.isEmpty,
                       let pid = (prop("IOUserClientCreator") as? String).flatMap(creatorPid) else { continue }
                 out[pid, default: 0] += usage.reduce(0) { $0 + (($1["accumulatedGPUTime"] as? NSNumber)?.uint64Value ?? 0) }
+                if let c = prop("IOUserClientCreator") as? String, let n = c.split(separator: ",", maxSplits: 1).last {
+                    gpuNames[pid] = n.trimmingCharacters(in: .whitespaces)   // "pid 411, WindowServer" → naam (proc_name mag niet bij root-processen)
+                }
             }
         }
         return out
