@@ -175,16 +175,17 @@ extension Metric {
         case .net:
             // Eenheid één keer (in de eenheidskolom): "↓8 ↑120  KB/s" i.p.v. "↓8 KB/s ↑120 KB/s"
             let (dn, upv, unit) = ratePair(s.down, s.up, bits: bits)
-            let ping = host.isEmpty || s.pingPending ? nil : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms"
+            // Reactietijd (ms) naast NET alleen met de optie "netPing"; meten gebeurt altijd (meldingen, Checkup)
+            let ping = host.isEmpty || s.pingPending || !d.bool(forKey: "netPing") ? nil : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms"
             // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms
             // Nog geen snelheidstest gedaan? Dan de Wi-Fi-verbindingssnelheid (wat de router je Mac geeft)
             let speed = d.bool(forKey: "netSpeed")
-                ? (InternetStats.loadHistory().last.map { "· \(Int($0.down.rounded())) Mbit" } ?? LinkRate.wifiMbit().map { "· \(Int($0.rounded())) Mbit" })
+                ? (InternetStats.loadHistory().last.map { "\(Int($0.down.rounded())) Mbit" } ?? LinkRate.wifiMbit().map { "\(Int($0.rounded())) Mbit" })
                 : nil
             var row = MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
-                                 side: [ping, speed].compactMap { $0 }.joined(separator: " "),
+                                 side: [ping, speed].compactMap { $0 }.joined(separator: " · "),
                                  template: "↓888 ↑888",
-                                 sideLevel: host.isEmpty || s.pingPending ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
+                                 sideLevel: host.isEmpty || s.pingPending || !d.bool(forKey: "netPing") ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
                                  detail: host.isEmpty ? "response time check is off" : "internet response time",
                                  values: h.map(\.down), second: h.map(\.up), top: nil, valueSize: 24)
             row.sideIcon = LinkRate.wifiMbit() != nil ? "wifi" : "cable.connector.horizontal"   // draadloos of bedraad

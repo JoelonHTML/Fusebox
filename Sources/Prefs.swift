@@ -15,7 +15,7 @@ enum Prefs {
             "hotkeyCode": 3, "hotkeyMods": 6400, "hotkeyLabel": "⌃⌥⌘F",   // F met ⌃⌥⌘ (Carbon: 4096+2048+256)
             // Live-pagina
             "metrics": Metric.defaultOrder, "metricsHidden": "",
-            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "netSpeed": false, "dockedInternals": false,
+            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "netSpeed": false, "netPing": false, "dockedInternals": false,
             "warnCPU": 85.0, "warnTemp": 95.0, "warnPing": 100.0,
             // Menubalk
             "menubarMetrics": "cpu", "menubarMetricsHidden": "", "menubarStyle": "text", "menubarSplit": false,

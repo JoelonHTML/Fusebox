@@ -323,6 +323,7 @@ struct LiveSettings: View {
     @AppStorage("perCore") private var perCore = false
     @AppStorage("batteryTime") private var batteryTime = true
     @AppStorage("netSpeed") private var netSpeed = false
+    @AppStorage("netPing") private var netPing = false
     @AppStorage("warnCPU") private var warnCPU = 85.0
     @AppStorage("warnTemp") private var warnTemp = 95.0
     @AppStorage("warnPing") private var warnPing = 100.0
@@ -346,11 +347,15 @@ struct LiveSettings: View {
                 if perCore { CoreBars(values: [70, 55, 40, 30, 20, 15, 60, 45, 35, 25], split: 6, barWidth: 4).frame(height: 14).fixedSize() }
             }
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)
+            Toggle(isOn: $netPing) {
+                Text("Response time next to NET")
+                Text("How quickly the internet answers, in milliseconds (ms). Lower is better.")
+            }
             Toggle(isOn: $netSpeed) {
                 Text("Internet speed next to NET")
                 Text("Your download speed from the last speed test (Network tab). Until you run one: your Wi-Fi link speed.")
             }
-            OptionPreview(label: "NET", side: netSpeed ? "17 ms · 412 Mbit" : "17 ms", value: "↓8 ↑2", unit: "KB/s")
+            OptionPreview(label: "NET", icon: "wifi", side: [netPing ? "17 ms" : nil, netSpeed ? "412 Mbit" : nil].compactMap { $0 }.joined(separator: " · "), value: "↓8 ↑2", unit: "KB/s")
             Toggle(isOn: $batteryTime) {
                 Text("Battery time left")
                 Text("Next to BAT on battery power: how long until empty. While charging: a battery with a bolt.")
