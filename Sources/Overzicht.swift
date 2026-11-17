@@ -198,15 +198,17 @@ struct MetricView: View {
                 }
                 // Groot venster (L/XL): altijd per kern, over de hele breedte. Kleiner: alleen met de instelling.
                 if !data.cores.isEmpty && (tier >= .l || perCore) {
-                    CoreBars(values: data.cores, split: Sampler.efficiencyCores, wide: tier >= .l).frame(height: tier >= .l ? 28 : 12)
+                    CoreBars(values: data.cores, split: Sampler.efficiencyCores, wide: tier >= .l).frame(height: tier >= .xl ? 36 : tier >= .l ? 28 : 12)
                 }
                 // L/XL: wat er meer te weten valt (feiten, top-apps, min/gem/max); zoveel regels als er passen
                 if tier >= .l && !data.facts.isEmpty {
-                    if side {
-                        HStack(alignment: .top, spacing: 16) { facts.frame(width: 230); graph }
-                    } else {
-                        VStack(alignment: .leading, spacing: 6) { facts; graph }
+                    // Feiten boven de grafiek, naast elkaar in kolommen (brede kaart: 2–3); de grafiek houdt de volle
+                    // breedte en vult de rest tot onderaan. L: 4 regels, XL: 9 (belangrijkste eerst).
+                    VStack(alignment: .leading, spacing: 10) {
+                        facts
+                        graph
                     }
+                    .frame(maxHeight: .infinity)
                 } else {
                     graph
                 }
@@ -221,24 +223,25 @@ struct MetricView: View {
     @ViewBuilder private var graph: some View {
         if graphs && !data.values.isEmpty {
             SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
-                .frame(minHeight: 16, maxHeight: tier >= .l ? 320 : .infinity)
+                .frame(minHeight: 16, maxHeight: .infinity)
         }
     }
 
-    /// Rustige lijst: label links, waarde rechts; regels die niet passen vallen weg (nooit een halve regel).
+    /// Rustige lijst: label links, waarde rechts, in kolommen naast elkaar als de kaart breed is.
     private var facts: some View {
-        FitRows(spacing: 4) {
-            ForEach(data.facts.indices, id: \.self) { i in
-                let f = data.facts[i]
+        let size: CGFloat = tier >= .xl ? 13.5 : 12.5
+        let shown = Array(data.facts.prefix(tier >= .xl ? 9 : 4))
+        return LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 28, alignment: .top)], alignment: .leading, spacing: tier >= .xl ? 8 : 6) {
+            ForEach(shown.indices, id: \.self) { i in
+                let f = shown[i]
                 HStack(spacing: 6) {
-                    if let icon = f.icon { Image(nsImage: icon).resizable().frame(width: 14, height: 14) }
-                    Text(f.label).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1)
-                    Spacer(minLength: 6)
-                    Text(f.value).font(theme.number(11)).foregroundStyle(theme.onRow()).lineLimit(1).fixedSize()
+                    if let icon = f.icon { Image(nsImage: icon).resizable().frame(width: size + 3, height: size + 3) }
+                    Text(f.label).font(theme.label(size)).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                    Spacer(minLength: 8)
+                    Text(f.value).font(theme.number(size)).foregroundStyle(theme.onRow()).lineLimit(1).fixedSize()
                 }
             }
         }
-        .clipped()
     }
 
     private var labelColor: Color { theme.id == "instrument" ? theme.accent : theme.onRow(true) }

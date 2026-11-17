@@ -124,13 +124,17 @@ extension Metric {
             out += top(\.memGB) { gb($0.memGB) }
             out.append(spread(h.map(\.ramUsedGB), unit: " GB", one))
         case .net:
-            out = [Fact(label: "Download", value: rate(s.down)), Fact(label: "Upload", value: rate(s.up)),
-                   host.isEmpty || s.pingPending ? nil : Fact(label: "Response time", value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "no answer")]
+            // Niet het grote getal herhalen: wat er in de periode doorheen ging, en de piek
+            out = [host.isEmpty || s.pingPending ? nil : Fact(label: "Response time", value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "no answer"),
+                   Fact(label: "Downloaded", value: bytes(h.reduce(0) { $0 + $1.down } * 2)),
+                   Fact(label: "Uploaded", value: bytes(h.reduce(0) { $0 + $1.up } * 2))]
             if let dn = h.map(\.down).max(), let up = h.map(\.up).max() { out.append(Fact(label: "Peak", value: "↓\(rate(dn)) ↑\(rate(up))")) }
         case .ssd:
             out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"), Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
         case .io:
-            out = [Fact(label: "Read", value: rate(s.diskRead)), Fact(label: "Write", value: rate(s.diskWrite))]
+            out = [Fact(label: "Read", value: bytes(h.reduce(0) { $0 + $1.diskRead } * 2)),
+                   Fact(label: "Written", value: bytes(h.reduce(0) { $0 + $1.diskWrite } * 2)),
+                   Fact(label: "Swap", value: gb(s.swapGB))]
             if let r = h.map(\.diskRead).max(), let w = h.map(\.diskWrite).max() { out.append(Fact(label: "Peak", value: "R \(rate(r)) W \(rate(w))")) }
         case .battery:
             guard s.battery != nil else { return [] }
