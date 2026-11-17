@@ -53,10 +53,11 @@ struct Theme: Identifiable, Equatable {
         rowStyle: .plain, design: .monospaced, weight: .regular, blocks: [], scheme: .dark)
     static let minimal = Theme(id: "minimal", name: "Minimal light",
         // Contrast op wit én op de kaartkleur minstens 4,5 : 1 (WCAG AA): grijs 6,7, oranje 5,1, rood 5,9, groen 6,0
-        bg: .white, text: Color(white: 0.07), secondary: Color(white: 0.36), accent: Color(white: 0.07),
+        // Eén rustige blauwe accentkleur (zwart gaf grijze blokken, en verdween in donker); dunne scheidingslijnen
+        bg: .white, text: Color(white: 0.07), secondary: Color(white: 0.36), accent: Color(red: 0.0, green: 0.42, blue: 0.85),
         warn: Color(red: 0.69, green: 0.33, blue: 0.0), danger: Color(red: 0.77, green: 0.12, blue: 0.12), good: Color(red: 0.05, green: 0.45, blue: 0.24),
-        line: Color(white: 0.86), card: Color(white: 0.97),
-        rowStyle: .plain, design: .default, weight: .light, blocks: [], scheme: .light)
+        line: Color(white: 0.9), card: Color(white: 0.97),
+        rowStyle: .lines, design: .default, weight: .regular, blocks: [], scheme: .light)
     static let glass = Theme(id: "glas", name: "Glass",
         bg: Color(red: 0.36, green: 0.29, blue: 0.84), text: .white, secondary: .white.opacity(0.78), accent: .white,
         warn: Color(red: 1.0, green: 0.85, blue: 0.4), danger: Color(red: 1.0, green: 0.55, blue: 0.55), good: .white,
@@ -151,7 +152,19 @@ extension Theme {
         t.font = font   // gekozen lettertype ook in de licht/donker-variant
         // Lichte accenten (zoals wit bij Glas) zijn onleesbaar op wit: dan de tekstkleur als accent
         if !dark && (id == "glas") { t.accent = Color(white: 0.08) }
+        // En andersom: een donker accent (eigen keuze) verdwijnt op donker: dan iets lichter
+        if dark, let c = NSColor(accent).usingColorSpace(.sRGB), Self.luminance(c) < 0.3 {
+            t.accent = Color(hue: c.hueComponent, saturation: c.saturationComponent * 0.6, brightness: 1)
+        }
         return t
+    }
+}
+
+extension Theme {
+    /// Hoe licht een kleur oogt (0 zwart … 1 wit), zoals WCAG het rekent.
+    static func luminance(_ c: NSColor) -> CGFloat {
+        func l(_ v: CGFloat) -> CGFloat { v <= 0.04045 ? v / 12.92 : pow((v + 0.055) / 1.055, 2.4) }
+        return 0.2126 * l(c.redComponent) + 0.7152 * l(c.greenComponent) + 0.0722 * l(c.blueComponent)
     }
 }
 
