@@ -419,6 +419,11 @@ struct PeakHover: NSViewRepresentable {
     func updateNSView(_ v: PeakHoverView, context: Context) {
         v.ctx = ctx; v.values = values; v.second = second; v.full = full; v.temp = temp
         v.color = color.resolve(in: context.environment).cgColor
+        v.theme = context.environment.theme
+        let env = context.environment
+        v.style = .init(font: { size, bold in v.theme.font.nsFont(size, bold: bold, design: v.theme.design) },
+                        text: v.theme.text.resolve(in: env).cgColor, sub: v.theme.secondary.resolve(in: env).cgColor,
+                        card: v.theme.card.resolve(in: env).cgColor, accent: v.theme.accent.resolve(in: env).cgColor)
         v.show()
     }
 }
@@ -428,6 +433,13 @@ final class PeakHoverView: NSView {
     var values: [Double] = [], second: [Double] = []
     var full = false, temp = false
     var color = CGColor(gray: 0.5, alpha: 1)
+    var theme = Theme.instrument
+    /// Label in de stijl van het thema: lettertype, tekst-, kaart- en accentkleur
+    struct Style {
+        var font: (CGFloat, Bool) -> NSFont = { s, b in .systemFont(ofSize: s, weight: b ? .semibold : .medium) }
+        var text = CGColor(gray: 1, alpha: 1), sub = CGColor(gray: 0.7, alpha: 1), card = CGColor(gray: 0.15, alpha: 1), accent = CGColor(gray: 0.8, alpha: 1)
+    }
+    var style = Style()
     private let line = CAShapeLayer(), label = CATextLayer()
     private var mouse: CGFloat?
     private var area: NSTrackingArea?
@@ -439,7 +451,7 @@ final class PeakHoverView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         line.lineWidth = 1; line.isHidden = true
-        label.cornerRadius = 4; label.alignmentMode = .center; label.isHidden = true
+        label.cornerRadius = 8; label.borderWidth = 1; label.alignmentMode = .center; label.isHidden = true
         layer?.addSublayer(line); layer?.addSublayer(label)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:)") }
@@ -480,7 +492,7 @@ final class PeakHoverView: NSView {
         Self.claimedAt = e.timestamp
         let pop = NSPopover()
         pop.behavior = .transient
-        pop.contentViewController = NSHostingController(rootView: PeakPopover(peak: p, snap: ctx.watch.snapshot(for: p)))
+        pop.contentViewController = NSHostingController(rootView: PeakPopover(peak: p, snap: ctx.watch.snapshot(for: p)).environment(\.theme, theme))
         pop.show(relativeTo: NSRect(x: x - 1, y: 0, width: 2, height: bounds.height), of: self, preferredEdge: .minY)
     }
 
@@ -502,23 +514,28 @@ final class PeakHoverView: NSView {
         defer { CATransaction.commit() }
         guard let x = mouse, let ctx, let i = index(x) else { line.isHidden = true; label.isHidden = true; return }
         let px = (CGFloat(i) / CGFloat(values.count - 1) * bounds.width).rounded() + 0.5
-        var text = "\(Peaks.clock.string(from: ctx.times[i])) · "
+        let time = Peaks.clock.string(from: ctx.times[i])
+        let value: String
         if i < second.count, ctx.metric == .net || ctx.metric == .io {
-            text += ctx.metric == .net ? "↓\(rate(values[i])) ↑\(rate(second[i]))" : "R \(rate(values[i])) W \(rate(second[i]))"
+            value = ctx.metric == .net ? "↓\(rate(values[i])) ↑\(rate(second[i]))" : "R \(rate(values[i])) W \(rate(second[i]))"
         } else {
-            text += ctx.metric.format(values[i], temp: temp)
+            value = ctx.metric.format(values[i], temp: temp)
         }
-        if full, let c = ctx.watch.cause(at: ctx.times[i], ctx.metric) { text += " · " + c }
+        let cause = full ? ctx.watch.cause(at: ctx.times[i], ctx.metric) : nil
         let over = full && peak(at: x) != nil
         if over != hand { hand = over; (over ? NSCursor.pointingHand : NSCursor.arrow).set() }
 
-        var fg = CGColor(gray: 0, alpha: 1), bg = fg
-        effectiveAppearance.performAsCurrentDrawingAppearance {
-            fg = NSColor.labelColor.cgColor; bg = NSColor.windowBackgroundColor.withAlphaComponent(0.88).cgColor
+        // Tijd rustig, waarde vet, boosdoener in de accentkleur; lettertype van het thema, groot genoeg om te lezen
+        let size: CGFloat = full ? 13 : 12
+        let s = NSMutableAttributedString()
+        func add(_ t: String, _ c: CGColor, bold: Bool) {
+            s.append(NSAttributedString(string: t, attributes: [.font: style.font(size, bold), .foregroundColor: NSColor(cgColor: c) ?? .labelColor]))
         }
-        let s = NSAttributedString(string: text, attributes: [.font: NSFont.monospacedDigitSystemFont(ofSize: 10, weight: .medium), .foregroundColor: NSColor(cgColor: fg) ?? .labelColor])
-        let size = s.size(), w = min(ceil(size.width) + 10, bounds.width), h = ceil(size.height) + 2
-        label.string = s; label.backgroundColor = bg
+        add(time + "  ", style.sub, bold: false)
+        add(value, style.text, bold: true)
+        if let cause { add("  " + cause, style.accent, bold: true) }
+        let ts = s.size(), w = min(ceil(ts.width) + 20, bounds.width), h = ceil(ts.height) + 8
+        label.string = s; label.backgroundColor = style.card.copy(alpha: 0.96); label.borderColor = style.accent.copy(alpha: 0.45)
         label.frame = CGRect(x: min(max(px - w / 2, 0), max(bounds.width - w, 0)), y: 1, width: w, height: h)
         label.isHidden = false
         line.isHidden = !full
@@ -534,19 +551,20 @@ final class PeakHoverView: NSView {
 struct PeakPopover: View {
     let peak: Peak
     let snap: Snapshot?
+    @Environment(\.theme) private var theme
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text("\(peak.kind.title) peak \(Peaks.clock.string(from: peak.at)) · \(peak.kind.format(peak.top)) · \(Peaks.length(peak.seconds))")
-                .font(.system(size: 13, weight: .semibold))
+                .font(theme.label(14).weight(.semibold))
             if let snap {
                 Text(snap.minute ? "Apps that minute (no snapshot at the moment itself)" : "Apps at that moment")
-                    .font(.system(size: 11)).foregroundStyle(.secondary)
+                    .font(theme.label(12)).foregroundStyle(.secondary)
                 Grid(alignment: .leading, horizontalSpacing: 18, verticalSpacing: 10) {
                     GridRow { column("CPU", .cpu, snap); column("Memory", .mem, snap) }
                     GridRow { column("Disk", .disk, snap); column("GPU", .gpu, snap) }
                 }
             } else {
-                Text("No app measurement near this moment").font(.system(size: 11)).foregroundStyle(.secondary)
+                Text("No app measurement near this moment").font(theme.label(12)).foregroundStyle(.secondary)
             }
         }
         .padding(14).frame(width: 380, alignment: .leading)
@@ -554,16 +572,16 @@ struct PeakPopover: View {
 
     private func column(_ title: String, _ d: Culprit.Dim, _ s: Snapshot) -> some View {
         VStack(alignment: .leading, spacing: 3) {
-            Text(title.uppercased()).font(.system(size: 10, weight: .semibold)).foregroundStyle(.secondary)
+            Text(title.uppercased()).font(theme.label(11).weight(.semibold)).foregroundStyle(.secondary)
             let top = s.top(d, 3)
-            if top.isEmpty { Text("–").font(.system(size: 11)).foregroundStyle(.secondary) }
+            if top.isEmpty { Text("–").font(theme.label(12)).foregroundStyle(.secondary) }
             ForEach(top.indices, id: \.self) { i in
                 HStack(spacing: 6) {
                     Text(top[i].name).lineLimit(1).truncationMode(.middle)
                     Spacer(minLength: 4)
-                    Text(Culprit.format(top[i].value(d), d)).monospacedDigit().foregroundStyle(.secondary)
+                    Text(Culprit.format(top[i].value(d), d)).font(theme.number(12)).foregroundStyle(theme.accent)
                 }
-                .font(.system(size: 11))
+                .font(theme.label(12))
             }
         }
         .frame(width: 165, alignment: .leading)
@@ -619,4 +637,30 @@ struct PeakTimeline: View {
 
 extension Peaks {
     static let day: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE"; return f }()
+}
+
+extension AppFont {
+    /// Zelfde lettertype als in SwiftUI, maar als NSFont (voor het piek-label dat in een laag getekend wordt).
+    func nsFont(_ size: CGFloat, bold: Bool, design: Font.Design) -> NSFont {
+        let w: NSFont.Weight = bold ? .semibold : .medium
+        func sys(_ d: NSFontDescriptor.SystemDesign) -> NSFont {
+            let base = NSFont.systemFont(ofSize: size, weight: w)
+            return base.fontDescriptor.withDesign(d).flatMap { NSFont(descriptor: $0, size: size) } ?? base
+        }
+        switch self {
+        case .montserrat: return NSFont(name: bold ? "Montserrat-SemiBold" : "Montserrat-Medium", size: size) ?? NSFont(name: "Montserrat", size: size) ?? sys(.default)
+        case .ubuntu: return NSFont(name: bold ? "Ubuntu-Bold" : "Ubuntu-Medium", size: size) ?? sys(.default)
+        case .mono: return .monospacedSystemFont(ofSize: size, weight: w)
+        case .serif: return sys(.serif)
+        case .rounded: return sys(.rounded)
+        case .sfPro: return sys(.default)
+        case .style:
+            switch design {
+            case .rounded: return sys(.rounded)
+            case .monospaced: return .monospacedSystemFont(ofSize: size, weight: w)
+            case .serif: return sys(.serif)
+            default: return sys(.default)
+            }
+        }
+    }
 }
