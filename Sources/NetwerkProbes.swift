@@ -139,6 +139,8 @@ enum NetProbe {
     }
     /// Poorten om reactietijd te meten als ICMP niet terugkomt (iPhone-sync, web, AirPlay).
     static let latencyPorts: [UInt16] = [62078, 80, 443, 7000]
+    /// Poorten om apparaten buiten het eigen subnet te vinden die ping negeren (geen ARP daar). Bewust kort: 2 per adres.
+    static let discoveryPorts: [UInt16] = [80, 443]
 
     // MARK: UDP: één socket, pakketjes versturen, antwoorden verzamelen
 
