@@ -17,6 +17,11 @@ enum Prefs {
             "metrics": Metric.defaultOrder, "metricsHidden": "",
             "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "netSpeed": false, "netPing": false, "lastSeenBuild": 0, "dockedInternals": false,
             "warnCPU": 85.0, "warnTemp": 95.0, "warnPing": 100.0,
+            // Pagina's (Instellingen › Processes, Checkup, Network, Docked); "…Hide" = komma-lijst van wat uit staat
+            "procFilter": "all", "procSort": "cpu", "procHide": "", "procSmall": "idle",
+            "checkupStart": "last", "checkupHide": "", "restartDays": 14,
+            "netAutoScan": true, "notifyNewDevice": false, "netHide": "", "speedMB": false,
+            "dockedEmpty": true, "dockedBytes": false,
             // Menubalk
             "menubarMetrics": "cpu", "menubarMetricsHidden": "", "menubarStyle": "text", "menubarSplit": false,
             "menuStyle": "menu", "menuParts": "status,values,top,links",

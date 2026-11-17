@@ -20,6 +20,7 @@ struct PortsView: View {
 struct PortsContent: View {
     let snap: PortsSnapshot, loaded: Bool
     @AppStorage("dockedInternals") private var internals = false   // keuze onthouden
+    @AppStorage("dockedEmpty") private var showEmpty = true         // lege poorten als één regel onderaan
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -38,7 +39,7 @@ struct PortsContent: View {
             if loaded && snap.ports.isEmpty {
                 Text("No USB-C or MagSafe ports found on this Mac.").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
             }
-            DockedList(groups: PortTree.build(sums, internals: internals), empty: sums.filter { !$0.port.connected }, sums: sums)
+            DockedList(groups: PortTree.build(sums, internals: internals), empty: showEmpty ? sums.filter { !$0.port.connected } : [], sums: sums)
             otherDevices
         }
     }
@@ -479,8 +480,11 @@ func deviceIcon(_ d: USBDev) -> String {
     return "cable.connector.horizontal"
 }
 
-/// "10 Gbit/s" als getal + eenheid.
-func speedParts(_ bps: Double) -> (String, String) { bps >= 1e9 ? (trim(bps / 1e9), "Gbit/s") : (trim(bps / 1e6), "Mbit/s") }
+/// "10 Gbit/s" als getal + eenheid; of in bytes ("1.3 GB/s") met Instellingen › Docked › Link speed.
+func speedParts(_ bps: Double) -> (String, String) {
+    if UserDefaults.standard.bool(forKey: "dockedBytes") { let b = bps / 8; return b >= 1e9 ? (trim(b / 1e9), "GB/s") : (trim(b / 1e6), "MB/s") }
+    return bps >= 1e9 ? (trim(bps / 1e9), "Gbit/s") : (trim(bps / 1e6), "Mbit/s")
+}
 
 extension Theme {
     func level(_ l: PortNote.Level?) -> Color {
@@ -782,7 +786,7 @@ private struct USBRow: View {
                     HStack(spacing: 6) {
                         Text(dev.name).font(theme.label(12)).lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: 4)
-                        if let b = dev.bps { Text(Ports.speedText(b)).font(theme.number(11)) }
+                        if let b = dev.bps { Text(speedParts(b).0 + " " + speedParts(b).1).font(theme.number(11)) }
                     }
                     Text(detail).font(theme.label(10)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                 }

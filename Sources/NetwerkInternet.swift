@@ -411,8 +411,8 @@ struct InternetPanel: View {
         }
         if let e = stats.speedError { Text(e).foregroundStyle(theme.rowStyle == .blocks ? .white : theme.warn).fixedSize(horizontal: false, vertical: true) }
         if let last = stats.history.first {
-            kv("Download", "\(Int(last.down.rounded())) Mbit/s")
-            kv("Upload", "\(Int(last.up.rounded())) Mbit/s")
+            kv("Download", mbitText(last.down))
+            kv("Upload", mbitText(last.up))
             kv("Delay", last.ping.map { "\(msText($0)) ms" } ?? "–")
             kv("Tested", last.date.formatted(date: .abbreviated, time: .shortened))
             if stats.history.count > 1 { historyBars }
@@ -436,7 +436,7 @@ struct InternetPanel: View {
             ForEach(Array(list.enumerated()), id: \.offset) { _, r in
                 Capsule().fill(color.opacity(r == stats.history.first ? 1 : 0.45))
                     .frame(width: 7, height: max(3, 24 * r.down / top))
-                    .help("\(r.date.formatted(date: .abbreviated, time: .shortened)): ↓\(Int(r.down.rounded())) ↑\(Int(r.up.rounded())) Mbit/s")
+                    .help("\(r.date.formatted(date: .abbreviated, time: .shortened)): ↓\(mbitText(r.down)) ↑\(mbitText(r.up))")
             }
             Text("last \(list.count)").font(theme.label(9)).padding(.leading, 4)
         }
@@ -470,4 +470,9 @@ struct InternetPanel: View {
     private func line(_ icon: String, _ text: String) -> some View {
         Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon).frame(width: 14) }
     }
+}
+
+/// Snelheidstest-uitslag in de gekozen eenheid (Instellingen › Network): "412 Mbit/s" of "51.5 MB/s".
+func mbitText(_ mbit: Double) -> String {
+    UserDefaults.standard.bool(forKey: "speedMB") ? "\(one(mbit / 8)) MB/s" : "\(Int(mbit.rounded())) Mbit/s"
 }

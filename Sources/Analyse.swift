@@ -676,7 +676,7 @@ enum Analysis {
         var r3 = r2; r3.boot = Date().addingTimeInterval(-20 * 86_400)
         let leaky = AppUsage(id: "/x/Leaky.app", name: "Leaky", explanation: "", kind: .app, pids: [1], cpu: 1, memGB: 5, energyW: 0, icon: nil)
         let lk = diagnose(calm, cpu: 5, apps: [leaky], report: r3, now: d2.leaks[0].end)
-        precondition(lk.text.hasPrefix("Leaky grew from 1.0 to 5.0 GB in 4 h") && lk.app?.name == "Leaky" && lk.text.contains("restarted for 20 days"), lk.text)
+        precondition(lk.text.hasPrefix("Leaky grew from 1.0 to 5.0 GB in 4 h") && lk.app?.name == "Leaky" && lk.text.contains("restarted for 20 days") == (20 >= Diag.restartDays), lk.text)
 
         // Deelrapport: geen thuismap of gebruikersnaam
         r3.crashes = Diag.Crashes(crashes: ["OneDrive": 3])
@@ -727,6 +727,8 @@ private struct AnalysisPage: View, Equatable {
     @ObservedObject private var apps: AppMonitor
     @Environment(\.theme) private var theme
     @AppStorage("analysisPeriod") private var period: Period = .today
+    @AppStorage("checkupStart") private var start = "last"   // "last" of een Period-id (Instellingen › Checkup)
+    @AppStorage("checkupHide") private var hideRaw = ""      // onderdelen die uit staan
     @State private var report: Report?
     /// Laatste rapport per tijdvak: bij terugkomen op het tabblad staat het er meteen, daarna wordt het ververst.
     @MainActor private static var cache: [Period: Report] = [:]
@@ -743,7 +745,8 @@ private struct AnalysisPage: View, Equatable {
     init(meter: Meter) {
         self.meter = meter
         _apps = ObservedObject(wrappedValue: meter.minuteApps)
-        let p = Period(rawValue: UserDefaults.standard.string(forKey: "analysisPeriod") ?? "") ?? .today
+        let d = UserDefaults.standard
+        let p = Period(rawValue: d.string(forKey: "checkupStart") ?? "") ?? Period(rawValue: d.string(forKey: "analysisPeriod") ?? "") ?? .today
         _report = State(initialValue: MainActor.assumeIsolated { Self.cache[p] })
     }
 
@@ -774,6 +777,7 @@ private struct AnalysisPage: View, Equatable {
         .scrollIndicators(.never)
         .clipped()   // niet onder de doorzichtige werkbalk doorschuiven (dan verdwijnen de tab-iconen)
         .onGeometryChange(for: Int.self) { $0.size.width >= 1080 ? 3 : $0.size.width >= 700 ? 2 : 1 } action: { columns = $0 }
+        .onAppear { if let p = Period(rawValue: start) { period = p } }   // vaste beginstand; "last" = laatst gekozen
         .task(id: "\(period.rawValue)#\(reload)") {
             loading = true
             let p = period, dir = meter.logDir
@@ -795,7 +799,8 @@ private struct AnalysisPage: View, Equatable {
 
     @ViewBuilder private func sections(_ tips: [Tip], _ parts: [ReportSections.Part]) -> some View {
         if let report {
-            ReportSections(report: report, tips: tips, previousName: period.previousName, parts: parts, logDir: meter.logDir, act: act)
+            let off = Set(hideRaw.split(separator: ",").map(String.init))
+            ReportSections(report: report, tips: tips, previousName: period.previousName, parts: parts.filter { !off.contains($0.rawValue) }, logDir: meter.logDir, act: act)
         } else {
             HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }.padding(20)
         }
@@ -933,7 +938,7 @@ private struct AnalysisPage: View, Equatable {
 // MARK: - Score, toplijsten, looptijd, drukte, tips, logboek (ook gebruikt voor de PDF)
 
 fileprivate struct ReportSections: View {
-    enum Part: CaseIterable { case score, tops, runtime, battery, busy, crashes, tips, log }
+    enum Part: String, CaseIterable { case score, tops, runtime, battery, busy, crashes, tips, log }
     @Environment(\.theme) private var theme
     let report: Report, tips: [Tip], previousName: String, parts: [Part]
     let logDir: URL?                                   // nil = geen "Open logmap"-knop (PDF)

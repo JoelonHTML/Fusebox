@@ -13,6 +13,8 @@ struct NetworkView: View {
     @StateObject private var scanner = NetScanner()
     @Environment(\.theme) private var theme
     @AppStorage("notifyNewDevice") private var notifyNew = false
+    @AppStorage("netAutoScan") private var autoScan = true
+    @AppStorage("netHide") private var hide = ""   // kolommen die uit staan: mac, vendor, kind
     @State private var sort = NetColumn.ip
     @State private var ascending = true
     @State private var width = NetWidth.kind
@@ -49,7 +51,7 @@ struct NetworkView: View {
                         }
                     }
                     if rows.isEmpty {
-                        Text(scanner.info == nil ? "Not connected to a network" : !search.trimmingCharacters(in: .whitespaces).isEmpty ? "Nothing matches “\(search)”"
+                        Text(scanner.info == nil ? (autoScan ? "Not connected to a network" : "Press Scan to look for devices") : !search.trimmingCharacters(in: .whitespaces).isEmpty ? "Nothing matches “\(search)”"
                              : scanner.scanStart != nil ? "Looking for devices…"
                              : filter != .all ? "No \(filter.title.lowercased()) devices" : rangeText.map { "Nothing answered in \($0)" } ?? "No devices found")
                             .font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
@@ -60,7 +62,7 @@ struct NetworkView: View {
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
         .onGeometryChange(for: NetWidth.self) { NetWidth($0.size.width) } action: { width = $0 }
-        .onAppear { scanner.scan() }
+        .onAppear { if autoScan { scanner.scan() } }
         .onDisappear { scanner.stop() }
         .alert("Rename device", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
@@ -221,9 +223,9 @@ struct NetworkView: View {
         HStack(spacing: 8) {
             head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("IP", .ip).frame(width: Self.ipW, alignment: .leading)
-            if width >= .mac { head("MAC", .mac).frame(width: Self.macW, alignment: .leading).help("Hardware address") }
-            if width >= .vendor { head("Vendor", .vendor).frame(width: Self.vendorW, alignment: .leading) }
-            if width >= .kind { head("Type", .kind).frame(width: Self.kindW, alignment: .leading) }
+            if width >= .mac && !hide.contains("mac") { head("MAC", .mac).frame(width: Self.macW, alignment: .leading).help("Hardware address") }
+            if width >= .vendor && !hide.contains("vendor") { head("Vendor", .vendor).frame(width: Self.vendorW, alignment: .leading) }
+            if width >= .kind && !hide.contains("kind") { head("Type", .kind).frame(width: Self.kindW, alignment: .leading) }
             head("ms", .ms).frame(width: Self.msW, alignment: .trailing).help("Reply time in milliseconds")
         }
     }
@@ -327,6 +329,7 @@ private struct NetRow: View {
     let scanner: NetScanner
     let onTap: () -> Void, onRename: () -> Void
     @Environment(\.theme) private var theme
+    @AppStorage("netHide") private var hide = ""
     @State private var feedback: String?
 
     var body: some View {
@@ -360,16 +363,16 @@ private struct NetRow: View {
             .lineLimit(1).truncationMode(.tail)
             .frame(maxWidth: .infinity, alignment: .leading)
             Text(device.ip == 0 ? "–" : ipString(device.ip)).frame(width: NetworkView.ipW, alignment: .leading)
-            if width >= .mac {
+            if width >= .mac && !hide.contains("mac") {
                 Text(device.mac.map(macString) ?? "–").font(.system(size: 11 * theme.scale, design: .monospaced))
                     .lineLimit(1).frame(width: NetworkView.macW, alignment: .leading)
                     .help(device.remote && device.mac == nil ? NetDevice.remoteHelp : "")
             }
-            if width >= .vendor {
+            if width >= .vendor && !hide.contains("vendor") {
                 Text(device.vendor).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.vendorW, alignment: .leading)
                     .help(device.remote && device.mac == nil ? NetDevice.remoteHelp : "")
             }
-            if width >= .kind { Text(device.kind.title).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.kindW, alignment: .leading) }
+            if width >= .kind && !hide.contains("kind") { Text(device.kind.title).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.kindW, alignment: .leading) }
             Text(device.online ? msText(device.ms) : "off")
                 .foregroundStyle((device.loss ?? 0) > 0 && theme.rowStyle != .blocks ? theme.warn : theme.onRow())
                 .frame(width: NetworkView.msW, alignment: .trailing)

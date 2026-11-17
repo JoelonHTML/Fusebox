@@ -7,8 +7,12 @@ struct ProgramsView: View {
     var body: some View { ProgramsList(monitor: meter.ui, sample: meter.latest) }
 }
 
-private enum Filter: String, CaseIterable { case all = "All", apps = "Apps", background = "Background", macos = "macOS" }
-private enum Column { case name, cpu, ram, disk, net, energy, gpu, threads, running }
+private enum Filter: String, CaseIterable {
+    case all = "All", apps = "Apps", background = "Background", macos = "macOS"
+    var id: String { rawValue.lowercased() }   // opgeslagen in "procFilter"
+}
+/// rawValue = id in "procSort" en "procHide" (Instellingen › Processes).
+private enum Column: String { case name, cpu, ram, disk, net, energy, gpu, threads, running }
 /// Breedte-banden: < 460 Naam/CPU/RAM, + Disk, + Energie en GPU (en Network als die instelling aan staat), + Threads/Proc. (bredere CPU-balk), + Running, ≥ 1100 lijst + detailpaneel.
 private enum Width: Int, Comparable {
     case narrow, disk, energy, procs, running, split
@@ -21,10 +25,11 @@ private struct ProgramsList: View {
     @ObservedObject var monitor: AppMonitor
     let sample: Sample
     @Environment(\.theme) private var theme
-    @State private var filter = Filter.all
+    // Beginstand uit Instellingen › Processes (bij elk openen van het tabblad, daarna vrij te wijzigen)
+    @State private var filter = Filter.allCases.first { $0.id == UserDefaults.standard.string(forKey: "procFilter") } ?? .all
     @State private var search = ""
-    @State private var sort = Column.cpu
-    @State private var ascending = false
+    @State private var sort = Column(rawValue: UserDefaults.standard.string(forKey: "procSort") ?? "") ?? .cpu
+    @State private var ascending = UserDefaults.standard.string(forKey: "procSort") == "name"
     @State private var showAll = false
     @State private var width = Width.energy
     @State private var confirm: AppUsage?
@@ -34,6 +39,8 @@ private struct ProgramsList: View {
     @State private var installed: [Installed.Item] = []   // pas ingelezen bij de eerste zoekopdracht
     @FocusState private var searchFocused: Bool
     @AppStorage("netPerApp") private var netPerApp = false
+    @AppStorage("procHide") private var hideRaw = ""      // kolommen die uit staan
+    @AppStorage("procSmall") private var small = "idle"  // "all" | "idle" | "light"
 
     static let ramW: CGFloat = 62, energyW: CGFloat = 50, gpuW: CGFloat = 44, procW: CGFloat = 40, stopW: CGFloat = 18
     static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62, netW: CGFloat = 74
@@ -57,6 +64,7 @@ private struct ProgramsList: View {
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
         let split = width == .split
         let selected = split ? (rows.first(where: { $0.id == open }) ?? rows.first) : nil
+        let cols = self.cols   // één keer per tekenbeurt, niet per regel
         HStack(alignment: .top, spacing: 12) {
             VStack(spacing: 8) {
                 Text("CPU \(pct(sample.cpu)) · RAM \(one(sample.ramUsedGB)) GB · \(monitor.apps.count) items")
@@ -71,7 +79,7 @@ private struct ProgramsList: View {
                     LazyVStack(spacing: tight ? 0 : 6) {
                         if !q.isEmpty && !rows.isEmpty { sectionTitle("Running") }
                         ForEach(Array(rows.enumerated()), id: \.element.id) { i, app in
-                            ProgramRow(app: app, width: width, net: showNet, index: i, isOpen: !split && open == app.id, isSelected: selected?.id == app.id,
+                            ProgramRow(app: app, width: width, cols: cols, index: i, isOpen: !split && open == app.id, isSelected: selected?.id == app.id,
                                        onTap: {
                                            if split { open = app.id } else { withAnimation(.snappy(duration: 0.25)) { open = open == app.id ? nil : app.id } }
                                        },
@@ -126,9 +134,10 @@ private struct ProgramsList: View {
         }
         if !q.isEmpty { list = list.filter { $0.name.localizedCaseInsensitiveContains(q) || $0.explanation.localizedCaseInsensitiveContains(q) } }
         var hidden = 0
-        if !showAll && q.isEmpty { // bij zoeken altijd alles tonen
+        if !showAll && q.isEmpty && small != "all" { // bij zoeken altijd alles tonen
             let before = list.count
-            list = list.filter { $0.cpu >= 0.05 || $0.memGB >= 20.0 / 1024 }
+            let (cpu, mb) = small == "light" ? (1.0, 200.0) : (0.05, 20.0)
+            list = list.filter { $0.cpu >= cpu || $0.memGB >= mb / 1024 }
             hidden = before - list.count
         }
         if !(sort == .cpu && !ascending) { // monitor levert al CPU aflopend
@@ -199,6 +208,15 @@ private struct ProgramsList: View {
 
     private var showNet: Bool { netPerApp && width >= .energy }
 
+    /// Zichtbare kolommen: breed genoeg én niet uitgezet in Instellingen › Processes.
+    private var cols: Set<Column> {
+        let off = Set(hideRaw.split(separator: ",").map(String.init))
+        let bands: [(Column, Width)] = [(.disk, .disk), (.energy, .energy), (.gpu, .energy), (.threads, .procs), (.running, .running)]
+        var c = Set(bands.filter { width >= $0.1 && !off.contains($0.0.rawValue) }.map(\.0))
+        if showNet { c.insert(.net) }
+        return c
+    }
+
     private func sectionTitle(_ t: String) -> some View {
         Text(t).font(theme.label(11).weight(.semibold)).foregroundStyle(theme.secondary)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
@@ -209,13 +227,13 @@ private struct ProgramsList: View {
             head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("CPU", .cpu).frame(width: width.cpuW, alignment: .trailing)
             head("RAM", .ram).frame(width: Self.ramW, alignment: .trailing)
-            if width >= .disk { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
+            if cols.contains(.disk) { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
             if showNet { head("Network", .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
-            if width >= .energy { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
-            if width >= .energy { head("GPU", .gpu).frame(width: Self.gpuW, alignment: .trailing).help("Share of the graphics chip's time, like Activity Monitor's % GPU") }
-            if width >= .procs { head("Threads", .threads).frame(width: Self.threadsW, alignment: .trailing) }
-            if width >= .procs { Text("Proc.").font(theme.label(10)).foregroundStyle(theme.secondary).frame(width: Self.procW, alignment: .trailing) }
-            if width >= .running { head("Running", .running).frame(width: Self.runW, alignment: .trailing) }
+            if cols.contains(.energy) { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
+            if cols.contains(.gpu) { head("GPU", .gpu).frame(width: Self.gpuW, alignment: .trailing).help("Share of the graphics chip's time, like Activity Monitor's % GPU") }
+            if cols.contains(.threads) { head("Threads", .threads).frame(width: Self.threadsW, alignment: .trailing) }
+            if cols.contains(.threads) { Text("Proc.").font(theme.label(10)).foregroundStyle(theme.secondary).frame(width: Self.procW, alignment: .trailing) }
+            if cols.contains(.running) { head("Running", .running).frame(width: Self.runW, alignment: .trailing) }
             Color.clear.frame(width: Self.stopW, height: 1)
         }
     }
@@ -237,7 +255,7 @@ private struct ProgramsList: View {
 }
 
 private struct ProgramRow: View {
-    let app: AppUsage, width: Width, net: Bool, index: Int, isOpen: Bool, isSelected: Bool, onTap: () -> Void, onStop: () -> Void, onDetails: () -> Void
+    let app: AppUsage, width: Width, cols: Set<Column>, index: Int, isOpen: Bool, isSelected: Bool, onTap: () -> Void, onStop: () -> Void, onDetails: () -> Void
     @Environment(\.theme) private var theme
     @State private var hover = false
 
@@ -276,21 +294,21 @@ private struct ProgramRow: View {
             }
             .frame(width: width.cpuW)
             Text(mem(app.memGB)).frame(width: ProgramsList.ramW, alignment: .trailing)
-            if width >= .disk {
+            if cols.contains(.disk) {
                 let io = app.diskRead + app.diskWrite
                 Text(io >= 1000 ? rate(io) : "–").lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.diskW, alignment: .trailing)
             }
-            if net {
+            if cols.contains(.net) {
                 VStack(alignment: .trailing, spacing: 0) {
                     if app.netIn + app.netOut >= 1000 { Text("↓ \(rate(app.netIn))"); Text("↑ \(rate(app.netOut))") } else { Text("–") }
                 }
                 .font(theme.number(10)).lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.netW, alignment: .trailing)
             }
-            if width >= .energy { Text(app.energyW >= 0.05 ? "\(one(app.energyW)) W" : "–").frame(width: ProgramsList.energyW, alignment: .trailing) }
-            if width >= .energy { Text(app.gpu >= 0.5 ? pct(min(app.gpu, 100)) : "–").frame(width: ProgramsList.gpuW, alignment: .trailing) }
-            if width >= .procs { Text(app.threads > 0 ? "\(app.threads)" : "–").frame(width: ProgramsList.threadsW, alignment: .trailing) }
-            if width >= .procs { Text(app.pids.isEmpty ? "–" : "\(app.pids.count)").frame(width: ProgramsList.procW, alignment: .trailing) }
-            if width >= .running {
+            if cols.contains(.energy) { Text(app.energyW >= 0.05 ? "\(one(app.energyW)) W" : "–").frame(width: ProgramsList.energyW, alignment: .trailing) }
+            if cols.contains(.gpu) { Text(app.gpu >= 0.5 ? pct(min(app.gpu, 100)) : "–").frame(width: ProgramsList.gpuW, alignment: .trailing) }
+            if cols.contains(.threads) { Text(app.threads > 0 ? "\(app.threads)" : "–").frame(width: ProgramsList.threadsW, alignment: .trailing) }
+            if cols.contains(.threads) { Text(app.pids.isEmpty ? "–" : "\(app.pids.count)").frame(width: ProgramsList.procW, alignment: .trailing) }
+            if cols.contains(.running) {
                 Text(app.started.map { duration(max(Int(Date().timeIntervalSince($0) / 60), 1)) } ?? "–")
                     .lineLimit(1).frame(width: ProgramsList.runW, alignment: .trailing)
             }

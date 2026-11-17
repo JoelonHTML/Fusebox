@@ -28,7 +28,8 @@ enum Diag {
         guard sysctlbyname("kern.boottime", &tv, &size, nil, 0) == 0, tv.tv_sec > 0 else { return nil }
         return Date(timeIntervalSince1970: Double(tv.tv_sec))
     }
-    static let restartDays = 14
+    /// Herstart-tip vanaf zoveel dagen aan (Instellingen › Checkup); 0 = nooit.
+    static var restartDays: Int { let d = UserDefaults.standard.integer(forKey: "restartDays"); return d > 0 ? d : .max }
 
     static func sysctlString(_ name: String) -> String? {
         var size = 0

@@ -6,7 +6,7 @@ import ServiceManagement
 // De tab-views zijn niet privé: het stappenplan (Stappenplan.swift) gebruikt ze ook.
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case profile, look, live, menubar, alerts, fans, data, about
+    case profile, look, live, processes, checkup, network, docked, menubar, alerts, fans, data, about
     /// "Fans" alleen op Macs met ventilatoren.
     static var shown: [SettingsTab] { allCases.filter { $0 != .fans || Fans.count > 0 } }
     var id: String { rawValue }
@@ -15,6 +15,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .profile: "Profile"
         case .look: "Appearance"
         case .live: "Live page"
+        case .processes: Page.programs.title
+        case .checkup: Page.analysis.title
+        case .network: Page.network.title
+        case .docked: Page.ports.title
         case .menubar: "Menu bar"
         case .alerts: "Notifications"
         case .fans: "Fans"
@@ -27,6 +31,10 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .profile: "person.crop.circle"
         case .look: "paintbrush"
         case .live: "gauge.with.needle"
+        case .processes: Page.programs.icon   // zelfde icoon als het tabblad in het venster
+        case .checkup: Page.analysis.icon
+        case .network: Page.network.icon
+        case .docked: Page.ports.icon
         case .menubar: "menubar.rectangle"
         case .alerts: "bell"
         case .fans: "fan"
@@ -61,6 +69,10 @@ struct SettingsView: View {
         case .profile: ProfileSettings()
         case .look: LookSettings()
         case .live: LiveSettings()
+        case .processes: ProcessesSettings()
+        case .checkup: CheckupSettings()
+        case .network: NetworkSettings()
+        case .docked: DockedSettings()
         case .menubar: MenubarSettings()
         case .alerts: AlertSettings()
         case .fans: FanSettings()
@@ -553,7 +565,6 @@ struct NotificationExample: View {
 struct DataSettings: View {
     @EnvironmentObject var meter: Meter
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
-    @AppStorage("netPerApp") private var netPerApp = false
     @State private var confirmWipe = false
 
     var body: some View {
@@ -583,10 +594,6 @@ struct DataSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("Off: Fusebox makes no internet connections at all.").font(.caption).foregroundStyle(.secondary)
-            }
-            Toggle(isOn: $netPerApp) {
-                Text("Internet usage per app")
-                Text("Download and upload per app on the Processes page, read on this Mac only while that page is open.")
             }
         }
     }
