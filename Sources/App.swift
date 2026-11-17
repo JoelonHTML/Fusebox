@@ -121,6 +121,7 @@ struct MeterkastApp: App {
         SettingsPlacement.selfTest()
         LiveLayout.selfTest()
         Analysis.selfTest()
+        DiskScan.selfTest()
         Diag.selfTest()
         FanController.selfTest()
         NetScanner.selfTest()

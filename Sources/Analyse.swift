@@ -762,17 +762,18 @@ private struct AnalysisPage: View, Equatable {
                 if columns == 3 {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops]) }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.runtime, .battery, .busy, .peaks, .crashes]) }
+                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.runtime, .battery, .busy, .peaks, .crashes]); extras }
                         VStack(alignment: .leading, spacing: 10) { sections(tips, [.tips, .log]) }
                     }
                 } else if columns == 2 {
                     HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops, .runtime, .battery]) }
+                        VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops, .runtime, .battery]); extras }
                         VStack(alignment: .leading, spacing: 10) { sections(tips, [.busy, .peaks, .crashes, .tips, .log]) }
                     }
                 } else {
                     why
                     sections(tips, ReportSections.Part.allCases)
+                    extras
                 }
                 if let report { exportBar(report, tips) }
             }
@@ -808,6 +809,13 @@ private struct AnalysisPage: View, Equatable {
         } else {
             HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }.padding(20)
         }
+    }
+
+    /// Opstartitems en schijfruimte (Opstart.swift): niet in het rapport/PDF, alleen hier op de pagina.
+    @ViewBuilder private var extras: some View {
+        let off = Set(hideRaw.split(separator: ",").map(String.init))
+        if !off.contains("startup") { StartupSection(index: 9) }
+        if !off.contains("disk") { DiskSection(index: 10) }
     }
 
     private var picker: some View {
@@ -1155,7 +1163,7 @@ fileprivate struct ReportSections: View {
 }
 
 /// Klein knopje in de kleur van het thema (geen standaard-macOS-knop).
-fileprivate struct Pill: ButtonStyle {
+struct Pill: ButtonStyle {
     let color: Color
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
