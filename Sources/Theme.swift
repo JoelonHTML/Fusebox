@@ -52,9 +52,10 @@ struct Theme: Identifiable, Equatable {
         line: Color(red: 0.11, green: 0.16, blue: 0.13), card: Color(red: 0.07, green: 0.10, blue: 0.08),
         rowStyle: .plain, design: .monospaced, weight: .regular, blocks: [], scheme: .dark)
     static let minimal = Theme(id: "minimal", name: "Minimal light",
-        bg: .white, text: Color(white: 0.07), secondary: Color(white: 0.54), accent: Color(white: 0.07),
-        warn: Color(red: 0.90, green: 0.50, blue: 0.10), danger: Color(red: 0.85, green: 0.20, blue: 0.20), good: Color(red: 0.15, green: 0.6, blue: 0.35),
-        line: Color(white: 0.92), card: Color(white: 0.97),
+        // Contrast op wit én op de kaartkleur minstens 4,5 : 1 (WCAG AA): grijs 6,7, oranje 5,1, rood 5,9, groen 6,0
+        bg: .white, text: Color(white: 0.07), secondary: Color(white: 0.36), accent: Color(white: 0.07),
+        warn: Color(red: 0.69, green: 0.33, blue: 0.0), danger: Color(red: 0.77, green: 0.12, blue: 0.12), good: Color(red: 0.05, green: 0.45, blue: 0.24),
+        line: Color(white: 0.86), card: Color(white: 0.97),
         rowStyle: .plain, design: .default, weight: .light, blocks: [], scheme: .light)
     static let glass = Theme(id: "glas", name: "Glass",
         bg: Color(red: 0.36, green: 0.29, blue: 0.84), text: .white, secondary: .white.opacity(0.78), accent: .white,

@@ -287,7 +287,7 @@ final class PeakWatch {
         let warnTemp = UserDefaults.standard.double(forKey: "warnTemp")
         for k in PeakKind.allCases {
             guard let v = k.value(s) else { continue }
-            let r = trackers[k]!.feed(s.time, v, level: k == .io ? ioLevel : Peaks.level(k, warnTemp: warnTemp))
+            let r = trackers[k]!.feed(s.time, v, level: k == .io ? ioLevel : Peaks.level(k, warnTemp: warnTemp), step: LowImpact.interval)   // 2 s, of 5 s in low impact
             if r.started, s.time.timeIntervalSince(lastSnap[k] ?? .distantPast) >= 30 {
                 lastSnap[k] = s.time
                 snap(s)
