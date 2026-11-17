@@ -1,4 +1,5 @@
 import AppKit
+import CryptoKit
 
 // MARK: - Automatisch bijwerken via GitHub Releases
 //
@@ -136,13 +137,30 @@ import AppKit
         tag.drop(while: { $0 == "v" }).split(separator: "-").dropLast().joined(separator: " ")
     }
 
-    /// Downloaden, controleren, vervangen en opnieuw starten.
+    /// Publieke helft van de release-sleutel. De geheime helft staat alleen in de sleutelhanger van de maker
+    /// (release.sh ondertekent Fusebox.zip daarmee). Zonder geldige handtekening wordt een update geweigerd,
+    /// ook als iemand een release op GitHub zou zetten.
+    nonisolated static let releaseKey = "uYp37BJBFTd9+oS28OpFCW60sRliYE4uHvyGBnCrnXU="
+
+    /// Klopt de handtekening (base64, Ed25519) bij deze bytes?
+    nonisolated static func signatureValid(_ data: Data, signature: String, key: String = releaseKey) -> Bool {
+        guard let k = Data(base64Encoded: key), let pub = try? Curve25519.Signing.PublicKey(rawRepresentation: k),
+              let sig = Data(base64Encoded: signature.trimmingCharacters(in: .whitespacesAndNewlines)) else { return false }
+        return pub.isValidSignature(sig, for: data)
+    }
+
+    /// Downloaden (eerst de handtekening, dan de zip), controleren, vervangen en opnieuw starten.
     func install() {
         guard let r = latest else { return }
         state = .installing
+        let sigURL = r.zip.appendingPathExtension("sig")   // .../download/<tag>/Fusebox.zip.sig
+        URLSession.shared.dataTask(with: sigURL) { sigData, sigResponse, _ in
+        let sig = (sigResponse as? HTTPURLResponse)?.statusCode == 200 ? sigData.flatMap { String(data: $0, encoding: .utf8) } : nil
         URLSession.shared.downloadTask(with: r.zip) { tmp, _, error in
             let outcome: Result<URL, Error> = Result {
                 guard let tmp else { throw error ?? Self.err("Download failed") }
+                guard let sig, let bytes = try? Data(contentsOf: tmp), bytes.count < 200_000_000,
+                      Self.signatureValid(bytes, signature: sig) else { throw Self.err("Update isn't signed by the Fusebox maker") }
                 return try Self.unpackAndVerify(zip: tmp, expectedBuild: r.build)
             }
             Task { @MainActor in
@@ -153,6 +171,7 @@ import AppKit
                     self.state = .failed(e.localizedDescription)
                 }
             }
+        }.resume()
         }.resume()
     }
 
@@ -227,6 +246,13 @@ import AppKit
         precondition(buildNumber(in: "v0.1-beta-202611162309") == 202611162309, "tag")
         precondition(buildNumber(in: "v0.1-beta") == nil, "kort")
         precondition(summary("- Docked: see what's plugged in\n- Much lighter — 5% CPU\n- Fonts: six choices\n- More") == "Docked · Much lighter · Fonts", "samenvatting")
+        // Handtekening: echt sleutelpaar in de test, geknoeide data en een vreemde sleutel worden geweigerd
+        let testKey = Curve25519.Signing.PrivateKey(), blob = Data("Fusebox.zip".utf8)
+        let good = (try! testKey.signature(for: blob)).base64EncodedString(), pub = testKey.publicKey.rawRepresentation.base64EncodedString()
+        precondition(signatureValid(blob, signature: good, key: pub), "handtekening goed")
+        precondition(!signatureValid(Data("Fusebox.zip!".utf8), signature: good, key: pub), "geknoeid")
+        precondition(!signatureValid(blob, signature: good), "andere sleutel")
+        precondition(Data(base64Encoded: releaseKey)?.count == 32, "publieke sleutel")
         let rels = parseReleases(Data(#"[{"tag_name":"v0.2-beta-202611162352","name":"Fusebox 0.2 beta","published_at":"2026-11-16T22:52:00Z","body":"New stuff."},{"tag_name":"v0.3-beta-202612010000","draft":true}]"#.utf8))
         precondition(rels.count == 1 && rels[0].title == "Fusebox 0.2 beta" && rels[0].date != nil && rels[0].notes == "New stuff.", "changelog")
         precondition(pretty("v0.1-beta-202611162337") == "0.1 beta" && pretty("v1.0-202701010000") == "1.0", "mooie naam")

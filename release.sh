@@ -7,6 +7,7 @@ cd "$(dirname "$0")"
 [ -z "$(git status --porcelain)" ] || { echo "Eerst committen: er zijn nog wijzigingen."; exit 1; }
 NOTES="${1:-Improvements and fixes.}"
 ./share.sh
+swift scripts/sign-update.swift Fusebox.zip   # handtekening: de app weigert updates zonder
 APP="$HOME/Applications/Fusebox.app"
 V=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
 B=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist")
@@ -15,5 +16,5 @@ TAG="v$V$BETA-$B"
 git tag "$TAG"
 git symbolic-ref -q HEAD >/dev/null && git push origin HEAD
 git push origin "$TAG"
-gh release create "$TAG" Fusebox.zip --title "Fusebox $V${BETA:+ beta}" --notes "$NOTES"
+gh release create "$TAG" Fusebox.zip Fusebox.zip.sig --title "Fusebox $V${BETA:+ beta}" --notes "$NOTES"
 echo "gepubliceerd: $TAG"
