@@ -614,6 +614,7 @@ struct DataSettings: View {
 }
 
 struct AboutSettings: View {
+    @State private var sharing = false
     var body: some View {
         Section {
             HStack(spacing: 14) {
@@ -628,12 +629,14 @@ struct AboutSettings: View {
         UpdateSection()
         Section {
             LabeledContent {
-                Button("Share performance report") {
-                    SelfLog.share(logDir: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox"))
+                Button(sharing ? "Measuring 5 s…" : "Share performance report") {
+                    sharing = true
+                    SelfLog.share(logDir: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox")) { sharing = false }
                 }
+                .disabled(sharing)
             } label: {
                 Text("Beta: how light is Fusebox on this Mac?")
-                Text("Fusebox notes its own CPU, memory, GPU and energy use once a minute. This makes a small text file in Downloads (also copied) to send to the maker. Nothing is sent automatically.")
+                Text("Fusebox notes its own CPU, memory, GPU and energy use once a minute, and looks for 5 seconds at what it is doing right now. This makes a small text file in Downloads (also copied) to send to the maker. Nothing is sent automatically.")
             }
         } header: { Text("Beta test") }
         ChangelogSection()

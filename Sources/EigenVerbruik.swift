@@ -107,8 +107,9 @@ enum SelfLog {
         return out
     }
 
-    /// Rapport over de laatste `days` dagen maken, in Downloads zetten, kopiëren en in de Finder tonen.
-    @MainActor static func share(logDir: URL, days: Int = 7) {
+    /// Rapport over de laatste `days` dagen, plus 5 s "sample" van Fusebox zelf (waar de tijd nu in gaat), in Downloads
+    /// zetten, kopiëren en in de Finder tonen. `done` op de hoofdthread als het klaar is.
+    @MainActor static func share(logDir: URL, days: Int = 7, done: @escaping @MainActor () -> Void = {}) {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"
         var rows: [Row] = []
         for i in 0..<days {
@@ -118,9 +119,43 @@ enum SelfLog {
         let text = report(rows: rows, days: days)
         let dl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]
         let url = dl.appendingPathComponent("Fusebox-performance-\(f.string(from: Date())).txt")
-        try? text.write(to: url, atomically: true, encoding: .utf8)
-        NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string)
-        NSWorkspace.shared.activateFileViewerSelecting([url])
+        let pid = getpid()
+        DispatchQueue.global(qos: .utility).async {
+            let profile = Self.profile(pid: pid)
+            DispatchQueue.main.async {
+                let all = text + "\n" + profile
+                try? all.write(to: url, atomically: true, encoding: .utf8)
+                NSPasteboard.general.clearContents(); NSPasteboard.general.setString(all, forType: .string)
+                NSWorkspace.shared.activateFileViewerSelecting([url])
+                done()
+            }
+        }
+    }
+
+    /// 5 s macOS-"sample" van dit proces (mag zonder extra rechten bij je eigen app); alleen het deel "waar de tijd in zit".
+    nonisolated static func profile(pid: pid_t) -> String {
+        let out = FileManager.default.temporaryDirectory.appendingPathComponent("fusebox-sample.txt")
+        let p = Process()
+        p.executableURL = URL(fileURLWithPath: "/usr/bin/sample")
+        p.arguments = [String(pid), "5", "-mayDie", "-file", out.path]
+        p.standardOutput = FileHandle.nullDevice; p.standardError = FileHandle.nullDevice
+        guard (try? p.run()) != nil else { return "Profile: sample not available\n" }
+        p.waitUntilExit()
+        guard let t = try? String(contentsOf: out, encoding: .utf8) else { return "Profile: no output\n" }
+        try? FileManager.default.removeItem(at: out)
+        return condense(t)
+    }
+
+    /// Uit de sample-uitvoer: de lijst "Sort by top of stack" (waar de processor echt stond) en de eerste regels van de
+    /// boom van de hoofdthread; paden naar je thuismap weggelaten.
+    static func condense(_ t: String) -> String {
+        let lines = t.components(separatedBy: "\n")
+        var out = "Profile (5 s, what Fusebox was doing):\n"
+        if let i = lines.firstIndex(where: { $0.hasPrefix("Sort by top of stack") }) { out += lines[i..<min(i + 30, lines.count)].joined(separator: "\n") + "\n\n" }
+        if let i = lines.firstIndex(where: { $0.hasPrefix("Call graph:") }) {
+            out += lines[i..<min(i + 120, lines.count)].map { String($0.prefix(160)) }.joined(separator: "\n") + "\n"
+        }
+        return out.replacingOccurrences(of: NSHomeDirectory(), with: "~")
     }
 
     static func selfTest() {
@@ -130,6 +165,8 @@ enum SelfLog {
         precondition(r.count == 2 && r[0].visible && !r[1].visible && r[0].size == "small" && abs(r[0].cpu - 2.1) < 0.001, "eigen verbruik parse")
         precondition(bucket("1400x780") == "large" && bucket("700x600") == "medium" && bucket("x") == "-", "venstermaat")
         precondition(report(rows: r, days: 1).contains("visible|live|small|liquid|low:off"), "rapport")
+        let c = condense("Call graph:\n    10 Thread_1\nTotal number in stack\nSort by top of stack, same collapsed:\n        mach_msg2_trap  7\n")
+        precondition(c.contains("mach_msg2_trap  7") && c.contains("Thread_1"), "profiel")
         print("eigen verbruik ok")
     }
 }
