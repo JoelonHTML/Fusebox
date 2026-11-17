@@ -126,7 +126,7 @@ struct CheckupSettings: View {
 
     /// Zelfde ids als ReportSections.Part in Analyse.swift.
     private static let parts = [("score", "Health score"), ("tops", "Top apps"), ("runtime", "Running time"), ("battery", "Battery"),
-                                ("busy", "Busy moments"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log")]
+                                ("busy", "Busy moments"), ("peaks", "Peaks"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log")]
 
     var body: some View {
         Section("When you open Checkup") {

@@ -69,13 +69,14 @@ struct OverviewView: View {
     @State private var box = SizeBox()
     @State private var layout: LiveLayout?
     @State private var detail: Metric?          // aangeklikte kaart → detailweergave in hetzelfde venster
+    @State private var focus: Peak?             // geopend via een piek: die piek in het detail aanwijzen
 
     private var metrics: [Metric] { Metric.enabled(metricsRaw) }
 
     var body: some View {
         Group {
             if let d = detail {
-                MetricDetail(metric: d) { withAnimation(.snappy(duration: 0.3)) { detail = nil } }
+                MetricDetail(metric: d, focus: focus) { withAnimation(.snappy(duration: 0.3)) { detail = nil; focus = nil } }
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             } else if let layout { content(layout).transition(.opacity) } else { Color.clear }
         }
@@ -108,12 +109,15 @@ struct OverviewView: View {
                                 let i = r * l.cols + c
                                 if i < metrics.count {
                                     let m = metrics[i]
-                                    MetricView(data: m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps), tier: t, fill: fill, index: i,
-                                               side: l.side, graphs: graphs != .never, ready: !meter.recent.isEmpty)
+                                    MetricView(data: lastPeak(m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps), m, t), tier: t, fill: fill, index: i,
+                                               side: l.side, graphs: graphs != .never, ready: !meter.recent.isEmpty,
+                                               peaks: PeakContext(metric: m, watch: meter.peaks, times: t >= .m ? h.map(\.time) : []) { p in
+                                                   withAnimation(.snappy(duration: 0.3)) { focus = p; detail = m }
+                                               })
                                         .id(m)   // kaart hoort bij de meting, niet bij de plek: anders toont NET even de I/O-waarde na een andere indeling
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
-                                        .onTapGesture { withAnimation(.snappy(duration: 0.3)) { detail = m } }
+                                        .onTapGesture { if !PeakHoverView.claimed() { withAnimation(.snappy(duration: 0.3)) { detail = m } } }   // klik op een piek: popover
                                         .help("Click for details")
                                 } else if t < .m {   // klein: lege cel houdt de getallen in kolommen
                                     Color.clear.frame(height: 1)
@@ -128,6 +132,14 @@ struct OverviewView: View {
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
         .frame(minHeight: CGFloat(l.rows) * (17 + theme.rowPad / 2) + 10, alignment: .top) // ≈ XS-hoogte
+    }
+
+    /// L/XL: "Last peak  14:32 · Xcode" als tweede feit.
+    private func lastPeak(_ r: MetricRowData, _ m: Metric, _ t: Tier) -> MetricRowData {
+        guard t >= .l, let p = meter.peaks.peaks(m, since: Calendar.current.startOfDay(for: Date())).last else { return r }
+        var r = r
+        r.facts.insert(Fact(label: "Last peak", value: Peaks.clock.string(from: p.at) + (p.app.map { " · \($0)" } ?? "")), at: min(1, r.facts.count))
+        return r
     }
 
     private func toggleAbsolute(_ m: Metric) {
@@ -156,6 +168,7 @@ struct MetricView: View {
     var side = false            // L+: feiten naast de grafiek i.p.v. erboven (brede kaart)
     var graphs = true
     var ready = true            // false tot de eerste echte meting binnen is
+    var peaks: PeakContext?     // pieken: stipje (XS/S), hover op de grafiek (M+)
     @AppStorage("perCore") private var perCore = false   // per kern ook in kleine vensters
 
     var body: some View {
@@ -167,6 +180,7 @@ struct MetricView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(data.label).font(theme.label(xs ? 11 : 13)).foregroundStyle(labelColor).fixedSize()   // label valt nooit weg
+                if tier < .m, let peaks { PeakDot(ctx: peaks) }
                 if let icon = data.sideIcon {   // batterij: laden (bliksem) of hoe vol, als icoontje
                     Image(systemName: icon).font(.system(size: xs ? 11 : 13, weight: .medium)).foregroundStyle(data.sideLevel > 0 ? color(data.sideLevel) : theme.onRow(true))
                 }
@@ -227,6 +241,7 @@ struct MetricView: View {
     @ViewBuilder private var graph: some View {
         if graphs && !data.values.isEmpty {
             SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
+                .overlay { if let peaks { PeakHover(ctx: peaks, values: data.values, second: data.second, full: tier >= .l, temp: data.graphIsTemp, color: theme.rowStyle == .blocks ? .white : theme.accent) } }
                 .frame(minHeight: 16, maxHeight: .infinity)
         }
     }
