@@ -344,7 +344,7 @@ struct LiveSettings: View {
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)
             Toggle(isOn: $batteryTime) {
                 Text("Battery time left")
-                Text("Next to BAT: how long until empty (or until full while charging), e.g. 2:35")
+                Text("Next to BAT on battery power: how long until empty, e.g. 2:35")
             }
         }
         Section("Units") {

@@ -167,9 +167,20 @@ struct MetricView: View {
         VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(data.label).font(theme.label(xs ? 11 : 13)).foregroundStyle(labelColor).fixedSize()   // label valt nooit weg
-                if !data.side.isEmpty {   // temperatuur / ms / laden: klein naast het label, zodat het getal echt rechts staat
+                if let icon = data.sideIcon {   // batterij: laden (bliksem) of hoe vol, als icoontje
+                    Image(systemName: icon).font(.system(size: xs ? 11 : 13, weight: .medium)).foregroundStyle(data.sideLevel > 0 ? color(data.sideLevel) : theme.onRow(true))
+                }
+                if !data.side.isEmpty {   // temperatuur / ms / tijd: klein naast het label, zodat het getal echt rechts staat
                     ChangingText(text: data.side, delay: stagger, ready: ready).font(theme.number(xs ? 11 : 13)).foregroundStyle(data.sideLevel > 0 ? color(data.sideLevel) : theme.onRow(true))
                         .lineLimit(1).fixedSize()
+                }
+                // Per kern: smalle staafjes direct naast de temperatuur (niet eronder: dat zit de grafiek in de weg).
+                // Groot venster (L/XL) altijd, kleiner alleen met de instelling.
+                if !data.cores.isEmpty && (tier >= .l || perCore) {
+                    CoreBars(values: data.cores, split: Sampler.efficiencyCores, barWidth: tier >= .l ? 6 : 4)
+                        .frame(height: xs ? 10 : tier >= .l ? 18 : 14).fixedSize(horizontal: true, vertical: false)
+                        .padding(.leading, 4).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                        .help("Per core: \(Sampler.efficiencyCores) efficiency + \(data.cores.count - Sampler.efficiencyCores) performance")
                 }
                 if data.level > 0 && theme.rowStyle == .blocks { Image(systemName: "exclamationmark.triangle.fill").font(.caption).foregroundStyle(.white) }
                 Spacer(minLength: 4)
@@ -188,17 +199,10 @@ struct MetricView: View {
                 }
             }
             .frame(minHeight: xs ? nil : 36) // gelijke rijhoogte, ongeacht valueSize
-            if tier < .m && perCore && !data.cores.isEmpty {
-                CoreBars(values: data.cores, split: Sampler.efficiencyCores).frame(height: xs ? 6 : 8)
-            }
             if tier >= .m {
                 // Geen uitlegregels op de Live-pagina: alleen labels en getallen.
                 if !stats.isEmpty {
                     Text(stats).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.8)
-                }
-                // Groot venster (L/XL): altijd per kern, over de hele breedte. Kleiner: alleen met de instelling.
-                if !data.cores.isEmpty && (tier >= .l || perCore) {
-                    CoreBars(values: data.cores, split: Sampler.efficiencyCores, wide: tier >= .l).frame(height: tier >= .xl ? 36 : tier >= .l ? 28 : 12)
                 }
                 // L/XL: wat er meer te weten valt (feiten, top-apps, min/gem/max); zoveel regels als er passen
                 if tier >= .l && !data.facts.isEmpty {
@@ -318,7 +322,8 @@ struct CoreBars: View {
     @Environment(\.theme) private var theme
     let values: [Double]
     var split = 0
-    var wide = false            // groot venster: staafjes vullen de hele breedte
+    var wide = false            // detailweergave: staafjes vullen de hele breedte
+    var barWidth: CGFloat = 4   // anders: vaste smalle staafjes (kaartkop)
 
     var body: some View {
         let color = theme.rowStyle == .blocks ? Color.white : theme.accent
@@ -330,7 +335,7 @@ struct CoreBars: View {
                             .scaleEffect(x: 1, y: min(max(values[i], 0), 100) / 100, anchor: .bottom)
                             .animation(.easeInOut(duration: 0.8), value: values[i])
                     }
-                    .frame(width: wide ? nil : 4)
+                    .frame(width: wide ? nil : barWidth)
                     .frame(maxWidth: wide ? .infinity : nil)
                     .padding(.leading, i == split && split > 0 ? (wide ? 8 : 4) : 0)
             }

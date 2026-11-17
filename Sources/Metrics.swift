@@ -63,7 +63,8 @@ struct MetricRowData {
     var label: String
     var value: String
     var unit = ""                       // korte eenheid direct achter het getal ("GB", "/10")
-    var side = ""                       // klein, naast het label (temperatuur, reactietijd, laden)
+    var side = ""                       // klein, naast het label (temperatuur, reactietijd, resterende tijd)
+    var sideIcon: String?               // SF Symbol vóór `side` (batterij: laden ⚡︎ of hoe vol)
     var template = "100%"               // breedste vorm van `value`: houdt de breedte vast (geen verspringen bij 7% → 17%)
     var level = 0, sideLevel = 0        // 0 normaal, 1 let op, 2 hoog
     var detail = ""                     // (niet meer op de Live-pagina; voor andere plekken)
@@ -189,10 +190,14 @@ extension Metric {
         case .battery:
             guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: "no battery", valueSize: 24) }
             let time = s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? (s.charging ? "charging" : "")
-            // Naast BAT: ⚡︎ bij laden en (instelling "batteryTime") hoe lang nog: "2:35" tot leeg, of tot vol bij laden
-            let left = d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
-            return MetricRowData(label: abbr, value: pct(b), side: [s.charging ? "⚡︎" : nil, left].compactMap { $0 }.joined(separator: " "), level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
+            // Naast BAT: laden → batterij met bliksem; op de accu → batterij die toont hoe vol, plus (instelling
+            // "batteryTime") hoe lang nog tot leeg, bijv. "2:35". Geen "tot vol": dat zegt weinig.
+            let left = !s.charging && d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
+            let level = b >= 88 ? "100" : b >= 63 ? "75" : b >= 38 ? "50" : b >= 13 ? "25" : "0"
+            var row = MetricRowData(label: abbr, value: pct(b), side: left ?? "", level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
                                  detail: time.isEmpty ? "on power adapter" : time, values: h.compactMap(\.battery), valueSize: 24)
+            row.sideIcon = s.charging ? "battery.100percent.bolt" : "battery.\(level)percent"
+            return row
         case .fan:
             guard let rpm = s.fanRPM else { return MetricRowData(label: abbr, value: "–", detail: "no fans", valueSize: 24) }
             let top = s.fans.map(\.max).max() ?? 0
