@@ -45,13 +45,18 @@ private struct ProgramsList: View {
     static let ramW: CGFloat = 62, energyW: CGFloat = 50, gpuW: CGFloat = 44, procW: CGFloat = 40, stopW: CGFloat = 18
     static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62, netW: CGFloat = 74
 
+    @EnvironmentObject private var meter: Meter
+
     var body: some View {
-        if let page {
-            AppPage(monitor: monitor, ref: page) { withAnimation(.snappy(duration: 0.3)) { self.page = nil } }
-                .transition(.opacity.combined(with: .scale(scale: 0.97)))
-        } else {
-            list.transition(.opacity)
+        Group {
+            if let page {
+                AppPage(monitor: monitor, ref: page) { withAnimation(.snappy(duration: 0.3)) { self.page = nil } }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else {
+                list.transition(.opacity)
+            }
         }
+        .onAppear { if let r = meter.openApp { page = r; meter.openApp = nil } }   // geopend vanaf een top-app op Live
     }
 
     private func show(_ ref: AppRef) { withAnimation(.snappy(duration: 0.3)) { page = ref } }

@@ -22,6 +22,9 @@ struct Sample {
     var battery: Double?                       // procent, nil op desktop
     var batteryMinutes: Int?                   // tot leeg (of vol bij laden)
     var charging = false
+    var batteryW: Double?                      // vermogen van de accu in watt: + laden, − ontladen
+    var adapterW: Int?                         // vermogen van de lader (watt), nil zonder lader
+    var onAC = false                           // aan de lader (ook als hij niet laadt: vol, of oplaadlimiet)
     var fans: [FanReading] = []                // per ventilator; leeg op Macs zonder ventilator
     var fanRPM: Double?                        // gemiddelde toeren van alle ventilatoren
     var cores: [Double] = []                   // procent per kern (leeg bij de eerste meting)
@@ -326,6 +329,15 @@ final class Sampler {
             s.charging = d[kIOPSIsChargingKey] as? Bool ?? false
             let mins = d[s.charging ? kIOPSTimeToFullChargeKey : kIOPSTimeToEmptyKey] as? Int ?? -1
             s.batteryMinutes = mins > 0 ? mins : nil
+            s.onAC = d[kIOPSPowerSourceStateKey] as? String == kIOPSACPowerValue
+            if s.onAC { s.adapterW = (IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() as? [String: Any])?[kIOPSPowerAdapterWattsKey] as? Int }
+            // Accuvermogen: stroom (mA, met teken) × spanning (mV) uit AppleSmartBattery; één registry-opzoeking
+            let b = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+            if b != 0 {
+                defer { IOObjectRelease(b) }
+                func n(_ k: String) -> NSNumber? { IORegistryEntryCreateCFProperty(b, k as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber }
+                if let a = n("Amperage"), let v = n("Voltage") { s.batteryW = Double(a.int64Value) * v.doubleValue / 1e6 }   // UInt64-bitpatroon → Int64 = negatief bij ontladen
+            }
             return
         }
     }

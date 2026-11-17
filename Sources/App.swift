@@ -131,6 +131,9 @@ struct MeterkastApp: App {
         precondition(Sampler.plausible(1_000_000, 2) && !Sampler.plausible(UInt64(UInt32.max), 2), "herstarte teller")
         var weird = Sample(); weird.diskRead = 9.2e18; weird.down = .infinity
         precondition(weird.csv.contains(",1000000000000000,"), "csv begrensd")
+        // Wi-Fi-signaal en accuvermogen (Metrics.swift, Meten.swift)
+        precondition(LinkRate.signalText(-52, 36) == "Excellent · −52 dBm · ch 36" && LinkRate.signalText(-70, 0) == "Fair · −70 dBm", "wifi-signaal")
+        precondition(NSNumber(value: UInt64(18446744073709551122)).int64Value == -494, "accustroom met teken")
         Ports.selfTest()
         SelfLog.selfTest()
         Spark.selfTest()

@@ -103,7 +103,7 @@ struct ProcessesSettings: View {
         } header: {
             Text("Columns")
         } footer: {
-            caption("Columns appear when the window is wide enough. Network: download and upload per app, read on this Mac only while the page is open.")
+            caption("Columns appear when the window is wide enough. Network: download and upload per app, read on this Mac only while you look at Fusebox. Also shows the busiest app on the Live NET card.")
         }
         Section("Small items") {
             Picker("Hide", selection: $small) {
