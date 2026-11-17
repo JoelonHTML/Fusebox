@@ -401,6 +401,13 @@ final class SparkNSView: NSView {
         shownPx = shift * pxPerShift
     }
 
+    /// Tijd tussen twee stappen van deze glide: één stap per halve pixel, hoogstens 15 per seconde. Beweegt de schaal
+    /// mee, dan altijd 15 per seconde (de hele lijn verandert dan van vorm).
+    private var stepInterval: TimeInterval {
+        let steps = fromTop != top ? .infinity : Double(from * pxPerShift) / 0.5
+        return min(max(Self.duration / max(steps, 1), 1.0 / 15), 0.5)
+    }
+
     /// Eén stap van de glide; false = klaar. Tekent alleen als de lijn minstens een halve pixel opschoof (of de schaal
     /// meebeweegt): in een klein venster zijn dat een paar beeldjes per seconde, niet 120.
     private func step() -> Bool {
@@ -419,8 +426,12 @@ final class SparkNSView: NSView {
     private static var clock: Timer?
     private static func glide(_ v: SparkNSView) {
         gliding.add(v)
-        guard clock == nil else { return }
-        let t = Timer(timeInterval: 1.0 / 15, repeats: true) { _ in
+        // Niet vaker wakker worden dan er te tekenen valt: in een klein venster schuift de lijn maar een paar pixels per
+        // meting, dan volstaan een paar stappen per seconde (was altijd 15 wake-ups per seconde).
+        let every = v.stepInterval
+        if let c = clock, c.timeInterval <= every + 0.001 { return }
+        clock?.invalidate()
+        let t = Timer(timeInterval: every, repeats: true) { _ in
             MainActor.assumeIsolated {
                 for v in gliding.allObjects where !v.step() { gliding.remove(v) }
                 if gliding.allObjects.isEmpty { clock?.invalidate(); clock = nil }
@@ -579,7 +590,10 @@ struct ChangingText: View {
             guard onScreen else { old = nil; fade = 1; shown = new; return }   // venster niet te zien of low impact: meteen, zonder animatie
             let first = shown == nil
             if first { flip = true }
-            DispatchQueue.main.asyncAfter(deadline: .now() + (first ? 0.1 + delay / 3 : delay)) {
+            // Overvloeien: de rijen vlak na elkaar (een korte golf) in plaats van 0,3 s uit elkaar. Dan delen ze hun
+            // tekenbeurten en staat het venster de rest van de tijd stil; anders was er altijd wel een getal bezig.
+            let wait = first ? 0.1 + delay / 3 : style == .fade ? delay / 5 : delay
+            DispatchQueue.main.asyncAfter(deadline: .now() + wait) {
                 // Overvloeien vanaf het getal dat er nu staat (alleen bij "Fade", en niet bij de eerste waarde: die flipt)
                 old = style == .fade && !first ? shown : nil
                 fade = old == nil ? 1 : 0

@@ -183,7 +183,7 @@ extension Metric {
             // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms.
             // Nog geen snelheidstest gedaan: niets. (De Wi-Fi-verbindingssnelheid stond hier als noodoplossing, maar die
             // verandert bijna nooit en is geen internetsnelheid; hij staat nu als "Wi-Fi link" bij de NET-feiten.)
-            let speed = d.bool(forKey: "netSpeed") ? InternetStats.loadHistory().last.map { "\(Int($0.down.rounded())) Mbit" } : nil
+            let speed = d.bool(forKey: "netSpeed") ? InternetStats.loadHistory().first.map { "\(Int($0.down.rounded())) Mbit" } : nil   // nieuwste staat vooraan
             var row = MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
                                  side: [ping, speed].compactMap { $0 }.joined(separator: " · "),
                                  template: "↓888 ↑888",
