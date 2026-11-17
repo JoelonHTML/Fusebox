@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Pagina's en venster
 
 enum Page: String, CaseIterable, Identifiable {
-    case overview = "live", programs = "programs", analysis = "advice", network = "network"
+    case overview = "live", programs = "programs", analysis = "advice", network = "network", ports = "ports"
     var id: String { rawValue }
     /// Tekst voor de gebruiker; rawValue is een vaste korte id (veilig om op te slaan en te delen).
     var title: String {
@@ -12,6 +12,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .programs: "Processes"
         case .analysis: "Checkup"
         case .network: "Network"
+        case .ports: "Ports"
         }
     }
     var icon: String {
@@ -20,6 +21,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .programs: "square.grid.2x2"
         case .analysis: "chart.bar.xaxis"
         case .network: "network"
+        case .ports: "cable.connector"
         }
     }
     /// Eén vensterformaat voor alle tabbladen. Heeft een tabblad meer nodig, dan groeit het venster tot hier
@@ -30,6 +32,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .programs: NSSize(width: 460, height: 420)   // vanaf 460 ook de schijfkolom
         case .analysis: NSSize(width: 420, height: 460)
         case .network: NSSize(width: 470, height: 440)
+        case .ports: NSSize(width: 420, height: 460)
         }
     }
 }
@@ -62,8 +65,8 @@ struct RootView: View {
     @State private var stretchFrom: UnitPoint = .leading   // kant van het icoon dat je verlaat: daar "trekt" de druppel uit
     /// Vanaf deze breedte passen alle tabknoppen mét naam; smaller → alleen icoontjes (anders verstopt macOS ze achter ">>").
     /// Terug naar icoontjes pas onder `iconsWidth`: rond de grens niet heen en weer springen tijdens slepen.
-    /// Met naam is ~580 pt nodig (incl. verkeerslichtjes), dus ook bij 620 nooit afgekapt.
-    static let namesWidth: CGFloat = 660, iconsWidth: CGFloat = 620
+    /// Met naam is ~660 pt nodig (incl. verkeerslichtjes, vijf tabbladen), dus ook bij 700 nooit afgekapt.
+    static let namesWidth: CGFloat = 740, iconsWidth: CGFloat = 700
     @Environment(\.openWindow) private var openWindow
     @State private var baseBehavior: NSWindow.CollectionBehavior?
 
@@ -80,6 +83,7 @@ struct RootView: View {
                 case .programs: ProgramsView()
                 case .analysis: AnalysisView()
                 case .network: NetworkView()
+                case .ports: PortsView()
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)

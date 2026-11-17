@@ -114,6 +114,7 @@ struct MeterkastApp: App {
         Installer.selfTest()
         Updater.selfTest()
         Hotkey.selfTest()
+        Ports.selfTest()
         let s = Sampler()
         _ = s.sample()
         let m = AppMonitor()
