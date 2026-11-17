@@ -18,8 +18,17 @@ enum TimeRange: String, CaseIterable, Identifiable {
 }
 
 final class Meter: ObservableObject {
-    @Published private(set) var recent: [Sample] = []   // laatste uur, elke 2 s
-    @Published private(set) var today: [Sample] = []    // vandaag, gemiddelde per minuut
+    // Niet @Published: `publish` meldt zelf een wijziging, en alleen als er iemand kijkt (zie `looking`).
+    private(set) var recent: [Sample] = []   // laatste uur, elke 2 s
+    private(set) var today: [Sample] = []    // vandaag, gemiddelde per minuut
+    /// Kijkt er iemand naar Fusebox (een venster dat te zien is, of een menubalk-plekje)? Zo niet, dan wel meten,
+    /// loggen en melden, maar SwiftUI niet elke 2 s wakker maken: een verborgen venster hertekende anders gewoon door.
+    private var screenAsleep = false
+    private var looking: Bool {
+        ticks <= 5 || (!screenAsleep && NSApp.windows.contains { $0.isVisible && $0.occlusionState.contains(.visible) })
+    }
+    /// Weer in beeld (venster terug, scherm wakker): meteen de nieuwste waarden tonen, niet pas bij de volgende meting.
+    func refresh() { objectWillChange.send() }
     /// Programma's: `ui` ververst elke 2 s zolang die pagina open is; `minuteApps` meet per minuut voor de log/analyse.
     let ui = AppMonitor(network: true), minuteApps = AppMonitor()
     /// Bij openen van de Programs-pagina meteen meten, zodat de lijst niet 2 s leeg is.
@@ -66,7 +75,7 @@ final class Meter: ObservableObject {
             Self.migrate(f)
             Self.migrate(self.file(for: Date(), prefix: "apps"), header: AppUsage.csvHeader)   // apps-log van vandaag: nieuwe kolommen
             let loaded = self.loadToday()
-            DispatchQueue.main.async { self.today = loaded + self.today }
+            DispatchQueue.main.async { self.objectWillChange.send(); self.today = loaded + self.today }
         }
         // Eenmalig: op een Mac met ventilatoren de FAN-meting achteraan de Live-pagina zetten
         let d = UserDefaults.standard
@@ -83,24 +92,33 @@ final class Meter: ObservableObject {
         RunLoop.main.add(t, forMode: .common)
         timer = t
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { [weak self] _ in self?.quitting = true; self?.flush() }
+        // Scherm uit (slaapstand van het beeld, vergrendeld): vensters tellen dan nog als "te zien", maar niemand kijkt
+        let ws = NSWorkspace.shared.notificationCenter
+        ws.addObserver(forName: NSWorkspace.screensDidSleepNotification, object: nil, queue: .main) { [weak self] _ in self?.screenAsleep = true }
+        ws.addObserver(forName: NSWorkspace.screensDidWakeNotification, object: nil, queue: .main) { [weak self] _ in self?.screenAsleep = false; self?.refresh() }
+        NotificationCenter.default.addObserver(forName: NSWindow.didChangeOcclusionStateNotification, object: nil, queue: .main) { [weak self] n in
+            if (n.object as? NSWindow)?.occlusionState.contains(.visible) == true { self?.refresh() }
+        }
     }
 
     /// Elke 2 s (hoofdthread): meten op `work`, het resultaat in één keer terug op de hoofdthread verwerken.
     func tick() {
         ticks += 1
-        let n = ticks, programs = programsVisible
+        let n = ticks, watched = looking, programs = programsVisible && watched   // niemand kijkt: ook de programmalijst niet meten
         Self.work.async { [self] in
             let s = sampler.sample()
             let list = programs ? ui.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
             let minuteList = n % 30 == 0 ? minuteApps.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
-            DispatchQueue.main.async { self.publish(s, tick: n, programs: list, minuteList: minuteList) }
+            DispatchQueue.main.async { self.publish(s, tick: n, programs: list, minuteList: minuteList, watched: watched) }
         }
     }
 
-    private func publish(_ sample: Sample, tick n: Int, programs: [AppUsage]?, minuteList: [AppUsage]?) {
+    private func publish(_ sample: Sample, tick n: Int, programs: [AppUsage]?, minuteList: [AppUsage]?, watched: Bool) {
         var s = sample
+        if watched { objectWillChange.send() }
         if n % 5 == 1 { pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? "" }
-        if n % 5 == 1 && !pingHost.isEmpty { pinger.ping(host: pingHost) }   // "" = uit: geen netwerk
+        // Elke 10 s als er iemand kijkt, anders elke 30 s (genoeg voor log en meldingen). "" = uit: geen netwerk
+        if n % (watched ? 5 : 15) == 1 && !pingHost.isEmpty { pinger.ping(host: pingHost) }
         s.pingMs = pingHost.isEmpty ? nil : pinger.lastMs
         s.pingPending = !pingHost.isEmpty && !pinger.answered
         if let programs, programsVisible { ui.apps = programs }

@@ -292,14 +292,15 @@ struct SparkView: View {
     }
 }
 
-/// De lijnen zelf, met Core Animation. Glijden na een nieuwe meting is één animatie die de render-server afspeelt:
-/// de app doet daar per frame niets voor. (Als SwiftUI-animatie rekende de app elke frame het hele venster door: ~40% processor.)
+/// De lijnen zelf, als Core Animation-lagen buiten SwiftUI om. (Als SwiftUI-animatie rekende de app elke frame het hele
+/// venster door: ~40% processor.) Glijden na een nieuwe meting gaat in kleine stappen, zie `SparkNSView.glide`.
 private struct SparkLayers: NSViewRepresentable {
     let values: [Double], second: [Double], top: Double, bottom: Double, fill: Double, color: Color
     func makeNSView(context: Context) -> SparkNSView { SparkNSView() }
     func updateNSView(_ v: SparkNSView, context: Context) {
         v.set(values, second, top: top, bottom: bottom, fill: fill, color: color.resolve(in: context.environment).cgColor,
-              glide: !context.environment.accessibilityReduceMotion)   // "Verminder beweging": lijn verspringt gewoon
+              // "Verminder beweging" of venster niet te zien: lijn verspringt gewoon
+              glide: !context.environment.accessibilityReduceMotion && context.environment.onScreen)
     }
 }
 
@@ -309,7 +310,8 @@ final class SparkNSView: NSView {
     private var leadA: [Double] = [], leadB: [Double] = []   // punten die net uit het venster vielen (schuiven links uit beeld)
     private var top = 1.0, bottom = 0.0, fill = 1.0, stretch = false
     private var drawn = CGSize.zero
-    private var from: CGFloat = 0, at: CFTimeInterval = 0    // lopende glij-animatie: beginstand en starttijd
+    private var from: CGFloat = 0, fromTop = 1.0, at: CFTimeInterval = 0    // lopende glide: beginstand (verschuiving, schaal) en starttijd
+    private var shownPx: CGFloat = 0, pxPerShift: CGFloat = 0               // laatst getekende stand, in schermpixels
     /// Iets korter dan de 2 s tussen metingen: de lijn staat heel even stil en loopt nooit achter.
     static let duration: CFTimeInterval = 1.9
 
@@ -357,26 +359,58 @@ final class SparkNSView: NSView {
     /// begin = precies waar hij stond, nieuw punt nog rechts buiten beeld, het oudste schuift links uit beeld.
     private func draw(from start: (shift: CGFloat, top: Double)?) {
         drawn = bounds.size
+        let w = bounds.width * fill
+        guard let start, !Spark.thinned(a.count, width: w), w > 0 else { from = 0; render(0, top); return }
+        // Beginstand = wat er al staat (de vorige eindstand): niets te tekenen tot de eerste stap
+        (from, fromTop, at) = (start.shift, start.top, CACurrentMediaTime())
+        pxPerShift = w / CGFloat(max(a.count - 1, 1)) * (window?.backingScaleFactor ?? 2)
+        shownPx = from * pxPerShift
+        Self.glide(self)
+    }
+
+    /// Zet de lijnen op stand `shift` (1 = vóór de nieuwe meting, 0 = eindstand) met schaal `top`, zonder animatie.
+    private func render(_ shift: CGFloat, _ top: Double) {
         let w = bounds.width * fill, r = CGRect(x: bounds.maxX - w, y: 0, width: w, height: bounds.height)
         let thin = Spark.thinned(a.count, width: w), n = max(Int(w), 2)
-        func paths(_ shift: CGFloat, _ top: Double) -> [CGPath] {
-            let pa = Spark.points(thin ? downsample(a, to: n) : a, lead: thin ? [] : leadA, in: r, top: top, bottom: bottom, shift: shift, stretch: stretch)
-            let pb = Spark.points(thin ? downsample(b, to: n) : b, lead: thin ? [] : leadB, in: r, top: top, bottom: bottom, shift: shift, stretch: stretch)
-            return [Spark.path(pa, closed: true, floor: r.maxY).cgPath, Spark.path(pa, closed: false, floor: r.maxY).cgPath,
-                    Spark.path(pb, closed: false, floor: r.maxY).cgPath]
-        }
-        let layers = [area, line, line2]
+        let pa = Spark.points(thin ? downsample(a, to: n) : a, lead: thin ? [] : leadA, in: r, top: top, bottom: bottom, shift: shift, stretch: stretch)
+        let pb = Spark.points(thin ? downsample(b, to: n) : b, lead: thin ? [] : leadB, in: r, top: top, bottom: bottom, shift: shift, stretch: stretch)
         CATransaction.begin(); CATransaction.setDisableActions(true)
-        for (l, p) in zip(layers, paths(0, top)) { l.frame = bounds; l.path = p; l.removeAnimation(forKey: "glide") }
+        for l in [area, line, line2] where l.frame != bounds { l.frame = bounds }
+        area.path = Spark.path(pa, closed: true, floor: r.maxY).cgPath
+        line.path = Spark.path(pa, closed: false, floor: r.maxY).cgPath
+        line2.path = pb.count > 1 ? Spark.path(pb, closed: false, floor: r.maxY).cgPath : nil
         CATransaction.commit()
-        from = 0
-        guard let start, !thin, w > 0 else { return }
-        from = start.shift; at = CACurrentMediaTime()
-        for (l, p) in zip(layers, paths(start.shift, start.top)) {
-            let g = CABasicAnimation(keyPath: "path")
-            g.fromValue = p; g.toValue = l.path; g.duration = Self.duration; g.timingFunction = CAMediaTimingFunction(name: .linear)
-            l.add(g, forKey: "glide")
+        shownPx = shift * pxPerShift
+    }
+
+    /// Eén stap van de glide; false = klaar. Tekent alleen als de lijn minstens een halve pixel opschoof (of de schaal
+    /// meebeweegt): in een klein venster zijn dat een paar beeldjes per seconde, niet 120.
+    private func step() -> Bool {
+        guard from > 0 else { return false }
+        let p = (CACurrentMediaTime() - at) / Self.duration
+        if p >= 1 { from = 0; render(0, top); return false }
+        let s = from * CGFloat(1 - p)
+        if fromTop != top || abs(shownPx - s * pxPerShift) >= 0.5 { render(s, fromTop + (top - fromTop) * p) }
+        return true
+    }
+
+    // Glijden in stappen van de app zelf, niet als CAAnimation: die laat de render-server het hele grafiekvlak op de
+    // beeldfrequentie (75–120×/s) opnieuw tekenen terwijl de lijn maar een paar pixels per seconde opschuift. Dat kostte
+    // tot een kwart van de GPU bij een groot venster. Eén gedeelde klok voor alle grafieken = één tekenbeurt per stap.
+    private static let gliding = NSHashTable<SparkNSView>.weakObjects()
+    private static var clock: Timer?
+    private static func glide(_ v: SparkNSView) {
+        gliding.add(v)
+        guard clock == nil else { return }
+        let t = Timer(timeInterval: 1.0 / 15, repeats: true) { _ in
+            MainActor.assumeIsolated {
+                for v in gliding.allObjects where !v.step() { gliding.remove(v) }
+                if gliding.allObjects.isEmpty { clock?.invalidate(); clock = nil }
+            }
         }
+        t.tolerance = 0.02
+        RunLoop.main.add(t, forMode: .common)
+        clock = t
     }
 }
 
