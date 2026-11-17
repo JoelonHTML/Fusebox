@@ -362,6 +362,21 @@ private struct ProgramDetails: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
+            // Knoppen bovenaan: de regels eronder komen en gaan bij elke meting, dan springen de knoppen niet mee
+            HStack(spacing: 12) {
+                Button(action: onDetails) { Label("Details", systemImage: "info.circle") }
+                    .help("Usage over time, energy and info about \(app.name)")
+                if app.id.hasPrefix("/") {
+                    Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.id)]) } label: {
+                        Label("Show in Finder", systemImage: "folder")
+                    }
+                }
+                if app.canStop {
+                    Button(action: onStop) { Label("Stop \(app.name)", systemImage: "xmark.circle") }
+                        .foregroundStyle(theme.rowStyle == .blocks ? .white : theme.danger)
+                }
+            }
+            .buttonStyle(.plain).font(theme.label(11)).padding(.bottom, 4)
             if !app.explanation.isEmpty { line("questionmark.circle", "What is this? \(app.explanation).") }
             line("cpu", "\(app.name) is using \(pct(app.cpu)) of your processor right now (≈ \(one(app.cpu / 100 * Self.cores)) of the \(Int(Self.cores)) cores) and \(mem(app.memGB)) of memory (\(pct(app.memGB / Self.ramGB * 100)) of your \(Int(Self.ramGB.rounded())) GB).")
             if app.kind == .macos && app.pids.isEmpty {
@@ -380,20 +395,6 @@ private struct ProgramDetails: View {
             if app.threads > 0 { line("arrow.triangle.branch", "Runs \(app.threads) threads (tasks at the same time).") }
             if let s = app.started { line("clock", "Running for \(duration(max(Int(Date().timeIntervalSince(s) / 60), 1))).") }
             line(verdict.icon, verdict.text).foregroundStyle(verdict.color)
-            HStack(spacing: 12) {
-                Button(action: onDetails) { Label("Details", systemImage: "info.circle") }
-                    .help("Usage over time, energy and info about \(app.name)")
-                if app.id.hasPrefix("/") {
-                    Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.id)]) } label: {
-                        Label("Show in Finder", systemImage: "folder")
-                    }
-                }
-                if app.canStop {
-                    Button(action: onStop) { Label("Stop \(app.name)", systemImage: "xmark.circle") }
-                        .foregroundStyle(theme.rowStyle == .blocks ? .white : theme.danger)
-                }
-            }
-            .buttonStyle(.plain).font(theme.label(11)).padding(.top, 2)
         }
         .font(theme.label(11)).foregroundStyle(theme.onRow(true))
         .padding(.leading, 26).padding(.top, 6).padding(.bottom, 2)

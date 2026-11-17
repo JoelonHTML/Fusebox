@@ -99,7 +99,7 @@ struct RootView: View {
             let next = wide ? w >= Self.iconsWidth : w >= Self.namesWidth
             if next != wide { wide = next }
         }
-        .frame(minWidth: 260, minHeight: 120)
+        .frame(minWidth: 316, minHeight: 120)   // 6 tabknoppen (32 pt + 2 pt) + verkeerslichtjes passen altijd, nooit ">>"
         // Tabknoppen als echte werkbalk-items: in de titelbalk vangt macOS gewone klikken af (venster slepen).
         // .id(wide): bij wissel smal↔breed de knoppen opnieuw opbouwen, anders houdt de werkbalk de oude breedte (afgekapte namen)
         .toolbar { ToolbarItem(placement: .primaryAction) { header(theme, pages).id(wide) }.sharedBackgroundVisibility(.hidden) }
@@ -269,7 +269,7 @@ struct RootView: View {
         var size = size
         let top = topLeft?.y ?? w.frame.maxY, left = topLeft?.x ?? w.frame.minX
         if let vf = w.screen?.visibleFrame {
-            size.width = max(260, min(size.width, vf.maxX - left))   // niet voorbij de rechterrand
+            size.width = max(316, min(size.width, vf.maxX - left))   // niet voorbij de rechterrand
             size.height = max(160, min(size.height, top - vf.minY))  // niet onder het Dock/de onderrand
         }
         let f = NSRect(x: left, y: top - size.height, width: size.width, height: size.height)
