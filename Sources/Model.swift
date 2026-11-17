@@ -21,7 +21,7 @@ final class Meter: ObservableObject {
     @Published private(set) var recent: [Sample] = []   // laatste uur, elke 2 s
     @Published private(set) var today: [Sample] = []    // vandaag, gemiddelde per minuut
     /// Programma's: `ui` ververst elke 2 s zolang die pagina open is; `minuteApps` meet per minuut voor de log/analyse.
-    let ui = AppMonitor(), minuteApps = AppMonitor()
+    let ui = AppMonitor(network: true), minuteApps = AppMonitor()
     /// Bij openen van de Programs-pagina meteen meten, zodat de lijst niet 2 s leeg is.
     var programsVisible = false {
         didSet { if programsVisible && !oldValue { ui.refresh(totalCPU: latest.cpu, totalMemGB: latest.ramUsedGB) } }

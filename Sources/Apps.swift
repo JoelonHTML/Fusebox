@@ -16,6 +16,7 @@ struct AppUsage: Identifiable {
     var energyW: Double       // geschat vermogen in watt
     let icon: NSImage?
     var diskRead = 0.0, diskWrite = 0.0   // bytes per seconde (lezen/schrijven van de SSD)
+    var netIn = 0.0, netOut = 0.0         // bytes per seconde internet (alleen met "netPerApp" aan)
     var threads = 0
     var started: Date?                    // vroegste start van de processen in deze groep
     var canStop: Bool { kind != .macos && pids.first.map { $0 > 0 } == true && id != AppUsage.selfID }
@@ -37,6 +38,12 @@ final class AppMonitor: ObservableObject {
     private let tick: Double = { var t = mach_timebase_info(); mach_timebase_info(&t); return Double(t.numer) / Double(t.denom) }()
     private typealias Resp = @convention(c) (pid_t) -> pid_t
     private let responsible: Resp? = dlsym(dlopen(nil, RTLD_NOW), "responsibility_get_pid_responsible_for_pid").map { unsafeBitCast($0, to: Resp.self) }
+    // Internet per proces via nettop: alleen voor de Programs-pagina (`network`), en alleen met de instelling aan
+    private let network: Bool
+    private var netBytes: [pid_t: (UInt64, UInt64)] = [:], netRate: [pid_t: (Double, Double)] = [:]
+    private var netTime = DispatchTime.now(), netBusy = false
+
+    init(network: Bool = false) { self.network = network }
 
     /// Eén meting; percentages gelden voor de tijd sinds de vorige aanroep.
     /// `totalCPU`/`totalMemGB` (van de hele Mac) bepalen de restpost "macOS zelf".
@@ -52,6 +59,7 @@ final class AppMonitor: ObservableObject {
         var groups: [String: AppUsage] = [:]
         var seen: [pid_t: (cpu: UInt64, energy: UInt64, rd: UInt64, wr: UInt64)] = [:]
         let nowAbs = mach_absolute_time(), nowDate = Date()
+        if network { pollNet() }
         for pid in pids where pid > 0 {
             var ri = rusage_info_v6()
             let ok = withUnsafeMutablePointer(to: &ri) { p in
@@ -71,14 +79,16 @@ final class AppMonitor: ObservableObject {
             let threads = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, Int32(MemoryLayout<proc_taskinfo>.size)) > 0 ? Int(ti.pti_threadnum) : 0
             let start = nowDate.addingTimeInterval(-Double(nowAbs &- ri.ri_proc_start_abstime) * tick / 1e9)
             let mem = Double(ri.ri_phys_footprint) / 1_073_741_824
+            let net = netRate[pid] ?? (0, 0)
             if var g = groups[key] {
                 g.pids.append(pid); g.cpu += cpu; g.memGB += mem; g.energyW += watt
-                g.diskRead += rd; g.diskWrite += wr; g.threads += threads; g.started = min(g.started ?? start, start)
+                g.diskRead += rd; g.diskWrite += wr; g.netIn += net.0; g.netOut += net.1
+                g.threads += threads; g.started = min(g.started ?? start, start)
                 groups[key] = g
             } else {
                 groups[key] = AppUsage(id: key, name: meta.name, explanation: meta.explanation, kind: meta.kind,
                                        pids: [pid], cpu: cpu, memGB: mem, energyW: watt, icon: meta.icon,
-                                       diskRead: rd, diskWrite: wr, threads: threads, started: start)
+                                       diskRead: rd, diskWrite: wr, netIn: net.0, netOut: net.1, threads: threads, started: start)
             }
         }
         last = seen
@@ -89,7 +99,49 @@ final class AppMonitor: ObservableObject {
         groups["macos"] = AppUsage(id: "macos", name: "macOS itself", explanation: "Drawing the screen, the kernel and system services only macOS is allowed to measure",
                                    kind: .macos, pids: [], cpu: max(totalCPU - measuredCPU, 0), memGB: max(totalMemGB - measuredMem, 0),
                                    energyW: 0, icon: NSImage(systemSymbolName: "apple.logo", accessibilityDescription: nil))
+        // nettop ziet ook root-processen: dat verkeer hoort bij "macOS zelf"
+        for (pid, n) in netRate where seen[pid] == nil { groups["macos"]?.netIn += n.0; groups["macos"]?.netOut += n.1 }
         apps = groups.values.sorted { $0.cpu == $1.cpu ? $0.memGB > $1.memGB : $0.cpu > $1.cpu }
+    }
+
+    /// Start om de ~4 s één nettop-meting op de achtergrond; de snelheden komen in de volgende refresh mee.
+    /// Kost per run ~10 ms processor (gemeten op M-serie), dus ~0,3% van één kern.
+    private func pollNet() {
+        guard UserDefaults.standard.bool(forKey: "netPerApp") else { netBytes = [:]; netRate = [:]; return }
+        let age = Double(DispatchTime.now().uptimeNanoseconds - netTime.uptimeNanoseconds) / 1e9
+        if age > 10 { netRate = [:] }   // pagina was dicht: oude snelheden niet meer tonen
+        guard !netBusy, age >= 3 || netBytes.isEmpty else { return }
+        netBusy = true
+        DispatchQueue.global(qos: .utility).async { [self] in
+            let out = Diag.run("/usr/bin/nettop", ["-P", "-L", "1", "-n", "-x", "-J", "bytes_in,bytes_out"], timeout: 2)
+            let bytes = Self.parseNettop(out), now = DispatchTime.now()
+            DispatchQueue.main.async { [self] in
+                let dt = Double(now.uptimeNanoseconds - netTime.uptimeNanoseconds) / 1e9
+                netRate = dt <= 10 ? Self.netRates(netBytes, bytes, dt: dt) : [:]   // te oud = alleen nieuw nulpunt
+                netBytes = bytes; netTime = now; netBusy = false
+            }
+        }
+    }
+
+    /// nettop -L (CSV): kopregel ",bytes_in,bytes_out," en daarna "naam.pid,in,uit," (totaal sinds start van het proces).
+    static func parseNettop(_ out: String) -> [pid_t: (UInt64, UInt64)] {
+        var r: [pid_t: (UInt64, UInt64)] = [:]
+        for line in out.split(separator: "\n") {
+            let f = line.split(separator: ",")   // van achteren lezen: de naam kan zelf een komma bevatten
+            guard f.count >= 3, let i = UInt64(f[f.count - 2]), let o = UInt64(f[f.count - 1]),
+                  let pid = f[f.count - 3].split(separator: ".").last.flatMap({ pid_t($0) }) else { continue }
+            r[pid] = (i, o)
+        }
+        return r
+    }
+
+    /// Bytes per seconde per pid; nieuwe of hergebruikte pids (teller lager dan eerst) tellen niet mee.
+    static func netRates(_ old: [pid_t: (UInt64, UInt64)], _ new: [pid_t: (UInt64, UInt64)], dt: Double) -> [pid_t: (Double, Double)] {
+        guard dt > 0 else { return [:] }
+        return new.reduce(into: [:]) { r, e in
+            guard let p = old[e.key], e.value.0 >= p.0, e.value.1 >= p.1 else { return }
+            r[e.key] = (Double(e.value.0 - p.0) / dt, Double(e.value.1 - p.1) / dt)
+        }
     }
 
     /// Stopt een programma netjes (zoals ⌘Q); achtergrondprocessen krijgen SIGTERM. Geeft false als het niet mag.

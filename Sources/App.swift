@@ -135,6 +135,10 @@ struct MeterkastApp: App {
         let ms = Int(-t0.timeIntervalSinceNow * 1000)
         precondition(m.apps.count > 5 && m.apps.contains { $0.id == "macos" }, "apps \(m.apps.count)")
         precondition(m.apps.allSatisfy { $0.cpu >= 0 && $0.memGB >= 0 }, "apps negatief")
+        let nt = AppMonitor.parseNettop(",bytes_in,bytes_out,\nlaunchd.1,0,0,\nSome App, Helper.v2.4321,1500,200,\nkapot.x,1,2,\n")
+        precondition(nt.count == 2 && nt[4321].map { $0 == (1500, 200) } == true && nt[1].map { $0 == (0, 0) } == true, "nettop \(nt)")
+        let nr = AppMonitor.netRates([4321: (500, 100), 7: (900, 9)], [4321: (1500, 200), 7: (10, 9), 8: (5, 5)], dt: 2)
+        precondition(nr.count == 1 && nr[4321].map { $0 == (500, 50) } == true, "nettop-delta \(nr)")
         let top = m.apps.prefix(5).map { "\($0.name) \(String(format: "%.1f", $0.cpu))% \(String(format: "%.2f", $0.memGB)) GB" }
         print("apps: \(m.apps.count) groepen in \(ms) ms; top: \(top.joined(separator: " | "))")
         print("ok:", x.csv, terminator: "")

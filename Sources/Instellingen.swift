@@ -516,6 +516,7 @@ struct NotificationExample: View {
 struct DataSettings: View {
     @EnvironmentObject var meter: Meter
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
+    @AppStorage("netPerApp") private var netPerApp = false
     @State private var confirmWipe = false
 
     var body: some View {
@@ -545,6 +546,10 @@ struct DataSettings: View {
                     .font(.caption).foregroundStyle(.secondary)
             } else {
                 Text("Off: Fusebox makes no internet connections at all.").font(.caption).foregroundStyle(.secondary)
+            }
+            Toggle(isOn: $netPerApp) {
+                Text("Internet usage per app")
+                Text("Download and upload per app on the Processes page, read on this Mac only while that page is open.")
             }
         }
     }
