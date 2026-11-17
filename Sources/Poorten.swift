@@ -1,10 +1,9 @@
 import SwiftUI
 
-// MARK: - Poorten-pagina: bovenaan wat de Mac binnenkrijgt, daaronder een boom Mac → poort → kabel → lader/dock → apparaten
+// MARK: - Docked-pagina: bovenaan wat de Mac binnenkrijgt, daaronder per poort een korte lijst poort → kabel → lader/dock → apparaten
 //
-// Tijdelijk drie boomvormen om te kiezen (instelling "portsLayout"):
-//   o = lijst met verbindingslijnen (zoals Finder), t = van boven naar beneden, l = van links naar rechts
-// Klik op een knoop voor de details. Gegevens: PoortenData.swift; alleen bijgewerkt zolang deze pagina open is.
+// Per regel één getal rechts; hubs en de Billboard van een dock alleen met "Show hubs & internals".
+// Klik op een regel voor de details. Gegevens: PoortenData.swift; alleen bijgewerkt zolang deze pagina open is.
 
 struct PortsView: View {
     @StateObject private var watcher = PortWatcher()
@@ -20,29 +19,26 @@ struct PortsView: View {
 
 struct PortsContent: View {
     let snap: PortsSnapshot, loaded: Bool
-    var forced: String? = nil   // vaste lay-out (bijv. om te renderen)
-    @AppStorage("portsLayout") private var layout = "o"
+    @State private var internals = false
     @Environment(\.theme) private var theme
 
     var body: some View {
         let sums = PortSum.all(snap)
-        let root = PortTree.build(snap, sums)
-        let style = forced ?? layout
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 14) {
             IntoMac(snap: snap, sums: sums).padding(.top, 2)
             if loaded && snap.ports.isEmpty {
                 Text("No USB-C or MagSafe ports found on this Mac.").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
             }
-            switch style {
-            case "t": TreeView(root: root, sums: sums, style: .down)
-            case "l": TreeView(root: root, sums: sums, style: .right)
-            default: OutlineLayout(root: root, sums: sums)
+            DockedList(groups: PortTree.build(sums, internals: internals), empty: sums.filter { !$0.port.connected }, sums: sums)
+            HStack(spacing: 14) {
+                Button { withAnimation(.snappy(duration: 0.25)) { internals.toggle() } } label: {
+                    Label(internals ? "Hide hubs & internals" : "Show hubs & internals", systemImage: "point.3.filled.connected.trianglepath.dotted")
+                        .font(theme.label(10)).foregroundStyle(theme.onRow(true)).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+                Spacer(minLength: 0)
             }
             otherDevices
-            if forced == nil {   // TIJDELIJK: boomvorm kiezen
-                Picker("", selection: $layout) { Text("List").tag("o"); Text("Down").tag("t"); Text("Right").tag("l") }
-                    .pickerStyle(.segmented).labelsHidden().fixedSize().controlSize(.small)
-            }
         }
     }
 
@@ -69,31 +65,26 @@ private struct IntoMac: View {
     var body: some View {
         let n = snap.power
         let inW = n.flatMap { $0.external ? $0.mW : nil }.map { Double($0) / 1000 }
-        let charger = sums.compactMap { s in s.port.charger.map { (s, $0) } }.max { $0.1.maxW < $1.1.maxW }
-        let data = sums.filter { $0.port.links.contains { $0.type != "DisplayPort" } }
-        let fastest = data.compactMap(\.dataBps).max()
+        let charger = sums.compactMap(\.port.charger).max { $0.maxW < $1.maxW }
+        let fastest = sums.filter { $0.port.links.contains { $0.type != "DisplayPort" } }.compactMap(\.dataBps).max()
         let devices = sums.map(\.deviceCount).reduce(0, +)
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 10) {
                 VStack(alignment: .leading, spacing: 0) {
                     BigNum(value: inW.map { trim($0) } ?? "0", unit: "W", size: 34)
                     Text(inW == nil ? "on battery" : "into this Mac").font(theme.label(10)).foregroundStyle(theme.onRow(true))
                 }
                 Spacer(minLength: 8)
-                if let pc = n?.percent {
+                if let n, let pc = n.percent {
                     VStack(alignment: .trailing, spacing: 0) {
                         BigNum(value: "\(Int(pc.rounded()))", unit: "%", size: 24)
-                        Text(batteryText(n!)).font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                        Text(batteryText(n)).font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                     }
                 }
             }
             NetFlow(spacing: 6) {
-                if let (s, c) = charger {
-                    stat("bolt.fill", "\(trim(c.maxW)) W", "charger · \(s.short.lowercased())")
-                    if let w = c.winning { stat("checkmark.seal", w.text, "agreed") }
-                }
-                stat("arrow.left.arrow.right", fastest.map { speedParts($0).0 + " " + speedParts($0).1 } ?? "none",
-                     data.count == 1 ? "1 data link" : "\(data.count) data links")
+                if let c = charger { stat("bolt.fill", "\(trim(c.maxW)) W", "charger") }
+                if let f = fastest { stat("arrow.left.arrow.right", speedParts(f).0 + " " + speedParts(f).1, "link") }
                 if devices > 0 { stat("point.3.connected.trianglepath.dotted", "\(devices)", devices == 1 ? "device" : "devices") }
             }
         }
@@ -102,10 +93,9 @@ private struct IntoMac: View {
     }
 
     private func batteryText(_ n: PowerNow) -> String {
-        let t = n.minutes.map { " · " + duration($0) } ?? ""
         if n.full { return "battery full" }
-        if n.charging { return "charging" + t.replacingOccurrences(of: " · ", with: " · full in ") }
-        return n.external ? "not charging" : "left" + t.replacingOccurrences(of: " · ", with: " · ")
+        if n.charging { return "charging" + (n.minutes.map { " · full in " + duration($0) } ?? "") }
+        return n.external ? "not charging" : (n.minutes.map { duration($0) + " left" } ?? "on battery")
     }
 
     private func stat(_ icon: String, _ value: String, _ label: String) -> some View {
@@ -119,17 +109,18 @@ private struct IntoMac: View {
     }
 }
 
-// MARK: - Boom (gedeeld door de drie vormen)
+// MARK: - Lijst per poort
 
 /// Wat er nu loopt naast wat maximaal kan (data in bit/s, stroom in W). `slow` = loopt duidelijk onder wat kan.
 struct LinkLoad { var now: Double?, max: Double?, power = false, slow = false }
 
 struct TNode: Identifiable {
-    enum Kind { case mac, port, empty, cable, source, hub, device, tb }
+    enum Kind { case port, cable, source, hub, device, tb }
     let id: String, kind: Kind, icon: String, title: String
-    var metrics: [LinkLoad] = []
-    var facts: [String] = []
-    var level: PortNote.Level? = nil
+    var main: LinkLoad? = nil       // het ene getal rechts
+    var facts: [String] = []        // hooguit 4 korte feiten
+    var warn: String? = nil         // één gewone zin onder de regel
+    var info: String? = nil         // ⓘ met uitleg bij aanwijzen
     var dim = false
     var children: [TNode] = []
     var portID: String? = nil
@@ -137,17 +128,16 @@ struct TNode: Identifiable {
 }
 
 enum PortTree {
-    static func build(_ snap: PortsSnapshot, _ sums: [PortSum]) -> TNode {
-        let empty = sums.filter { !$0.port.connected }
-        var kids = sums.filter(\.port.connected).map(port)
-        if !empty.isEmpty {
-            kids.append(TNode(id: "empty", kind: .empty, icon: "circle.dashed",
-                              title: empty.map { $0.port.isMagSafe ? $0.port.kind : "USB-C \($0.port.number)" }.joined(separator: " · "),
-                              facts: ["empty"], level: empty.flatMap(\.notes).contains { $0.level == .warn } ? .warn : nil, dim: true))
-        }
-        let used = sums.count - empty.count
-        return TNode(id: "mac", kind: .mac, icon: "laptopcomputer", title: "This Mac",
-                     facts: ["\(used) of \(sums.count) ports in use"], children: kids)
+    /// Per aangesloten poort één groep. `internals`: ook hubs (ook die in een dock) en de Billboard tonen.
+    static func build(_ sums: [PortSum], internals: Bool) -> [TNode] {
+        sums.filter(\.port.connected).map { port($0, internals: internals) }
+    }
+
+    /// Bij welke regel een oordeel hoort.
+    private static func notes(_ p: PortSum, _ topics: Set<PortNote.Topic>) -> (warn: String?, info: String?) {
+        let ns = p.notes.filter { topics.contains($0.topic) }
+        let info = ns.filter { $0.level == .info }.map(\.text)
+        return (ns.first { $0.level == .warn }?.text, info.isEmpty ? nil : info.joined(separator: "\n\n"))
     }
 
     /// Hoogste snelheid van wat erachter zit, als die vaststaat (USB 2- of 3.0-hub/apparaat).
@@ -156,76 +146,81 @@ enum PortTree {
         return all.isEmpty || all.contains(nil) ? nil : all.compactMap { $0 }.max()   // één onzekere = geen uitspraak
     }
 
-    private static func port(_ p: PortSum) -> TNode {
-        let active = p.port.active.filter { $0 != "CC" }.map(Ports.transportName) + (p.port.charger != nil ? ["power in"] : [])
+    private static func port(_ p: PortSum, internals: Bool) -> TNode {
         let pmax = Ports.portMax(p.port.supported)
         // Trager dan poort, kabel en apparaat samen toelaten? Dan zit er ergens een rem op.
         let allowed = [pmax, p.cableBps, sourceMax(p)].compactMap { $0 }.min()
         let slow = p.dataBps.map { now in allowed.map { now < $0 * 0.9 } ?? false } ?? false
-        var m = [LinkLoad(now: p.dataBps, max: pmax, slow: slow)]
-        if p.port.charger != nil { m.append(LinkLoad(now: p.nowW, max: p.chargerW, power: true)) }
-        var n = TNode(id: "port:" + p.id, kind: .port, icon: p.port.isMagSafe ? "bolt.horizontal.fill" : "cable.connector",
-                      title: p.port.isMagSafe ? p.port.kind : "USB-C \(p.port.number)", metrics: p.port.isMagSafe ? Array(m.dropFirst()) : m,
-                      facts: [active.joined(separator: " + ")].filter { !$0.isEmpty } + (slow ? ["slower than port, cable and device allow"] : []),
-                      level: slow ? .warn : p.level(.port), portID: p.id)
-        let src = source(p)
-        n.children = p.port.isMagSafe ? [src] : [cable(p, src)]
-        return n
+        let types = Set(p.port.links.map(\.type))
+        let kind = types.contains("CIO") ? "Thunderbolt" : types.contains("USB3") ? "USB 3" : types.contains("USB2") ? "USB 2"
+            : types.contains("DisplayPort") ? "video" : nil
+        let n = notes(p, [.port, .data])
+        var node = TNode(id: "port:" + p.id, kind: .port, icon: p.port.isMagSafe ? "bolt.horizontal.fill" : "cable.connector",
+                         title: p.port.title,
+                         main: p.port.isMagSafe || p.dataBps == nil ? p.nowW.map { LinkLoad(now: $0, max: nil, power: true) } : LinkLoad(now: p.dataBps, max: pmax, slow: slow),
+                         facts: [kind, p.port.isMagSafe ? nil : p.nowW.map { "\(trim($0)) W in" }].compactMap { $0 },
+                         warn: n.warn ?? (slow ? "Runs slower than the port, cable and device allow. Try another cable." : nil), info: n.info, portID: p.id)
+        let src = source(p, internals: internals)
+        node.children = p.port.isMagSafe ? [src] : [cable(p, src)]
+        return node
     }
 
     private static func cable(_ p: PortSum, _ src: TNode) -> TNode {
-        var facts: [String] = []
-        if let c = p.port.cable {
-            facts.append([p.cableKind, c.mA.map(amp), c.epr ? "EPR" : nil].compactMap { $0 }.joined(separator: " · "))
-            if let l = c.latency, (1...8).contains(l) { facts.append(l == 8 ? "over 7 m" : "about \(l) m") }
-        } else {
-            facts = ["no e-marker: speed unknown"]
-        }
-        let m = [LinkLoad(now: p.dataBps, max: p.cableBps), LinkLoad(now: p.nowW, max: Double(p.cableW ?? 60), power: true)]
+        let c = p.port.cable
+        var facts = [c == nil ? "no e-marker" : p.cableKind, "\(p.cableW ?? 60) W"]
+        if let l = c?.latency, (1...8).contains(l) { facts.append(l == 8 ? "over 7 m" : "~\(l) m") }
+        let data = !p.port.links.isEmpty && p.cableBps != nil
+        let n = notes(p, [.cable])
         return TNode(id: "cable:" + p.id, kind: .cable, icon: "cable.connector.horizontal", title: "Cable",
-                     metrics: p.port.links.isEmpty ? [m[1]] : m, facts: facts, level: p.level(.cable), children: [src], portID: p.id)
+                     main: data ? LinkLoad(now: p.dataBps, max: p.cableBps) : LinkLoad(now: nil, max: Double(p.cableW ?? 60), power: true),
+                     facts: data ? facts : [facts[0]] + facts.dropFirst(2), warn: n.warn, info: n.info, children: [src], portID: p.id)
     }
 
-    private static func source(_ p: PortSum) -> TNode {
+    private static func source(_ p: PortSum, internals: Bool) -> TNode {
         var facts: [String] = []
-        if let w = p.port.charger?.winning { facts.append("\(w.text) agreed") }
-        if p.dataBps != nil { facts.append(p.dataName) } else if p.port.links.isEmpty && p.port.charger != nil { facts.append("power only") }
-        var m: [LinkLoad] = []
-        if let c = p.port.charger { m.append(LinkLoad(now: p.nowW, max: c.maxW, power: true)) }
-        if p.dataBps != nil { m.append(LinkLoad(now: p.dataBps, max: sourceMax(p))) }
-        var kids = p.roots.compactMap { usb($0, via: 0) }
+        if let now = p.nowW, p.port.charger != nil { facts.append("\(trim(now)) W to Mac") }
+        if let w = p.port.charger?.winning { facts.append("\(volt(w.mV)) × \(amp(w.mA))") }
+        if p.port.charger == nil, let r = p.roots.first, !r.hub { facts.append(r.maker) }
+        var kids: [TNode]
+        if internals { kids = p.roots.compactMap { usb($0, via: 0) } }
+        else { kids = p.devices.map { device($0) } }
         kids += p.tb.map { TNode(id: "tb:\($0.id)", kind: .tb, icon: "bolt.horizontal.fill", title: $0.name, facts: [$0.vendor, "Thunderbolt"].filter { !$0.isEmpty }, portID: p.id) }
-        return TNode(id: "src:" + p.id, kind: .source, icon: p.what.icon, title: p.what.name, metrics: m, facts: facts,
-                     level: p.level(.power, .data), children: kids, portID: p.id)
+        if !internals, p.roots.count == 1, !p.roots[0].hub { kids = [] }   // één los apparaat: dat is deze regel zelf
+        let n = notes(p, [.power, .devices])
+        return TNode(id: "src:" + p.id, kind: .source, icon: p.what.icon, title: p.what.name,
+                     main: p.port.charger.map { LinkLoad(now: $0.maxW, max: nil, power: true) } ?? p.dataBps.map { LinkLoad(now: $0, max: nil) },
+                     facts: facts, warn: n.warn, info: n.info, children: kids, portID: p.id)
     }
 
-    /// USB-apparaat of hub. Hubs zonder iets erachter vallen weg; een hub met alleen één hub eronder wordt één knoop.
-    private static func usb(_ d: USBDev, via: Int) -> TNode? {
+    /// Apparaat in de gewone weergave: naam, snelheid, maker en USB-soort.
+    private static func device(_ d: USBDev) -> TNode {
         // USB 3-apparaat dat op USB 2-snelheid hangt: betrouwbaar teken van een rem (kabel, hub of poort)
         let slow = (d.bcd ?? 0) >= 0x300 && (d.bps ?? 0) > 0 && (d.bps ?? 0) <= 480e6
-        // Max alleen waar de versie het zegt: USB 2-hubs zijn altijd 480 Mbit/s, USB 3.0 is 5; een USB 2.0-toetsenbord kan best 1,5 Mbit/s zijn
-        let max = (d.hub || (d.bcd ?? 0) >= 0x300) ? d.bcd.flatMap(Ports.usbMax) : nil
-        let m = LinkLoad(now: d.bps, max: max, slow: slow)
-        let spec = d.bcd.map { String(format: "USB %d.%d", $0 >> 8, $0 >> 4 & 0xF) }
-        if d.hub {
-            if d.leaves.isEmpty { return nil }
-            if d.children.count == 1, d.children[0].hub { return usb(d.children[0], via: via + 1) }
-            let kids = d.children.compactMap { usb($0, via: 0) }
-            return TNode(id: "usb:\(d.id)", kind: .hub, icon: deviceIcon(d), title: d.name, metrics: [m],
-                         facts: [[d.maker, spec].compactMap { $0 }.joined(separator: " · "), via > 0 ? "\(via + 1) hubs deep" : nil].compactMap { $0 },
-                         level: slow ? .warn : nil, children: kids, usb: d)
-        }
-        var facts = [[d.maker, spec.map { $0 + " device" }].compactMap { $0 }.joined(separator: " · ")]
-        if let ma = d.powerMA { facts.append("\(ma) mA") }
-        if slow { facts.append("USB 3 device running at USB 2 speed") }
-        if d.billboard { facts = ["mode info from the dock"] }
-        return TNode(id: "usb:\(d.id)", kind: .device, icon: deviceIcon(d), title: d.name, metrics: [m], facts: facts,
-                     level: slow ? .warn : d.billboard ? .info : nil, dim: d.billboard, usb: d)
+        return TNode(id: "usb:\(d.id)", kind: .device, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil, slow: slow),
+                     facts: [d.maker, d.bps.map(shortSpeed)].compactMap { $0 },
+                     warn: slow ? "Runs at USB 2 speed, but it can do USB 3. Try another cable or port." : nil, usb: d)
     }
 
-    static func find(_ id: String, in n: TNode) -> TNode? {
-        if n.id == id { return n }
-        for c in n.children { if let f = find(id, in: c) { return f } }
+    /// Met "internals": de echte USB-boom. Hubs zonder iets erachter vallen weg; een hub met alleen één hub eronder wordt één regel.
+    private static func usb(_ d: USBDev, via: Int) -> TNode? {
+        guard d.hub else {
+            var n = device(d)
+            if d.billboard { n.facts = ["mode info from the dock"]; n.dim = true; n.info = "Billboard: the dock tells the Mac which extra modes (such as video over USB-C) are not active." }
+            return n
+        }
+        if d.leaves.isEmpty { return nil }
+        if d.children.count == 1, d.children[0].hub { return usb(d.children[0], via: via + 1) }
+        return TNode(id: "usb:\(d.id)", kind: .hub, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil),
+                     facts: [d.maker, via > 0 ? "\(via + 1) hubs" : nil].compactMap { $0 }, dim: true,
+                     children: d.children.compactMap { usb($0, via: 0) }, usb: d)
+    }
+
+    static func shortSpeed(_ b: Double) -> String {
+        switch b { case ..<100e6: "USB 1"; case ..<1e9: "USB 2"; default: "USB 3" }
+    }
+
+    static func find(_ id: String, in nodes: [TNode]) -> TNode? {
+        for n in nodes { if n.id == id { return n }; if let f = find(id, in: n.children) { return f } }
         return nil
     }
 }
@@ -243,8 +238,7 @@ private struct LoadView: View {
                 Text(f(n).0).font(theme.number(size)).foregroundStyle(m.slow ? theme.level(.warn) : theme.onRow())
                 if let x = m.max {
                     let a = f(n), b = f(x)
-                    Text(a.1 == b.1 ? "/ \(b.0) \(b.1)" : "\(a.1) of \(b.0) \(b.1)").font(small)
-                        .foregroundStyle(n > x * 1.01 ? theme.level(.info) : theme.onRow(true))   // meer dan het etiket zegt
+                    Text(a.1 == b.1 ? "/ \(b.0) \(b.1)" : "\(a.1) of \(b.0) \(b.1)").font(small).foregroundStyle(theme.onRow(true))
                 } else {
                     Text(f(n).1).font(small).foregroundStyle(theme.onRow(true))
                 }
@@ -259,33 +253,7 @@ private struct LoadView: View {
     }
 }
 
-/// Knoop-inhoud: icoon, naam, groot getal, 1–3 korte feiten.
-private struct NodeCard: View {
-    let node: TNode, on: Bool
-    var compact = false
-    @Environment(\.theme) private var theme
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(spacing: 5) {
-                Image(systemName: node.icon).font(.system(size: 10 * theme.scale)).frame(width: 14)
-                Text(node.title).lineLimit(1).foregroundStyle(theme.onRow(node.dim))
-                Badge(level: node.level)
-                Spacer(minLength: 0)
-            }
-            .font(theme.label(11).weight(.semibold)).foregroundStyle(theme.onRow(true))
-            ForEach(Array(node.metrics.enumerated()), id: \.offset) { i, m in LoadView(m: m, size: i == 0 ? 18 : 13) }
-            ForEach(node.facts.prefix(3), id: \.self) { Text($0).lineLimit(1) }
-                .font(theme.label(10)).foregroundStyle(theme.onRow(true))
-        }
-        .padding(.horizontal, 9).padding(.vertical, 7)
-        .frame(minWidth: 120, maxWidth: 210, alignment: .leading)
-        .background(theme.tile.opacity(node.dim ? 0.5 : 1), in: .rect(cornerRadius: 10))
-        .overlay(RoundedRectangle(cornerRadius: 10).stroke(on ? theme.accent : node.level == .warn ? theme.warn.opacity(0.7) : .clear, lineWidth: 1.5))
-        .contentShape(.rect)
-    }
-}
-
-/// Details van de aangeklikte knoop.
+/// Details van de aangeklikte regel.
 private struct NodeDetails: View {
     let node: TNode, sums: [PortSum]
     @Environment(\.theme) private var theme
@@ -294,64 +262,68 @@ private struct NodeDetails: View {
         VStack(alignment: .leading, spacing: 8) {
             if let d = node.usb { DeviceCard(dev: d) }
             else if let p {
-                Label(node.kind == .cable ? "Cable in \(p.port.title)" : node.kind == .port ? p.port.title : node.title, systemImage: node.icon)
+                Label(node.kind == .cable ? "Cable in \(p.port.title)" : node.title, systemImage: node.icon)
                     .font(theme.label(13).weight(.semibold))
                 PortDetails(sum: p, topics: node.kind == .cable ? [.cable] : node.kind == .port ? [.port] : [.power, .data])
-            } else {
-                Text(node.kind == .empty ? "Plug in a cable, charger or device to see its speed, power and the cable's e-marker."
-                     : "Click a port, cable, charger or device for its details.")
-                    .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
-// MARK: - Vorm 1: lijst met verbindingslijnen (zoals Finder)
-
 /// Breed: lijst links (niet breder dan nodig), details rechts. Smal: details onder de aangeklikte regel.
-private struct OutlineLayout: View {
-    let root: TNode, sums: [PortSum]
+private struct DockedList: View {
+    let groups: [TNode], empty: [PortSum], sums: [PortSum]
     @State private var sel: String?
     @Environment(\.theme) private var theme
     var body: some View {
-        let picked = sel.flatMap { PortTree.find($0, in: root) }
+        let picked = sel.flatMap { PortTree.find($0, in: groups) }
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
-                OutlineTree(root: root, sums: sums, sel: $sel, inline: false).frame(maxWidth: 560)
+                list(inline: false).frame(maxWidth: 560)
                 Group {
-                    if let picked, picked.kind != .mac { NodeDetails(node: picked, sums: sums) }
-                    else { Text("Click a port, cable, charger or device for its details.").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
+                    if let picked { NodeDetails(node: picked, sums: sums) }
+                    else { Text("Click a row for its details.").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme)
             }
             .frame(minWidth: 900)
-            OutlineTree(root: root, sums: sums, sel: $sel, inline: true)
+            list(inline: true).frame(maxWidth: 600, alignment: .leading)   // getallen niet ver van de namen
+        }
+    }
+
+    private func list(inline: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            ForEach(Array(groups.enumerated()), id: \.element.id) { i, g in
+                PortGroupList(root: g, sums: sums, sel: $sel, inline: inline).themedRow(theme, index: i)
+            }
+            if !empty.isEmpty {
+                Label(empty.map(\.port.title).joined(separator: " · ") + " · empty", systemImage: "circle.dashed")
+                    .font(theme.label(11)).foregroundStyle(theme.onRow(true).opacity(0.75)).padding(.leading, 4)
+            }
         }
     }
 }
 
-private struct OutlineTree: View {
+/// Eén poort met wat eraan hangt, met verbindingslijnen zoals in Finder.
+private struct PortGroupList: View {
     let root: TNode, sums: [PortSum]
     @Binding var sel: String?
     let inline: Bool
-    @State private var collapsed: Set<String> = []
     @Environment(\.theme) private var theme
 
-    private struct Row { let node: TNode, last: [Bool] }   // last: per niveau of die knoop de laatste is
+    private struct Row { let node: TNode, last: [Bool] }   // last: per niveau of die regel de laatste is
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(rows, id: \.node.id) { row($0) }
         }
-        .themedRow(theme)
     }
 
     private var rows: [Row] {
         var out: [Row] = []
         func walk(_ n: TNode, _ last: [Bool]) {
             out.append(Row(node: n, last: last))
-            guard !collapsed.contains(n.id) else { return }
             for (i, c) in n.children.enumerated() { walk(c, last + [i == n.children.count - 1]) }
         }
         walk(root, [])
@@ -361,55 +333,52 @@ private struct OutlineTree: View {
     private func row(_ r: Row) -> some View {
         let n = r.node, on = sel == n.id
         return HStack(alignment: .top, spacing: 0) {
-            // Lijnen: doorlopend voor voorouders die nog broers hebben, een hoekje voor deze knoop
             ForEach(Array(r.last.enumerated()), id: \.offset) { i, isLast in
                 Connector(kind: i == r.last.count - 1 ? (isLast ? .elbow : .tee) : (isLast ? .none : .pass))
-                    .stroke(theme.onRow(true).opacity(0.45), lineWidth: 1.5)
+                    .stroke(theme.onRow(true).opacity(0.4), lineWidth: 1.5)
                     .frame(width: 16).frame(maxHeight: .infinity)
             }
             VStack(alignment: .leading, spacing: 6) {
-                HStack(alignment: .top, spacing: 6) {
+            VStack(alignment: .leading, spacing: 4) {
+                HStack(alignment: .top, spacing: 7) {
                     Image(systemName: n.icon).font(.system(size: 11 * theme.scale)).foregroundStyle(theme.onRow(true)).frame(width: 16).padding(.top, 2)
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 5) {
-                            Text(n.title).font(theme.label(12).weight(n.kind == .mac ? .bold : .semibold)).lineLimit(1)
+                            Text(n.title).font(theme.label(n.kind == .port ? 13 : 12).weight(.semibold)).lineLimit(1)
                                 .foregroundStyle(theme.onRow(n.dim))
-                            Badge(level: n.level)
-                            if !n.children.isEmpty && n.kind != .mac {
-                                Image(systemName: "chevron.right").font(.system(size: 8, weight: .bold)).foregroundStyle(theme.onRow(true))
-                                    .rotationEffect(.degrees(collapsed.contains(n.id) ? 0 : 90))
-                                    .onTapGesture { withAnimation(.snappy(duration: 0.2)) { toggle(n.id) } }
+                            if let i = n.info {
+                                Image(systemName: "info.circle").font(.system(size: 10 * theme.scale)).foregroundStyle(theme.onRow(true)).help(i)
                             }
                         }
                         if !n.facts.isEmpty {
-                            Text(n.facts.joined(separator: " · ")).font(theme.label(10)).foregroundStyle(theme.onRow(true))
-                                .fixedSize(horizontal: false, vertical: true)
+                            Text(n.facts.prefix(4).joined(separator: " · ")).font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                         }
                     }
                     Spacer(minLength: 6)
-                    VStack(alignment: .trailing, spacing: 0) {
-                        ForEach(Array(n.metrics.enumerated()), id: \.offset) { i, m in LoadView(m: m, size: i == 0 ? 15 : 11) }
-                    }
-                    .fixedSize()
+                    if let m = n.main { LoadView(m: m, size: n.kind == .port ? 16 : 14).fixedSize() }
                 }
-                .padding(.vertical, 4).padding(.horizontal, 6)
-                .background(on ? theme.accent.opacity(0.12) : .clear, in: .rect(cornerRadius: 7))
-                .contentShape(.rect)
-                .onTapGesture { withAnimation(.snappy(duration: 0.2)) { sel = on ? nil : n.id } }
-                if on && inline && n.kind != .mac { NodeDetails(node: n, sums: sums).padding(.leading, 28).padding(.bottom, 6).transition(.opacity) }
+                if let w = n.warn {
+                    Label(w, systemImage: "exclamationmark.triangle.fill").font(theme.label(10)).foregroundStyle(theme.level(.warn))
+                        .fixedSize(horizontal: false, vertical: true).padding(.leading, 23)
+                }
+            }
+            .padding(.vertical, 5).padding(.horizontal, 6)
+            .background(on ? theme.accent.opacity(0.12) : .clear, in: .rect(cornerRadius: 7))
+            .contentShape(.rect)
+            .onTapGesture { withAnimation(.snappy(duration: 0.2)) { sel = on ? nil : n.id } }
+            // Smal venster: details onder de regel, binnen dezelfde lijnen
+            if on && inline { NodeDetails(node: n, sums: sums).padding(.leading, 29).padding(.bottom, 8).transition(.opacity) }
             }
         }
         .fixedSize(horizontal: false, vertical: true)
     }
-
-    private func toggle(_ id: String) { if collapsed.contains(id) { collapsed.remove(id) } else { collapsed.insert(id) } }
 }
 
 /// Verbindingslijn in een kolom van 16 pt: ├ (tee), └ (elbow), │ (pass) of niets.
 private struct Connector: Shape {
     enum Kind { case tee, elbow, pass, none }
     let kind: Kind
-    var y: CGFloat = 13   // hoogte van de naamregel
+    var y: CGFloat = 15   // hoogte van de naamregel
     func path(in r: CGRect) -> Path {
         var p = Path()
         let x = r.midX - 2
@@ -426,116 +395,7 @@ private struct Connector: Shape {
     }
 }
 
-// MARK: - Vorm 2 en 3: kaartjes met lijnen, van boven naar beneden of van links naar rechts
-
-private struct TreeView: View {
-    enum Style { case down, right }
-    let root: TNode, sums: [PortSum], style: Style
-    @State private var sel: String?
-    @Environment(\.theme) private var theme
-    private var line: Color { theme.onRow(true).opacity(0.45) }
-
-    var body: some View {
-        let picked = sel.flatMap { PortTree.find($0, in: root) }
-        ViewThatFits(in: .horizontal) {
-            HStack(alignment: .top, spacing: 16) {
-                tree.frame(maxWidth: .infinity, alignment: .leading)
-                panel(picked).frame(width: 360)
-            }
-            .frame(minWidth: 900)
-            VStack(alignment: .leading, spacing: 12) { tree; if picked != nil { panel(picked) } }
-        }
-    }
-
-    @ViewBuilder private var tree: some View {
-        switch style {
-        case .down: ViewThatFits(in: .horizontal) { down(root, wide: true); down(root, wide: false) }
-        case .right: ViewThatFits(in: .horizontal) { right(root); down(root, wide: false) }
-        }
-    }
-
-    private func panel(_ n: TNode?) -> some View {
-        Group {
-            if let n { NodeDetails(node: n, sums: sums) }
-            else { Text("Click a port, cable, charger or device for its details.").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .themedRow(theme)
-    }
-
-    private func card(_ n: TNode) -> some View {
-        NodeCard(node: n, on: sel == n.id).onTapGesture { withAnimation(.snappy(duration: 0.2)) { sel = sel == n.id ? nil : n.id } }
-    }
-
-    // Van boven naar beneden. Breed: kinderen naast elkaar onder een dwarslijn. Smal (of alleen bladeren): onder elkaar aan een rail.
-    private func down(_ n: TNode, wide: Bool) -> AnyView {
-        let kids = n.children
-        let leavesOnly = kids.allSatisfy { $0.children.isEmpty }
-        return AnyView(VStack(alignment: wide ? .center : .leading, spacing: 0) {
-            card(n)
-            if kids.count == 1 {
-                Rectangle().fill(line).frame(width: 1.5, height: 14).padding(.leading, wide ? 0 : 24)
-                down(kids[0], wide: wide)
-            } else if !kids.isEmpty {
-                if wide && !leavesOnly {
-                    Rectangle().fill(line).frame(width: 1.5, height: 10)
-                    HStack(alignment: .top, spacing: 0) {
-                        ForEach(Array(kids.enumerated()), id: \.element.id) { i, c in
-                            down(c, wide: true).padding(.top, 10).padding(.horizontal, 5)
-                                .background(alignment: .top) { Bracket(first: i == 0, last: i == kids.count - 1).stroke(line, lineWidth: 1.5).frame(height: 10) }
-                        }
-                    }
-                } else {
-                    rail(kids) { down($0, wide: false) }.padding(.leading, 19)
-                }
-            }
-        })
-    }
-
-    // Van links naar rechts: een enkele verbinding (poort → kabel → lader) loopt opzij, een vertakking gaat omlaag aan een rail.
-    private func right(_ n: TNode) -> AnyView {
-        if n.children.count == 1 {
-            return AnyView(HStack(alignment: .top, spacing: 0) {
-                card(n)
-                Rectangle().fill(line).frame(width: 12, height: 1.5).padding(.top, 20)
-                right(n.children[0])
-            })
-        }
-        return AnyView(VStack(alignment: .leading, spacing: 0) {
-            card(n)
-            if !n.children.isEmpty { rail(n.children) { right($0) }.padding(.leading, 19) }
-        })
-    }
-
-    /// Kinderen onder elkaar, elk met een takje aan een doorlopende rail links.
-    private func rail(_ kids: [TNode], _ sub: @escaping (TNode) -> AnyView) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            ForEach(Array(kids.enumerated()), id: \.element.id) { i, c in
-                HStack(alignment: .top, spacing: 0) {
-                    Connector(kind: i == kids.count - 1 ? .elbow : .tee, y: 20).stroke(line, lineWidth: 1.5)
-                        .frame(width: 14).frame(maxHeight: .infinity).padding(.bottom, i == kids.count - 1 ? 0 : -6)
-                    sub(c)
-                }
-                .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-    }
-}
-
-/// Dwarslijn boven een kind in de top-down-boom: halve lijn bij het eerste/laatste kind, plus een stukje omlaag.
-private struct Bracket: Shape {
-    let first: Bool, last: Bool
-    func path(in r: CGRect) -> Path {
-        var p = Path()
-        if !(first && last) {
-            p.move(to: CGPoint(x: first ? r.midX : r.minX, y: r.minY)); p.addLine(to: CGPoint(x: last ? r.midX : r.maxX, y: r.minY))
-        }
-        p.move(to: CGPoint(x: r.midX, y: r.minY)); p.addLine(to: CGPoint(x: r.midX, y: r.maxY))
-        return p
-    }
-}
-
-// MARK: - Samenvatting per poort (gedeeld door kop en boom)
+// MARK: - Samenvatting per poort (gedeeld door kop en lijst)
 
 struct PortSum: Identifiable {
     let port: PortInfo, roots: [USBDev], tb: [TBDev], tbLink: TBLink?, notes: [PortNote], now: PowerNow?

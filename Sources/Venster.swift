@@ -12,7 +12,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .programs: "Processes"
         case .analysis: "Checkup"
         case .network: "Network"
-        case .ports: "Ports"
+        case .ports: "Docked"
         }
     }
     var icon: String {
@@ -21,7 +21,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .programs: "square.grid.2x2"
         case .analysis: "chart.bar.xaxis"
         case .network: "network"
-        case .ports: "cable.connector"
+        case .ports: "dock.rectangle"
         }
     }
     /// Eén vensterformaat voor alle tabbladen. Heeft een tabblad meer nodig, dan groeit het venster tot hier
