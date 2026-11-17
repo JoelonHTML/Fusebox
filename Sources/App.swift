@@ -9,7 +9,16 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
     /// Meldingen ook tonen als Fusebox vooraan staat (anders laat macOS ze stil weg).
     /// Klik op "Wat is er nieuw"-melding (of de knop): Settings › About met de changelog openen.
     func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
-        guard response.notification.request.content.categoryIdentifier == Notify.whatsNew else { return }
+        let content = response.notification.request.content
+        // Aanhoudende piek: "Stop app" of "Show" (ook een klik op de melding zelf opent de app-pagina)
+        if [PeakAlert.category, PeakAlert.categoryShow].contains(content.categoryIdentifier),
+           let id = content.userInfo["app"] as? String, let name = content.userInfo["name"] as? String {
+            let action = response.actionIdentifier
+            guard action != UNNotificationDismissActionIdentifier else { return }
+            await MainActor.run { PeakAlert.handle(action, id: id, name: name) }
+            return
+        }
+        guard content.categoryIdentifier == Notify.whatsNew else { return }
         await MainActor.run {
             UserDefaults.standard.set("about", forKey: "settingsTab")
             NSApp.activate()
@@ -135,6 +144,7 @@ struct MeterkastApp: App {
         SelfLog.selfTest()
         Spark.selfTest()
         Peaks.selfTest()
+        PeakAlert.selfTest()
         Installed.selfTest()
         let s = Sampler()
         _ = s.sample()
