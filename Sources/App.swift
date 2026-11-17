@@ -118,6 +118,7 @@ struct MeterkastApp: App {
         precondition(Sampler.plausible(1_000_000, 2) && !Sampler.plausible(UInt64(UInt32.max), 2), "herstarte teller")
         var weird = Sample(); weird.diskRead = 9.2e18; weird.down = .infinity
         precondition(weird.csv.contains(",1000000000000000,"), "csv begrensd")
+        Ports.selfTest()
         let s = Sampler()
         _ = s.sample()
         let m = AppMonitor()
