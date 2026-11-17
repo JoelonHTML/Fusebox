@@ -122,7 +122,10 @@ struct PortsSnapshot: Hashable {
 
 struct PortNote: Hashable {
     enum Level { case good, info, warn }
+    /// Waar het oordeel over gaat (welke schakel in de keten).
+    enum Topic { case port, power, cable, data, devices }
     let text: String, level: Level
+    var topic = Topic.port
     var serious: Bool { level == .warn }
 }
 
@@ -388,7 +391,7 @@ enum Ports {
     /// Oordelen (groen/oranje) en tips: alleen wat we echt kunnen zien.
     static func notes(_ p: PortInfo, roots: [USBDev], tb: TBLink?) -> [PortNote] {
         var out: [PortNote] = []
-        func add(_ t: String, _ l: PortNote.Level) { out.append(PortNote(text: t, level: l)) }
+        func add(_ t: String, _ l: PortNote.Level, _ topic: PortNote.Topic = .port) { out.append(PortNote(text: t, level: l, topic: topic)) }
         if p.liquid { add("Liquid or dirt detected in this port. Unplug and let it dry.", .warn) }
         if !p.unauthorized.isEmpty {
             add("macOS is holding back \(p.unauthorized.map(transportName).joined(separator: ", ")) until you allow this accessory.", .warn)
@@ -401,28 +404,28 @@ enum Ports {
             let capped = !p.isMagSafe && w.mA >= 3000 && w.mV >= 20000 && (c?.mA ?? 3000) <= 3000
             if capped {
                 add(c == nil ? "No e-marker in this cable, so charging stops at 60 W (3 A). Above 60 W needs a 5 A cable (and a charger that can)."
-                             : "This cable is rated 3 A, so charging stops at 60 W. Above 60 W needs a 5 A cable (and a charger that can).", .info)
+                             : "This cable is rated 3 A, so charging stops at 60 W. Above 60 W needs a 5 A cable (and a charger that can).", .info, .cable)
             } else if let cw = c?.watts, Double(cw) < w.watts {
-                add("The cable is rated \(cw) W but the charger agreed on \(trim(w.watts)) W. Use a cable rated for at least that.", .warn)
+                add("The cable is rated \(cw) W but the charger agreed on \(trim(w.watts)) W. Use a cable rated for at least that.", .warn, .cable)
             } else {
-                add("Charging OK: charger\(c == nil ? "" : " and cable") agree on up to \(trim(w.watts)) W; the Mac takes what it needs.", .good)
+                add("Charging OK: charger\(c == nil ? "" : " and cable") agree on up to \(trim(w.watts)) W; the Mac takes what it needs.", .good, .power)
             }
         }
         // Data
         let measured = roots.compactMap(\.bps).max() ?? 0
         if let s = c?.speed, measured > cableMax(s, thunderbolt: false) * 1.01, !types.contains("CIO") {
-            add("The cable's e-marker says up to \(speedText(cableMax(s, thunderbolt: false))), but the link runs at \(speedText(measured)). One of the two is wrong (e-markers are often mislabelled).", .info)
+            add("The cable's e-marker says up to \(speedText(cableMax(s, thunderbolt: false))), but the link runs at \(speedText(measured)). One of the two is wrong (e-markers are often mislabelled).", .info, .cable)
         }
         if types.contains("USB2"), types.isDisjoint(with: ["USB3", "CIO"]), measured >= 480e6 {
-            if c?.speed == 0 { add("This cable is USB 2 only, so data runs at 480 Mbit/s. Use a USB 3 or Thunderbolt cable if the device can go faster.", .warn) }
-            else { add("Data runs at USB 2 speed (480 Mbit/s). If this device can go faster, try a USB 3 or Thunderbolt cable.", .info) }
+            if c?.speed == 0 { add("This cable is USB 2 only, so data runs at 480 Mbit/s. Use a USB 3 or Thunderbolt cable if the device can go faster.", .warn, .cable) }
+            else { add("Data runs at USB 2 speed (480 Mbit/s). If this device can go faster, try a USB 3 or Thunderbolt cable.", .info, .data) }
         }
         if types.contains("CIO"), let s = c?.speed, s <= 2 {
-            add("This cable holds Thunderbolt/USB4 back to \(speedText(cableMax(s, thunderbolt: true))) or less. A 40 Gbit/s cable is faster.", .warn)
+            add("This cable holds Thunderbolt/USB4 back to \(speedText(cableMax(s, thunderbolt: true))) or less. A 40 Gbit/s cable is faster.", .warn, .cable)
         }
-        if types.contains("CIO") || types.contains("USB3") { add(types.contains("CIO") ? "Thunderbolt/USB4 link is up." : "Fast data (SuperSpeed) link is up.", .good) }
+        if types.contains("CIO") || types.contains("USB3") { add(types.contains("CIO") ? "Thunderbolt/USB4 link is up." : "Fast data (SuperSpeed) link is up.", .good, .data) }
         if roots.contains(where: \.billboard) || devices(roots).contains(where: \.billboard) {
-            add("Billboard device present: the dock or adapter reports that an extra mode (such as video over USB-C) is not active or not supported on this connection.", .info)
+            add("Billboard device present: the dock or adapter reports that an extra mode (such as video over USB-C) is not active or not supported on this connection.", .info, .devices)
         }
         return out
     }
@@ -469,6 +472,7 @@ enum Ports {
         precondition(old.mV == 20000 && old.mA == 3000 && old.watts == 60 && old.speed == 0 && old.vid == 7, "kabel pd2")
         precondition(cableText(c5, activeFlag: false, optical: false) == "Passive USB-C cable · 5 A / 100 W · USB 3.2 Gen 2 (10 Gbit/s; 20 Gbit/s for Thunderbolt) · e-marker 1234:5678", "kabeltekst")
         precondition(partnerKind(2 << 27) == "USB device" && partnerKind(3 << 23) == "charger" && partnerKind(0) == nil, "partner")
+        precondition(trim(16.97) == "17" && trim(17.53) == "17.5", "afronden")
         precondition(speedText(480e6) == "480 Mbit/s" && speedText(1.5e6) == "1.5 Mbit/s" && speedText(1e10) == "10 Gbit/s", "snelheid")
         precondition(TBLink(socket: "1", speed: 4, width: 2).gbps == 40 && TBLink(speed: 3).gbps == nil, "tb")
 
@@ -508,6 +512,7 @@ enum Ports {
         precondition(hub.children[1].name == "Disk" && hub.children[1].maker == "vendor 0xABCD" && hub.children[1].powerMA == 500, "usb naam")
         precondition(headline(p, roots: [hub], tb: []) == "Hub or dock with 2 devices · 60 W charger" && dataLine(p, tb: nil) == "USB 2 data active · USB 2.0 at 480 Mbit/s (High Speed)", "kop hub")
         let ns = notes(p, roots: [hub], tb: nil)
+        precondition(ns.first { $0.text.hasPrefix("This cable is rated 3 A") }?.topic == .cable && ns.allSatisfy { $0.topic != .port }, "onderwerp")
         precondition(ns.contains { $0.text.hasPrefix("This cable is rated 3 A") } && ns.contains { $0.text.hasPrefix("This cable is USB 2 only") && $0.serious }, "tips")
         // e-marker zegt 5 Gbit/s, link loopt op 10; billboard achter een hub
         var fast = p; fast.cable?.speed = 1; fast.links = [PortLink(type: "USB3")]; fast.charger = nil
@@ -535,7 +540,7 @@ enum Ports {
 }
 
 /// "20 V", "4.5 A", "17.5": hooguit één decimaal, zonder ",0".
-func trim(_ x: Double) -> String { x == x.rounded() ? String(Int(x)) : String(format: "%.1f", x) }
+func trim(_ x: Double) -> String { let r = (x * 10).rounded() / 10; return r == r.rounded() ? String(Int(r)) : String(format: "%.1f", r) }
 func volt(_ mV: Int) -> String { trim((Double(mV) / 100).rounded() / 10) + " V" }
 func amp(_ mA: Int) -> String { (mA % 1000 == 0 || mA % 100 == 0 ? trim(Double(mA) / 1000) : String(format: "%.2f", Double(mA) / 1000)) + " A" }
 
