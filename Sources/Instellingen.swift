@@ -623,6 +623,16 @@ struct AboutSettings: View {
             Text("A lightweight activity monitor for your Mac: live measurements, apps and advice.").foregroundStyle(.secondary)
         }
         UpdateSection()
+        Section {
+            LabeledContent {
+                Button("Share performance report") {
+                    SelfLog.share(logDir: FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox"))
+                }
+            } label: {
+                Text("Beta: how light is Fusebox on this Mac?")
+                Text("Fusebox notes its own CPU, memory, GPU and energy use once a minute. This makes a small text file in Downloads (also copied) to send to the maker. Nothing is sent automatically.")
+            }
+        } header: { Text("Beta test") }
         ChangelogSection()
     }
 }

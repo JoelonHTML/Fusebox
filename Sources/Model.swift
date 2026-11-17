@@ -158,6 +158,8 @@ final class Meter: ObservableObject {
 
     /// Elke minuut (programma's zijn net gemeten): top naar apps-CSV schrijven, en zo nodig een melding geven.
     private func minuteTasks(_ s: Sample) {
+        let selfFile = file(for: s.time, prefix: "self")
+        Task { @MainActor in SelfLog.record(s, to: selfFile) }   // beta: eigen verbruik per minuut (EigenVerbruik.swift)
         let apps = minuteApps.apps
         peaks.minute(apps, at: s.time)
         do {   // loggen staat altijd aan
@@ -205,7 +207,7 @@ final class Meter: ObservableObject {
         let cutoff = days.flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: Calendar.current.startOfDay(for: Date())) }
         for u in files where u.pathExtension == "csv" {
             let name = u.deletingPathExtension().lastPathComponent
-            guard name.hasPrefix("meterkast-") || name.hasPrefix("apps-") || name.hasPrefix("peaks-"), let day = f.date(from: String(name.suffix(10))) else { continue }
+            guard name.hasPrefix("meterkast-") || name.hasPrefix("apps-") || name.hasPrefix("peaks-") || name.hasPrefix("self-"), let day = f.date(from: String(name.suffix(10))) else { continue }
             if cutoff.map({ day < $0 }) ?? true { try? fm.removeItem(at: u) }
         }
     }
