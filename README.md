@@ -1,4 +1,6 @@
-# Fusebox (beta)
+<p align="center"><img src="icon/AppIcon-1024.png" width="160" alt="Fusebox icon"></p>
+
+<h1 align="center">Fusebox (beta)</h1>
 
 A lightweight activity monitor for your Mac: live CPU, GPU, RAM, temperature, internet and SSD, which apps use the most, and advice.
 
