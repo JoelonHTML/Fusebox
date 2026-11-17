@@ -192,6 +192,7 @@ extension EnvironmentValues {
 /// Zet een rij/kaart in de vorm van het thema. `index` kiest de kleur bij kleurblokken.
 struct ThemedRow: ViewModifier {
     let theme: Theme, index: Int
+    @Environment(\.colorScheme) private var scheme
     func body(content: Content) -> some View {
         switch theme.rowStyle {
         case .lines:
@@ -207,8 +208,17 @@ struct ThemedRow: ViewModifier {
             content.padding(.horizontal, 10).padding(.vertical, 8)
                 .background(theme.blocks[index % max(theme.blocks.count, 1)], in: .rect(cornerRadius: 10))
         case .glass:
+            // Zoals Apple: echt glas alleen op de bediening (tabbalk). Kaarten met live cijfers krijgen een "glazen" laag
+            // zonder vervaging: lichte vulling die naar onderen wegvalt en een lichtrand bovenaan. Echt glas onder getallen
+            // die elke 2 s veranderen liet macOS het glas steeds opnieuw opbouwen (veel GPU, vooral in een groot venster).
+            let dark = scheme == .dark, shape = RoundedRectangle(cornerRadius: 14, style: .continuous)
             content.padding(.horizontal, 10).padding(.vertical, 8)
-                .glassEffect(.regular, in: .rect(cornerRadius: 14))
+                .background(shape.fill(LinearGradient(colors: dark ? [.white.opacity(0.11), .white.opacity(0.05)]
+                                                                   : [.white.opacity(0.62), .white.opacity(0.38)],
+                                                      startPoint: .top, endPoint: .bottom)))
+                .overlay(shape.strokeBorder(LinearGradient(colors: dark ? [.white.opacity(0.28), .white.opacity(0.06)]
+                                                                       : [.white.opacity(0.95), .black.opacity(0.06)],
+                                                           startPoint: .top, endPoint: .bottom), lineWidth: 1))
         }
     }
 }

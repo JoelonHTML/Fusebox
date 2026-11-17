@@ -205,6 +205,9 @@ struct RootView: View {
             .buttonStyle(.plain).help(low ? "Settings  ⌘,  ·  Low impact is on" : "Settings  ⌘,").accessibilityLabel("Settings")
         }
         .padding(.horizontal, 4)
+        // Liquid Glass: de tabbalk is het echte glas (bediening, verandert alleen bij een klik). Low impact: geen glas.
+        .padding(.vertical, theme.rowStyle == .glass ? 2 : 0)
+        .glassEffect(theme.rowStyle == .glass ? .regular : .identity, in: .capsule)
         .accessibilityElement(children: .contain)   // elke knop eigen naam (anders noemt de werkbalk ze allemaal "Live")
     }
 
