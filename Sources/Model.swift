@@ -53,6 +53,7 @@ final class Meter: ObservableObject {
     // Wanneer voor het laatst: op tijd, niet op aantal metingen (het meettempo wisselt met low impact)
     private var pingAt = Date.distantPast, programsAt = Date.distantPast, minuteAt = Date()
     private var streak: [Alert: Int] = [:], lastAlert: [Alert: Date] = [:]
+    private var lastPeakAlert: [String: Date] = [:]   // per app (PeakAlert)
     /// Wordt waar bij afsluiten (dan geen instellingen meer terugzetten vanuit het stappenplan).
     private(set) var quitting = false
     let logDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox")
@@ -213,6 +214,24 @@ final class Meter: ObservableObject {
             _ = Self.append(lines, to: file)
         }
         checkAlerts(s, top: apps.first { $0.kind != .macos })
+        checkPeakAlert(s, apps: apps)
+    }
+
+    /// Elke minuut: een piek die al `alert.peak.min` minuten loopt → melding met de app erachter (hooguit eens per cooldown per app).
+    private func checkPeakAlert(_ s: Sample, apps: [AppUsage]) {
+        let d = UserDefaults.standard
+        guard d.bool(forKey: "notify"), d.bool(forKey: PeakAlert.key("on")) else { return }
+        let minutes = d.integer(forKey: PeakAlert.key("min")), cooldown = Double(max(1, d.integer(forKey: "alertCooldown"))) * 60
+        for p in peaks.running() {
+            // Oorzaak moet nog draaien (anders is hij het niet meer); de restpost "macOS itself" is nooit een oorzaak
+            guard let name = p.app, let app = apps.first(where: { $0.name == name && $0.kind != .macos }),
+                  PeakAlert.due(p, app: app.id, now: s.time, minutes: minutes, cooldown: cooldown, last: lastPeakAlert) else { continue }
+            lastPeakAlert[app.id] = s.time
+            let t = PeakAlert.text(p, app: name)
+            Task { @MainActor [minuteApps] in PeakAlert.monitor = minuteApps }
+            Notify.send(title: t.title, body: t.body, category: app.canStop ? PeakAlert.category : PeakAlert.categoryShow,
+                        userInfo: ["app": app.id, "name": name])
+        }
     }
 
     /// Eén keer per minuut: per soort melding tellen hoeveel minuten op rij de grens overschreden is.

@@ -340,10 +340,10 @@ enum Notify {
     static let whatsNew = "whatsnew"   // categorie met knop "What's new" → changelog in Settings › About
     static func registerCategories() {
         let open = UNNotificationAction(identifier: "open", title: "What's new", options: [.foreground])
-        UNUserNotificationCenter.current().setNotificationCategories([UNNotificationCategory(identifier: whatsNew, actions: [open], intentIdentifiers: [])])
+        UNUserNotificationCenter.current().setNotificationCategories(Set([UNNotificationCategory(identifier: whatsNew, actions: [open], intentIdentifiers: [])] + PeakAlert.registerCategories()))
     }
-    static func send(title: String, body: String, category: String? = nil) {
-        let c = UNMutableNotificationContent(); c.title = title; c.body = body
+    static func send(title: String, body: String, category: String? = nil, userInfo: [AnyHashable: Any] = [:]) {
+        let c = UNMutableNotificationContent(); c.title = title; c.body = body; c.userInfo = userInfo
         if let category { c.categoryIdentifier = category }
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }

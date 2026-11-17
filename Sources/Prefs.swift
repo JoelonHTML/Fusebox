@@ -26,7 +26,7 @@ enum Prefs {
             "menubarMetrics": "cpu", "menubarMetricsHidden": "", "menubarStyle": "text", "menubarSplit": false,
             "menuStyle": "menu", "menuParts": "status,values,top,links",
             // Meldingen
-            "notify": true, "alertCooldown": 30,
+            "notify": true, "alertCooldown": 30, PeakAlert.key("on"): true, PeakAlert.key("min"): 2,
             // Gegevens en privacy
             "keepDays": 30, "pingHost": "1.1.1.1", "netPerApp": false,
             // Ventilatoren (alleen Macs met ventilator): "auto" | "curve" | "max", curve = "°C:%,…"

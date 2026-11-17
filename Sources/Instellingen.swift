@@ -507,6 +507,7 @@ struct AlertSettings: View {
         }
         Section("Per kind: limit and how many minutes in a row") {
             ForEach(Alert.allCases) { AlertRow(alert: $0) }
+            PeakAlertRow()
         }
         .disabled(!notify)
         Section {
@@ -554,6 +555,25 @@ struct AlertRow: View {
         s.diskFreeGB = limit * 0.7; s.pingMs = limit + 40; s.battery = max(limit - 2, 1)
         return alert.check([s], top: nil, limit: limit, minutes: minutes, pingOn: true)
             ?? "Safari has been using \(Int(min(limit + 5, 100)))% processor for \(minutes) min"
+    }
+}
+
+/// Aanhoudende piek: melding met de app erachter en de knoppen "Stop app" en "Show" (PeakAlert).
+struct PeakAlertRow: View {
+    @AppStorage(PeakAlert.key("on")) private var on = true
+    @AppStorage(PeakAlert.key("min")) private var minutes = 2
+
+    var body: some View {
+        Toggle(isOn: $on) {
+            Text("Sustained peak")
+            Text("Names the app behind a peak of \(minutes) min or more, with a Stop app button")
+        }
+        .onChange(of: on) { _, v in if v { Notify.ask() } }
+        if on {
+            Stepper("\(minutes) min", value: $minutes, in: 1...30).font(.callout).padding(.leading, 20)
+            let t = PeakAlert.text(Peak(kind: .cpu, start: .distantPast, end: .distantPast + Double(max(minutes, 1) * 60 + 30), top: 92, at: .distantPast), app: "Safari")
+            NotificationExample(title: t.title, text: t.body).padding(.leading, 20)
+        }
     }
 }
 

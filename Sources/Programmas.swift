@@ -46,12 +46,23 @@ private struct ProgramsList: View {
     static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62, netW: CGFloat = 74
 
     var body: some View {
-        if let page {
-            AppPage(monitor: monitor, ref: page) { withAnimation(.snappy(duration: 0.3)) { self.page = nil } }
-                .transition(.opacity.combined(with: .scale(scale: 0.97)))
-        } else {
-            list.transition(.opacity)
+        Group {
+            if let page {
+                AppPage(monitor: monitor, ref: page) { withAnimation(.snappy(duration: 0.3)) { self.page = nil } }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else {
+                list.transition(.opacity)
+            }
         }
+        // "Show" in een piekmelding: meteen de app-pagina (ook als Processes al open stond)
+        .onAppear(perform: takePending)
+        .onReceive(NotificationCenter.default.publisher(for: PeakAlert.openPage)) { _ in takePending() }
+    }
+
+    private func takePending() {
+        guard let ref = PeakAlert.pendingPage else { return }
+        PeakAlert.pendingPage = nil
+        page = ref
     }
 
     private func show(_ ref: AppRef) { withAnimation(.snappy(duration: 0.3)) { page = ref } }

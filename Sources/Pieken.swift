@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 // MARK: - Pieken: wanneer schoot iets omhoog, en welke app deed dat?
 //
@@ -347,6 +348,13 @@ final class PeakWatch {
             .sorted { $0.start < $1.start }
     }
 
+    /// Lopende pieken (alle soorten, vaste volgorde) met hun oorzaak: voor de melding "Sustained peak".
+    func running() -> [Peak] {
+        PeakKind.allCases.compactMap { trackers[$0]?.current }.map { p in
+            var q = p; if let c = cause(p) { (q.app, q.appValue) = c }; return q
+        }
+    }
+
     func snapshot(for p: Peak) -> Snapshot? { Peaks.snapshot(at: p.at, in: snaps) }
 
     /// "Xcode 61%" op tijdstip `t` (alleen het laatste uur).
@@ -664,5 +672,71 @@ extension AppFont {
             default: return sys(.default)
             }
         }
+    }
+}
+
+// MARK: - Melding bij een aanhoudende piek: "Chrome is keeping your CPU busy", met knoppen Stop app / Show
+//
+// Geen eigen timer: Meter kijkt elke minuut (minuteTasks) naar de lopende pieken. Sleutels alert.peak.on/.min;
+// hoe vaak per app volgt "alertCooldown" (zelfde instelling als de andere meldingen, standaard 30 min).
+
+enum PeakAlert {
+    static let category = "peak", categoryShow = "peakshow"   // met en zonder "Stop app" (systeemprocessen nooit)
+    static let stopAction = "stop", showAction = "show"
+    static let openPage = Notification.Name("fusebox.openAppPage")
+    static func key(_ field: String) -> String { "alert.peak.\(field)" }
+    /// De minuutmeting die de melding gaf: daar zoeken de knoppen de app terug (verse pids, canStop opnieuw bekeken).
+    @MainActor static weak var monitor: AppMonitor?
+    /// App-pagina die Processes moet openen (gezet door "Show", opgehaald door ProgramsList).
+    @MainActor static var pendingPage: AppRef?
+
+    /// Melden? Piek lang genoeg en deze app niet al binnen `cooldown` gemeld. Puur (zelftest).
+    static func due(_ p: Peak, app: String, now: Date, minutes: Int, cooldown: TimeInterval, last: [String: Date]) -> Bool {
+        p.seconds >= max(1, minutes) * 60 && now.timeIntervalSince(last[app] ?? .distantPast) >= cooldown
+    }
+
+    static func text(_ p: Peak, app: String) -> (title: String, body: String) {
+        let title = switch p.kind {
+        case .cpu: "\(app) is keeping your CPU busy"
+        case .gpu: "\(app) is keeping your GPU busy"
+        case .temp: "\(app) is heating up your Mac"
+        case .mem: "\(app) is filling your memory"
+        case .io: "\(app) is keeping your disk busy"
+        }
+        let m = p.seconds / 60
+        return (title, "\(p.kind.title) \(p.kind.format(p.top)) for \(m) minute\(m == 1 ? "" : "s")")
+    }
+
+    static func registerCategories() -> [UNNotificationCategory] {
+        let stop = UNNotificationAction(identifier: stopAction, title: "Stop app", options: [.destructive])
+        let show = UNNotificationAction(identifier: showAction, title: "Show", options: [.foreground])
+        return [UNNotificationCategory(identifier: category, actions: [stop, show], intentIdentifiers: []),
+                UNNotificationCategory(identifier: categoryShow, actions: [show], intentIdentifiers: [])]
+    }
+
+    /// Knop of klik op de melding. "Stop app" = netjes stoppen (zoals ⌘Q, AppMonitor.stop); de knop zelf is de bevestiging.
+    @MainActor static func handle(_ action: String, id: String, name: String) {
+        if action == stopAction {
+            if let app = monitor?.apps.first(where: { $0.id == id && $0.canStop }) { monitor?.stop(app) }
+            return
+        }
+        UserDefaults.standard.set(Page.programs.rawValue, forKey: "page")
+        pendingPage = AppRef(id: id, name: name)
+        NSApp.unhide(nil)
+        Hotkey.openMain?()
+        NSApp.activate()
+        NotificationCenter.default.post(name: openPage, object: nil)
+    }
+
+    static func selfTest() {
+        let t0 = Date(timeIntervalSince1970: 1_800_000_000)
+        let p = Peak(kind: .cpu, start: t0, end: t0 + 185, top: 92, at: t0 + 10)
+        precondition(due(p, app: "DemoApp", now: t0 + 185, minutes: 2, cooldown: 1800, last: [:]), "lang genoeg")
+        precondition(!due(p, app: "DemoApp", now: t0 + 185, minutes: 4, cooldown: 1800, last: [:]), "te kort")
+        precondition(!due(p, app: "DemoApp", now: t0 + 185, minutes: 2, cooldown: 1800, last: ["DemoApp": t0 - 600]), "binnen 30 min al gemeld")
+        precondition(due(p, app: "DemoApp", now: t0 + 185, minutes: 2, cooldown: 1800, last: ["DemoApp": t0 - 1700, "Other": t0]), "na 30 min weer, per app")
+        let t = text(p, app: "DemoApp")
+        precondition(t.title == "DemoApp is keeping your CPU busy" && t.body == "CPU 92% for 3 minutes", "tekst \(t)")
+        print("piekmelding ok")
     }
 }
