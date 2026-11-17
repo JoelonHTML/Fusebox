@@ -1,5 +1,6 @@
 import AppKit
 import Darwin
+import IOKit.ps
 
 // MARK: - Beta: eigen verbruik van Fusebox
 //
@@ -39,7 +40,9 @@ enum SelfLog {
         let win = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true }
         let visible = win.map { $0.isVisible && $0.occlusionState.contains(.visible) } ?? false
         let size = win.map { "\(Int($0.frame.width))x\(Int($0.frame.height))" } ?? "-"
-        let power = s.battery == nil ? "ac" : s.charging ? "charging" : "battery"
+        // Aan de lader (ook bij 100 % als hij niet meer laadt) of echt op de accu
+        let adapter = IOPSCopyExternalPowerAdapterDetails()?.takeRetainedValue() != nil
+        let power = s.battery == nil ? "ac" : s.charging ? "charging" : adapter ? "ac" : "battery"
         let version = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         let line = [Sample.stamp.string(from: Date()), version, String(format: "%.2f", cpu), String(format: "%.0f", Double(ri.ri_phys_footprint) / 1_048_576),
                     String(format: "%.3f", watt), String(format: "%.2f", gpuPct), String(format: "%.2f", wsPct), String(format: "%.1f", wake),
