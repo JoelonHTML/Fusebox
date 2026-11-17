@@ -72,6 +72,9 @@ enum FanHelper {
     static let plistPath = "/Library/LaunchDaemons/local.fusebox.fand.plist"
     static let socketPath = "/var/run/local.fusebox.fand.sock"
 
+    /// Moet gelijk zijn aan `helperVersion` in Helper/FanHelper.swift. Ouder → "Reinstall" (updates van de app
+    /// vervangen de geïnstalleerde root-helper niet; dat kan alleen met je wachtwoord).
+    static let expectedVersion = 2
     static var installed: Bool { FileManager.default.fileExists(atPath: plistPath) && FileManager.default.fileExists(atPath: binPath) }
 
     /// Stuurt één opdracht ("status", "auto", "set 0 2400") en geeft het antwoord ("ok …" / "err …"), of nil als de helper er niet is.
@@ -233,6 +236,7 @@ struct FanSettings: View {
     @AppStorage("fanMode") private var mode = "auto"
     @AppStorage("fanCurve") private var curve = FanCurve.balanced
     @State private var installed = FanHelper.installed
+    @State private var outdated = false
     @State private var running: Bool?
     @State private var note: String?
 
@@ -295,7 +299,11 @@ struct FanSettings: View {
     @ViewBuilder private var helperSection: some View {
         Section {
             if installed {
-                LabeledContent("Helper", value: running == false ? "Installed, not responding" : "Installed")
+                LabeledContent("Helper", value: running == false ? "Installed, not responding" : outdated ? "Update needed" : "Installed")
+                if outdated {
+                    Text("This Fusebox has a newer fan helper. Click Reinstall… to update it (asks for your password).")
+                        .font(.caption).foregroundStyle(.orange)
+                }
                 HStack {
                     Button("Reinstall…") { act(FanHelper.install) }
                     Button("Uninstall helper…", role: .destructive) { if act(FanHelper.uninstall) { mode = "auto" } }
@@ -326,6 +334,8 @@ struct FanSettings: View {
         guard installed else { running = nil; return }
         let reply = await Task.detached { FanHelper.send("status") }.value
         running = reply?.hasPrefix("ok") == true
+        let v = reply?.split(separator: " ").first { $0.hasPrefix("v=") }.flatMap { Int($0.dropFirst(2)) } ?? 1
+        outdated = running == true && v < FanHelper.expectedVersion
     }
 }
 

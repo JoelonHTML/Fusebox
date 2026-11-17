@@ -29,7 +29,8 @@ struct Sample {
     static let stamp: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f }()
     static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb\n"
     var csv: String {
-        let f = { (v: Double) in String(format: "%.1f", v) }
+        let f = { (v: Double) in String(format: "%.1f", v.isFinite ? v : 0) }
+        let Int = { (v: Double) in v.isFinite ? Swift.Int(min(max(v, 0), 1e15)) : 0 }   // nooit crashen op een rare waarde
         return "\(Self.stamp.string(from: time)),\(f(cpu)),\(f(ram)),\(f(ramUsedGB)),\(pressure),\(f(gpu)),\(temp.map(f) ?? ""),\(gpuTemp.map(f) ?? ""),\(Int(down)),\(Int(up)),\(pingMs.map(f) ?? ""),\(f(diskFreeGB)),\(battery.map(f) ?? ""),\(f(diskTotalGB)),\(Int(diskRead)),\(Int(diskWrite)),\(String(format: "%.2f", swapGB))\n"
     }
 
@@ -154,15 +155,16 @@ final class Sampler {
     private var lastTicks: (UInt32, UInt32, UInt32, UInt32)?
     private var lastCores: [UInt32]?
     private var lastNet: [String: (i: UInt32, o: UInt32)] = [:]
-    private var lastTime = Date()
+    private var lastTime = clock_gettime_nsec_np(CLOCK_MONOTONIC)   // telt slaap mee, springt niet als de klok verzet wordt
     private var diskFreeGB = 0.0, diskTotalGB = 0.0, diskAt = Date.distantPast
     private var lastIO: (r: UInt64, w: UInt64)?
     private var temp: (cpu: Double?, gpu: Double?) = (nil, nil), tempAt = Date.distantPast
 
     func sample() -> Sample {
         var s = Sample()
-        let dt = max(s.time.timeIntervalSince(lastTime), 0.001)
-        lastTime = s.time
+        let now = clock_gettime_nsec_np(CLOCK_MONOTONIC)
+        let dt = max(Double(now &- lastTime) / 1e9, 0.001)
+        lastTime = now
 
         // Processor: delta van de tick-tellers sinds vorige meting
         var load = host_cpu_load_info()
@@ -205,6 +207,7 @@ final class Sampler {
         if getifaddrs(&ifap) == 0 {
             var p = ifap
             var down: UInt64 = 0, up: UInt64 = 0
+            var seen: [String: (i: UInt32, o: UInt32)] = [:]   // interfaces die verdwenen zijn vergeten
             while let a = p {
                 p = a.pointee.ifa_next
                 guard a.pointee.ifa_addr?.pointee.sa_family == UInt8(AF_LINK),
@@ -212,10 +215,16 @@ final class Sampler {
                 let name = String(cString: a.pointee.ifa_name)
                 guard name.hasPrefix("en") else { continue }
                 let cur = (i: d.pointee.ifi_ibytes, o: d.pointee.ifi_obytes)
-                // ponytail: 32-bit tellers, &- vangt één wrap op; >4 GB per interval niet
-                if let l = lastNet[name] { down += UInt64(cur.i &- l.i); up += UInt64(cur.o &- l.o) }
-                lastNet[name] = cur
+                // 32-bit tellers: &- vangt één wrap op. Een interface die opnieuw begint (USB-ethernet, tethering)
+                // telt vanaf 0: dat zou een sprong van GB's lijken → dan deze keer niets meetellen.
+                if let l = lastNet[name] {
+                    let di = UInt64(cur.i &- l.i), dout = UInt64(cur.o &- l.o)
+                    if Self.plausible(di, dt) { down += di }
+                    if Self.plausible(dout, dt) { up += dout }
+                }
+                seen[name] = cur
             }
+            lastNet = seen
             freeifaddrs(ifap)
             s.down = Double(down) / dt
             s.up = Double(up) / dt
@@ -244,7 +253,8 @@ final class Sampler {
 
         // SSD-activiteit: bytes gelezen/geschreven door alle schijven (delta)
         let io = Self.diskBytes()
-        if let l = lastIO { s.diskRead = Double(io.r &- l.r) / dt; s.diskWrite = Double(io.w &- l.w) / dt }
+        // Schijf uitgeworpen (DMG, USB, Time Machine): de som zakt → geen negatieve/enorme waarde, deze keer 0
+        if let l = lastIO { s.diskRead = io.r >= l.r ? Double(io.r - l.r) / dt : 0; s.diskWrite = io.w >= l.w ? Double(io.w - l.w) / dt : 0 }
         lastIO = io
 
         // Swap: geheugen dat naar de SSD is uitgeweken
@@ -253,6 +263,9 @@ final class Sampler {
         Self.battery(into: &s)
         return s
     }
+
+    /// Meer dan 10 Gbit/s over het netwerk is een herstarte teller, geen echt verkeer.
+    static func plausible(_ bytes: UInt64, _ dt: Double) -> Bool { Double(bytes) / dt < 1.25e9 }
 
     /// Tick-tellers (user, system, idle, nice per kern, plat achter elkaar) → procent bezet per kern.
     static func coreLoad(_ now: [UInt32], _ last: [UInt32]) -> [Double] {

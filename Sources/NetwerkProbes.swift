@@ -357,7 +357,7 @@ enum NetProbe {
         func waitFor(_ ev: Int32) -> Bool {
             guard now() < deadline else { return false }
             var p = pollfd(fd: fd, events: Int16(ev), revents: 0)
-            return poll(&p, 1, Int32(max(1, (deadline - now()) / 1_000_000))) > 0
+            return poll(&p, 1, Int32(max(1, (deadline - min(now(), deadline)) / 1_000_000))) > 0   // min: deadline kan net verstreken zijn (geen underflow)
         }
         var a = sockaddrIn(ip, port: port)
         let r = withUnsafePointer(to: &a) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { connect(fd, $0, socklen_t(MemoryLayout<sockaddr_in>.size)) } }
@@ -386,7 +386,9 @@ enum NetProbe {
     /// Apparaatbeschrijving (XML) → naam, maker, model. Geen DTD/entiteiten (geen XML-bommen), hooguit 64 KB.
     static func parseUPnP(_ data: [UInt8]) -> UPnPInfo? {
         guard data.count <= 65_536 else { return nil }
-        let text = String(decoding: data.prefix(2048), as: UTF8.self)
+        // Hele tekst doorzoeken (een lange opmerking vooraan omzeilde de oude 2 KB-check); UTF-16 helemaal weigeren
+        guard !(data.starts(with: [0xFE, 0xFF]) || data.starts(with: [0xFF, 0xFE])) else { return nil }
+        let text = String(decoding: data, as: UTF8.self)
         guard !text.contains("<!DOCTYPE"), !text.contains("<!ENTITY") else { return nil }
         final class Reader: NSObject, XMLParserDelegate {
             var info = UPnPInfo(), element: String?, text = ""

@@ -195,7 +195,7 @@ final class Fans {
     func handle(_ cmd: Command) -> String {
         switch cmd {
         case .status:
-            return "ok fans=\(count) forced=\(forced ? 1 : 0) hot=\(hot ? 1 : 0)"
+            return "ok fans=\(count) forced=\(forced ? 1 : 0) hot=\(hot ? 1 : 0) v=\(helperVersion)"
         case .auto:
             auto()
             return "ok"
@@ -227,14 +227,28 @@ final class Fans {
 
 // MARK: - Socket
 
-/// Eén regel lezen (≤ 64 bytes, korte time-out), afhandelen, antwoorden, dicht.
+/// Versie van het protocol/de helper; de app vergelijkt dit en vraagt om "Reinstall" als hij ouder is.
+let helperVersion = 2
+
+/// Alleen root of wie er nu achter het scherm zit (eigenaar van /dev/console) mag de helper aansturen.
+func allowed(_ c: Int32) -> Bool {
+    var uid: uid_t = 0, gid: gid_t = 0
+    guard getpeereid(c, &uid, &gid) == 0 else { return false }
+    var st = stat()
+    return uid == 0 || (stat("/dev/console", &st) == 0 && st.st_uid == uid)
+}
+
+/// Eén regel lezen (≤ 64 bytes, samen hooguit 0,3 s), afhandelen, antwoorden, dicht.
+/// De totale limiet houdt de veiligheidslus (95 °C-check, 30 s-terugval) draaiende, ook bij een trage verbinding.
 func serve(_ c: Int32, _ fans: Fans) {
-    var on: Int32 = 1, tv = timeval(tv_sec: 0, tv_usec: 500_000)
+    guard allowed(c) else { let out = Array("err denied\n".utf8); _ = write(c, out, out.count); return }
+    let start = Fans.now()
+    var on: Int32 = 1, tv = timeval(tv_sec: 0, tv_usec: 100_000)
     setsockopt(c, SOL_SOCKET, SO_NOSIGPIPE, &on, socklen_t(MemoryLayout<Int32>.size))
     setsockopt(c, SOL_SOCKET, SO_RCVTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
     setsockopt(c, SOL_SOCKET, SO_SNDTIMEO, &tv, socklen_t(MemoryLayout<timeval>.size))
     var buf: [UInt8] = [], chunk = [UInt8](repeating: 0, count: 64)
-    while buf.count <= 64, !buf.contains(10) {
+    while buf.count <= 64, !buf.contains(10), Fans.now() - start < 0.3 {
         let n = read(c, &chunk, chunk.count)
         guard n > 0 else { break }
         buf += chunk[..<n]

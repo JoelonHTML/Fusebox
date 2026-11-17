@@ -70,7 +70,7 @@ import AppKit
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("Fusebox-Updater", forHTTPHeaderField: "User-Agent")
         URLSession.shared.dataTask(with: req) { data, response, error in
-            let result = Self.parseRelease(data)
+            let result = Self.parseRelease(data, repo: repo)
             Task { @MainActor in
                 self.lastCheck = Date()
                 guard let r = result else {
@@ -82,7 +82,9 @@ import AppKit
                 self.latest = r
                 self.state = .available(r.tag)
                 if !userInitiated { self.notify(r.tag) }
-                if self.auto || userInitiated { self.install() }
+                // Deze versie lukte al eens niet (geen schrijfrechten, codesign…): niet elke 15 min opnieuw downloaden
+                let failedBefore = UserDefaults.standard.integer(forKey: "failedUpdateBuild") == r.build
+                if userInitiated || (self.auto && !failedBefore) { self.install() }
             }
         }.resume()
     }
@@ -113,7 +115,9 @@ import AppKit
             Task { @MainActor in
                 switch outcome {
                 case .success(let newApp): self.replaceAndRelaunch(with: newApp)
-                case .failure(let e): self.state = .failed(e.localizedDescription)
+                case .failure(let e):
+                    UserDefaults.standard.set(r.build, forKey: "failedUpdateBuild")   // alleen nog op "Check for updates"
+                    self.state = .failed(e.localizedDescription)
                 }
             }
         }.resume()
@@ -124,13 +128,16 @@ import AppKit
         do {
             _ = try FileManager.default.replaceItemAt(current, withItemAt: newApp, backupItemName: nil, options: [])
         } catch {
+            try? FileManager.default.removeItem(at: newApp.deletingLastPathComponent())
+            if let b = latest?.build { UserDefaults.standard.set(b, forKey: "failedUpdateBuild") }
             state = .failed("Couldn't replace the app: \(error.localizedDescription)")
             return
         }
-        // Na het afsluiten de nieuwe versie starten (los proces, overleeft het afsluiten)
+        try? FileManager.default.removeItem(at: newApp.deletingLastPathComponent())   // lege tijdelijke map opruimen
+        // Pas starten als dit proces echt weg is (afsluiten kan >1 s duren: logboek, ventilator-helper)
         let p = Process()
         p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", "sleep 1; /usr/bin/open \"$0\"", current.path]
+        p.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$0\"", current.path, String(getpid())]
         try? p.run()
         NSApp.terminate(nil)
     }
@@ -138,7 +145,7 @@ import AppKit
     // MARK: Puur (testbaar)
 
     /// Uit de GitHub-API: tag, bouwnummer (laatste getal ≥ 8 cijfers in de tag, bijv. "v0.1-beta-202611162309") en de URL van Fusebox.zip.
-    nonisolated static func parseRelease(_ data: Data?) -> (tag: String, build: Int, zip: URL)? {
+    nonisolated static func parseRelease(_ data: Data?, repo: String? = nil) -> (tag: String, build: Int, zip: URL)? {
         guard let data, data.count < 2_000_000,
               let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
               let tag = j["tag_name"] as? String,
@@ -146,7 +153,9 @@ import AppKit
               let assets = j["assets"] as? [[String: Any]],
               let zip = assets.first(where: { ($0["name"] as? String) == "Fusebox.zip" })?["browser_download_url"] as? String,
               let url = URL(string: zip), url.scheme == "https",
-              url.host == "github.com" || url.host?.hasSuffix(".githubusercontent.com") == true
+              url.host == "github.com" || url.host?.hasSuffix(".githubusercontent.com") == true,
+              // Alleen een download uit déze repo (niet een willekeurige link die in de release staat)
+              repo.map({ url.host != "github.com" || url.path.hasPrefix("/\($0)/releases/download/") }) ?? true
         else { return nil }
         return (tag, build, url)
     }
@@ -158,12 +167,17 @@ import AppKit
     nonisolated private static func unpackAndVerify(zip: URL, expectedBuild: Int) throws -> URL {
         let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fusebox-update-\(UUID().uuidString)")
         try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        try run("/usr/bin/ditto", ["-x", "-k", zip.path, dir.path])
-        let app = dir.appendingPathComponent("Fusebox.app")
-        guard let b = Bundle(url: app), b.bundleIdentifier == Bundle.main.bundleIdentifier else { throw err("Not a Fusebox update") }
-        guard Int(b.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") == expectedBuild else { throw err("Version mismatch") }
-        try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
-        return app
+        do {
+            try run("/usr/bin/ditto", ["-x", "-k", zip.path, dir.path])
+            let app = dir.appendingPathComponent("Fusebox.app")
+            guard let b = Bundle(url: app), b.bundleIdentifier == Bundle.main.bundleIdentifier else { throw err("Not a Fusebox update") }
+            guard Int(b.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") == expectedBuild else { throw err("Version mismatch") }
+            try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
+            return app
+        } catch {
+            try? FileManager.default.removeItem(at: dir)   // geen uitgepakte kopieën laten slingeren
+            throw error
+        }
     }
 
     nonisolated private static func run(_ tool: String, _ args: [String]) throws {
@@ -186,6 +200,8 @@ import AppKit
         precondition(parseRelease(Data(json.utf8))?.build == 202611200101, "release")
         let evil = #"{"tag_name":"v9-209912312359","assets":[{"name":"Fusebox.zip","browser_download_url":"http://evil.example/Fusebox.zip"}]}"#
         precondition(parseRelease(Data(evil.utf8)) == nil, "alleen https van GitHub")
+        let other = #"{"tag_name":"v9-209912312359","assets":[{"name":"Fusebox.zip","browser_download_url":"https://github.com/someone/else/releases/download/v9/Fusebox.zip"}]}"#
+        precondition(parseRelease(Data(other.utf8), repo: "x/y") == nil && parseRelease(Data(json.utf8), repo: "x/y") != nil, "alleen eigen repo")
         print("updater ok")
     }
 }

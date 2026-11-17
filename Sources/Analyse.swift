@@ -131,7 +131,7 @@ enum Analysis {
                 n = 0; cpu = 0; ram = 0; p = 1; tSum = 0; tN = 0; disk = nil; total = nil; pSum = 0; pN = 0
             }
             n += 1; cpu += c; ram += d(iRAM) ?? 0
-            p = max(p, Int(d(iP) ?? 1))
+            p = max(p, d(iP).flatMap { Int(exactly: $0.rounded()) } ?? 1)   // "nan"/"inf" uit een bewerkt bestand: niet crashen
             if let t = d(iT) { tSum += t; tN += 1 }
             if let x = d(iPing) { pSum += x; pN += 1 }
             if let x = d(iD) { disk = x }
@@ -184,7 +184,7 @@ enum Analysis {
     private static let cache = Cache()
 
     fileprivate static func dayName(_ date: Date) -> String {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"; return f.string(from: date)
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"; return f.string(from: date)
     }
 
     fileprivate static func day(_ date: Date, dir: URL) -> Day {

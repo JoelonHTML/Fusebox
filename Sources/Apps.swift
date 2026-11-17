@@ -68,13 +68,15 @@ final class AppMonitor: ObservableObject {
             guard ok == 0 else { continue } // niet van ons: telt mee in "macOS zelf"
             let cpuNs = UInt64(Double(ri.ri_user_time + ri.ri_system_time) * tick)
             seen[pid] = (cpuNs, ri.ri_energy_nj, ri.ri_diskio_bytesread, ri.ri_diskio_byteswritten)
-            let (key, path) = identity(pid)
+            let (key, _) = identity(pid)
             let meta = describe(key: key, pid: pid)
             let prev = last[pid]
-            let cpu = prev.map { dt > 0 ? Double(cpuNs &- $0.cpu) / 1e9 / dt / cores * 100 : 0 } ?? 0
-            let watt = prev.map { dt > 0 ? Double(ri.ri_energy_nj &- $0.energy) / 1e9 / dt : 0 } ?? 0
-            let rd = prev.map { dt > 0 ? Double(ri.ri_diskio_bytesread &- $0.rd) / dt : 0 } ?? 0
-            let wr = prev.map { dt > 0 ? Double(ri.ri_diskio_byteswritten &- $0.wr) / dt : 0 } ?? 0
+            // Teller lager dan vorige keer (pid hergebruikt / exec): als nieuw proces behandelen, niet laten omslaan
+            func delta(_ a: UInt64, _ b: UInt64) -> Double { a >= b ? Double(a - b) : 0 }
+            let cpu = prev.map { dt > 0 ? delta(cpuNs, $0.cpu) / 1e9 / dt / cores * 100 : 0 } ?? 0
+            let watt = prev.map { dt > 0 ? delta(ri.ri_energy_nj, $0.energy) / 1e9 / dt : 0 } ?? 0
+            let rd = prev.map { dt > 0 ? delta(ri.ri_diskio_bytesread, $0.rd) / dt : 0 } ?? 0
+            let wr = prev.map { dt > 0 ? delta(ri.ri_diskio_byteswritten, $0.wr) / dt : 0 } ?? 0
             var ti = proc_taskinfo()
             let threads = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, Int32(MemoryLayout<proc_taskinfo>.size)) > 0 ? Int(ti.pti_threadnum) : 0
             let start = nowDate.addingTimeInterval(-Double(nowAbs &- ri.ri_proc_start_abstime) * tick / 1e9)

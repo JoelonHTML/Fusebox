@@ -33,7 +33,10 @@ enum Installer {
             // Draaiende oude versie netjes sluiten (zelfde bundle-id, ander proces)
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             where app.processIdentifier != ProcessInfo.processInfo.processIdentifier { app.terminate() }
-            waitForOtherInstancesToQuit()
+            guard waitForOtherInstancesToQuit() else {
+                fail("The old Fusebox is still running. Quit it (⌘Q) and open this one again.")
+                return
+            }
             do {
                 try fm.trashItem(at: installed, resultingItemURL: nil)          // oude naar de Prullenmand (terug te halen)
                 try fm.copyItem(at: me, to: installed)
@@ -107,17 +110,28 @@ enum Installer {
         try? p.run(); p.waitUntilExit()
     }
 
-    private static func waitForOtherInstancesToQuit() {
+    /// true als alle andere Fuseboxen weg zijn. De runloop laten draaien (niet Thread.sleep): de lijst met
+    /// draaiende apps ververst alleen dan. Na ~5 s opgeven i.p.v. een draaiende app weg te gooien.
+    @MainActor private static func waitForOtherInstancesToQuit() -> Bool {
         let id = Bundle.main.bundleIdentifier ?? "", me = ProcessInfo.processInfo.processIdentifier
-        for _ in 0..<50 {   // max ~5 s
-            if NSRunningApplication.runningApplications(withBundleIdentifier: id).allSatisfy({ $0.processIdentifier == me }) { return }
-            Thread.sleep(forTimeInterval: 0.1)
+        for _ in 0..<50 {
+            if NSRunningApplication.runningApplications(withBundleIdentifier: id).allSatisfy({ $0.processIdentifier == me }) { return true }
+            RunLoop.current.run(until: Date().addingTimeInterval(0.1))
         }
+        return false
     }
 
     @MainActor private static func open(_ url: URL) {
+        // Draait die al? Dan alleen naar voren halen en deze kopie sluiten (geen tweede Fusebox die dubbel logt/bijwerkt)
+        let target = url.resolvingSymlinksInPath().path
+        if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
+            .first(where: { $0.processIdentifier != ProcessInfo.processInfo.processIdentifier && $0.bundleURL?.resolvingSymlinksInPath().path == target }) {
+            running.activate()
+            NSApp.terminate(nil)
+            return
+        }
         let cfg = NSWorkspace.OpenConfiguration()
-        cfg.createsNewApplicationInstance = true
+        cfg.createsNewApplicationInstance = true   // anders denkt macOS dat deze (zelfde bundle-id) al "de" Fusebox is
         NSWorkspace.shared.openApplication(at: url, configuration: cfg) { _, _ in
             DispatchQueue.main.async { NSApp.terminate(nil) }
         }

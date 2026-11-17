@@ -1111,6 +1111,7 @@ final class NetScanner: ObservableObject {
                                                                   deviceType: "urn:schemas-upnp-org:device:ZonePlayer:1"), "upnp xml")
         precondition(NetProbe.parseUPnP(Array("<!DOCTYPE x [<!ENTITY a \"aaaa\">]><root><friendlyName>&a;</friendlyName></root>".utf8)) == nil, "upnp dtd")
         precondition(NetProbe.parseUPnP([UInt8](repeating: 0x20, count: 70_000)) == nil && NetProbe.parseUPnP(Array("not xml".utf8)) == nil, "upnp groot/kapot")
+        precondition(NetProbe.parseUPnP(Array(("<!--" + String(repeating: " ", count: 3000) + "--><!DOCTYPE x [<!ENTITY a \"a\">]><root/>").utf8)) == nil, "upnp dtd na lange opmerking")
         // Wake on LAN, poorten, modellen
         let mac: [UInt8] = [0x00, 0x11, 0x32, 0xAA, 0xBB, 0xCC]
         let magic = NetProbe.magicPacket(mac)!

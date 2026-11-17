@@ -109,7 +109,7 @@ final class Meter: ObservableObject {
     func fill(_ r: TimeRange) -> Double { 1 }
 
     func file(for day: Date, prefix: String = "meterkast") -> URL {
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"
         return logDir.appendingPathComponent("\(prefix)-\(f.string(from: day)).csv")
     }
 
@@ -128,7 +128,7 @@ final class Meter: ObservableObject {
             let file = file(for: s.time, prefix: "apps")
             try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
             if !FileManager.default.fileExists(atPath: file.path) { try? AppUsage.csvHeader.write(to: file, atomically: true, encoding: .utf8) }
-            if let h = try? FileHandle(forWritingTo: file) { h.seekToEndOfFile(); h.write(Data(lines.utf8)); try? h.close() }
+            _ = Self.append(lines, to: file)
         }
         checkAlerts(s, top: apps.first { $0.kind != .macos })
     }
@@ -156,7 +156,7 @@ final class Meter: ObservableObject {
     func deleteLogs(olderThan days: Int?) {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(at: logDir, includingPropertiesForKeys: nil) else { return }
-        let f = DateFormatter(); f.dateFormat = "yyyy-MM-dd"
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"
         let cutoff = days.flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: Calendar.current.startOfDay(for: Date())) }
         for u in files where u.pathExtension == "csv" {
             let name = u.deletingPathExtension().lastPathComponent
@@ -173,12 +173,16 @@ final class Meter: ObservableObject {
         if !FileManager.default.fileExists(atPath: file.path) {
             try? Sample.csvHeader.write(to: file, atomically: true, encoding: .utf8)
         }
-        if let h = try? FileHandle(forWritingTo: file) {
-            h.seekToEndOfFile()
-            h.write(Data(buffer.utf8))
-            try? h.close()
-            buffer = ""
-        }
+        if Self.append(buffer, to: file) { buffer = "" }
+        else if buffer.utf8.count > 2_000_000 { buffer = String(buffer.suffix(1_000_000)) }   // schijf vol: niet eindeloos groeien
+    }
+
+    /// Achteraan toevoegen met de API die een fout teruggeeft. De oude seekToEndOfFile/write gooien een
+    /// Objective-C-uitzondering bij een volle schijf, en die laat de app crashen.
+    static func append(_ text: String, to file: URL) -> Bool {
+        guard let h = try? FileHandle(forWritingTo: file) else { return false }
+        defer { try? h.close() }
+        do { try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); return true } catch { return false }
     }
 
     /// Zet een CSV met andere kolommen om naar `Sample.csvHeader`: kolommen op naam, ontbrekende blijven leeg.
@@ -203,7 +207,7 @@ final class Meter: ObservableObject {
         guard let text = try? String(contentsOf: file(for: Date()), encoding: .utf8) else { return [] }
         var lines = text.split(separator: "\n")
         guard !lines.isEmpty else { return [] }
-        let cols = Dictionary(uniqueKeysWithValues: lines.removeFirst().split(separator: ",").enumerated().map { (String($1), $0) })
+        let cols = Dictionary(lines.removeFirst().split(separator: ",").enumerated().map { (String($1), $0) }, uniquingKeysWith: { a, _ in a })   // dubbele kolom (in Excel bewerkt): niet crashen
         var out: [Sample] = [], bucket: [Sample] = [], key = "", keyTime: Date?
         for line in lines {
             let v = line.split(separator: ",", omittingEmptySubsequences: false)
@@ -220,7 +224,7 @@ final class Meter: ObservableObject {
             s.time = time
             s.cpu = d("cpu_pct") ?? 0; s.ram = d("ram_pct") ?? 0; s.ramUsedGB = d("ram_gb") ?? 0; s.gpu = d("gpu_pct") ?? 0
             s.temp = d("temp_c"); s.gpuTemp = d("gpu_temp_c"); s.down = d("down_Bps") ?? 0; s.up = d("up_Bps") ?? 0
-            s.pressure = Int(d("geheugendruk") ?? 1); s.diskFreeGB = d("schijf_vrij_gb") ?? 0; s.battery = d("batterij_pct")
+            s.pressure = (d("geheugendruk")).flatMap { Int(exactly: $0.rounded()) } ?? 1; s.diskFreeGB = d("schijf_vrij_gb") ?? 0; s.battery = d("batterij_pct")
             s.pingMs = d("ping_ms"); s.diskRead = d("lezen_Bps") ?? 0; s.diskWrite = d("schrijven_Bps") ?? 0; s.swapGB = d("swap_gb") ?? 0
             bucket.append(s)
         }

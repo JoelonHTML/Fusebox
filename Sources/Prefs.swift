@@ -35,7 +35,7 @@ enum Prefs {
     }()
 
     /// Horen bij deze Mac, gaan niet mee bij importeren.
-    static let local: Set<String> = ["pingHost", "setupDone", "page", "settingsTab", "fanMode", "fanCurve"]
+    static let local: Set<String> = ["pingHost", "setupDone", "page", "settingsTab", "fanMode", "fanCurve", "keepDays", "autoUpdate"]   // niet via een gedeeld bestand: anders kan iemand je geschiedenis laten wissen of updates uitzetten
 
     static func register(_ d: UserDefaults = .standard) { d.register(defaults: defaults) }
 
