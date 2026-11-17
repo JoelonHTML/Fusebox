@@ -34,7 +34,7 @@ struct IconView: View {
                     }
                 }
             }
-            .scaleEffect(1.22)   // groot genoeg om in het Dock leesbaar te zijn
+            .scaleEffect(1.1)   // net groter dan origineel: leesbaar in het Dock, nog ruimte rondom
             .rotationEffect(.degrees(-30))
         }
         .frame(width: 824, height: 824)
