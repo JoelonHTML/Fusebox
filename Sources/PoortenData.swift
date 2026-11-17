@@ -1,4 +1,5 @@
 import Foundation
+import AppKit
 import Combine
 import IOKit
 
@@ -120,6 +121,26 @@ struct PortsSnapshot: Hashable {
     var tb: [TBDev] = []
     var tbLinks: [TBLink] = []
     var power: PowerNow?
+    var displays: [DisplayInfo] = []   // apart bijgewerkt (bij openen en als schermen wijzigen)
+}
+
+/// Eén scherm. Serienummers lezen we bewust niet.
+struct DisplayInfo: Identifiable, Hashable {
+    enum Link: Hashable { case builtIn, displayLink, native }
+    var id: UInt32 = 0
+    var name = "Display"
+    var vendor = 0, model = 0
+    var link = Link.native
+    var transport: String?                // "HDMI" / "DP" volgens de framebuffer (alleen eigen aansluiting)
+    var main = false, mirrored = false
+    var rotation = 0
+    var w = 0, h = 0, lw = 0, lh = 0      // pixels nu en "ziet eruit als" (punten)
+    var hz = 0.0
+    var maxW = 0, maxH = 0, maxHz = 0.0   // eigen resolutie en hoogste verversing daarop
+    var mmW = 0.0, mmH = 0.0
+    var scale = 1.0, edr = 1.0
+    var bits: Int?
+    var inches: Double? { Displays.inches(mmW, mmH) }
 }
 
 struct PortNote: Hashable {
@@ -550,7 +571,120 @@ enum Ports {
         precondition(nowText(now) == "Drawing 17.5 W now (20.4 V × 0.86 A) · battery charging", "nu \(nowText(now) ?? "")")
         precondition(chargerText(mag.charger!) == "Charger up to 94 W · agreed on 20 V × 4.7 A (94 W)", "lader")
         precondition(rawValue(true as NSNumber) == "Yes" && rawValue(Data([0xAB, 1])) == "<ab01>" && rawValue(["b": 1, "a": "x"] as [String: Any]) == "{a=x, b=1}", "ruw")
+        Displays.selfTest()
         print("poorten ok")
+    }
+}
+
+// MARK: - Schermen (puur)
+
+enum Displays {
+    static let displayLinkVID = 0x17E9
+    static let displayLinkInfo = "DisplayLink sends the picture compressed over USB, and the Mac's processor does the work. Fine for office work; not for games or video (motion can stutter, some protected video won't play)."
+
+    struct Mode: Hashable { var w = 0, h = 0, pw = 0, ph = 0; var hz = 0.0; var native = false }
+    struct Framebuffer: Hashable { var vendor = 0, model = 0; var transport: String? }
+
+    static func inches(_ w: Double, _ h: Double) -> Double? { w > 0 && h > 0 ? (w * w + h * h).squareRoot() / 25.4 : nil }
+    static func res(_ w: Int, _ h: Int) -> String { "\(w) × \(h)" }
+    static func hz(_ x: Double) -> String { "\(trim(x)) Hz" }
+
+    /// "4K60", "1440p75", anders "3440 × 1440 at 100 Hz".
+    static func modeName(_ w: Int, _ h: Int, _ f: Double) -> String {
+        let n = ["3840x2160": "4K", "4096x2160": "4K", "5120x2880": "5K", "6016x3384": "6K", "2560x1440": "1440p", "1920x1080": "1080p"]["\(w)x\(h)"]
+        return n.map { "\($0)\(Int(f.rounded()))" } ?? "\(res(w, h)) at \(hz(f))"
+    }
+
+    /// Eigen resolutie (vlag "native", anders de grootste niet-geschaalde) en de hoogste verversing daarop.
+    static func best(_ modes: [Mode]) -> (w: Int, h: Int, hz: Double)? {
+        let nat = modes.filter(\.native)
+        guard let top = (nat.isEmpty ? modes.filter { $0.w == $0.pw } : nat).max(by: { $0.pw * $0.ph < $1.pw * $1.ph }) else { return nil }
+        return (top.pw, top.ph, modes.filter { $0.pw == top.pw && $0.ph == top.ph }.map(\.hz).max() ?? top.hz)
+    }
+
+    /// Ingebouwd, eigen framebuffer (DisplayPort/HDMI uit de Mac zelf), of zonder framebuffer met een DisplayLink-apparaat aan de Mac.
+    /// ponytail: zonder DisplayLink-apparaat geldt een scherm zonder framebuffer ook als "eigen" (AirPlay/Sidecar vallen daar ook onder).
+    static func link(builtIn: Bool, vendor: Int, model: Int, framebuffers fbs: inout [Framebuffer], displayLink: Bool) -> (DisplayInfo.Link, String?) {
+        if builtIn { return (.builtIn, nil) }
+        // Model eerst; ProductID van de framebuffer is niet altijd het CG-modelnummer, dan alleen de maker
+        if let i = fbs.firstIndex(where: { $0.vendor == vendor && $0.model == model }) ?? fbs.firstIndex(where: { $0.vendor == vendor }) {
+            return (.native, fbs.remove(at: i).transport)
+        }
+        return (displayLink ? .displayLink : .native, nil)
+    }
+
+    /// "3840 × 2160 · 27″ · looks like 2560 × 1440"
+    static func facts(_ d: DisplayInfo) -> [String] {
+        [res(d.w, d.h), d.inches.map { "\(trim($0))″" }, d.lw > 0 && (d.lw, d.lh) != (d.w, d.h) ? "looks like \(res(d.lw, d.lh))" : nil].compactMap { $0 }
+    }
+
+    /// Alleen als het echt zo is: lagere verversing of minder pixels dan het scherm kan.
+    static func warning(_ d: DisplayInfo) -> String? {
+        if d.hz > 0, d.maxHz > d.hz + 1 {
+            return "Runs at \(hz(d.hz)) but can do \(hz(d.maxHz)). The cable, adapter or port may limit \(modeName(d.maxW, d.maxH, d.maxHz))."
+        }
+        if d.w > 0, d.maxW * d.maxH > d.w * d.h {
+            return "Runs at \(res(d.w, d.h)) pixels but the display has \(res(d.maxW, d.maxH)), so text looks soft. Check System Settings › Displays, the cable or the port."
+        }
+        return nil
+    }
+
+    static func linkText(_ d: DisplayInfo) -> String {
+        switch d.link {
+        case .builtIn: "Built in"
+        case .displayLink: "DisplayLink (compressed video over USB)"
+        case .native: d.transport.map { ($0 == "DP" ? "DisplayPort" : $0) + " (straight from the Mac's graphics)" } ?? "DisplayPort or HDMI (straight from the Mac's graphics)"
+        }
+    }
+
+    /// Eén regel voor de tooltip in de kop: "Built-in: 2880 × 1864 · 60 Hz".
+    static func line(_ d: DisplayInfo) -> String {
+        let (w, h) = d.link == .builtIn && d.maxW > 0 ? (d.maxW, d.maxH) : (d.w, d.h)
+        return (d.link == .builtIn ? "Built-in" : d.name) + ": " + res(w, h) + (d.hz > 0 ? " · " + hz(d.hz) : "")
+    }
+
+    static func selfTest() {
+        precondition(trim(inches(597.7, 336.2) ?? 0) == "27" && inches(0, 10) == nil, "inch")
+        precondition(modeName(3840, 2160, 59.99) == "4K60" && modeName(3440, 1440, 100) == "3440 × 1440 at 100 Hz", "modusnaam")
+        let modes = [Mode(w: 1920, h: 1080, pw: 3840, ph: 2160, hz: 60), Mode(w: 3840, h: 2160, pw: 3840, ph: 2160, hz: 30, native: true),
+                     Mode(w: 3840, h: 2160, pw: 3840, ph: 2160, hz: 60, native: true), Mode(w: 2560, h: 1440, pw: 5120, ph: 2880, hz: 60),
+                     Mode(w: 1920, h: 1080, pw: 1920, ph: 1080, hz: 144)]
+        precondition(best(modes).map { [$0.w, $0.h, Int($0.hz)] } == [3840, 2160, 60], "beste modus")
+        precondition(best(modes.map { var m = $0; m.native = false; return m }).map { [$0.w, Int($0.hz)] } == [3840, 60] && best([]) == nil, "zonder vlag")
+        var fbs = [Framebuffer(vendor: 0x1234, model: 7, transport: "HDMI")]
+        precondition(link(builtIn: true, vendor: 1, model: 1, framebuffers: &fbs, displayLink: true).0 == .builtIn, "ingebouwd")
+        precondition(link(builtIn: false, vendor: 0x1234, model: 7, framebuffers: &fbs, displayLink: true) == (.native, "HDMI") && fbs.isEmpty, "eigen")
+        precondition(link(builtIn: false, vendor: 0x1234, model: 7, framebuffers: &fbs, displayLink: true).0 == .displayLink
+                     && link(builtIn: false, vendor: 9, model: 9, framebuffers: &fbs, displayLink: false).0 == .native, "displaylink")
+        fbs = [Framebuffer(vendor: 0x1234, model: 999)]
+        precondition(link(builtIn: false, vendor: 0x1234, model: 7, framebuffers: &fbs, displayLink: true).0 == .native && fbs.isEmpty, "alleen maker")
+        var d = DisplayInfo(id: 5, name: "Test Monitor", vendor: 0x1234, model: 7, w: 3840, h: 2160, lw: 1920, lh: 1080, hz: 30,
+                            maxW: 3840, maxH: 2160, maxHz: 60, mmW: 597.7, mmH: 336.2)
+        precondition(facts(d) == ["3840 × 2160", "27″", "looks like 1920 × 1080"], "feiten \(facts(d))")
+        precondition(warning(d)?.hasSuffix("may limit 4K60.") == true, "te traag")
+        d.hz = 60; d.w = 1920; d.h = 1080; d.lw = 1920; d.lh = 1080
+        precondition(warning(d)?.hasPrefix("Runs at 1920 × 1080 pixels") == true && facts(d).count == 2, "te weinig pixels")
+        d.w = 5120; d.h = 2880
+        precondition(warning(d) == nil && linkText(d) == "DisplayPort or HDMI (straight from the Mac's graphics)", "in orde")
+        precondition(line(DisplayInfo(link: .builtIn, w: 3420, h: 2214, hz: 120, maxW: 3024, maxH: 1964)) == "Built-in: 3024 × 1964 · 120 Hz", "kopregel")
+
+        // Boom: twee DisplayLink-schermen onder het DisplayLink-apparaat achter een hub; een eigen scherm zonder videopoort apart
+        var dl = USBDev(id: 61); dl.name = "Test Dock Video"; dl.vid = displayLinkVID; dl.maker = "DisplayLink"
+        var hub = USBDev(id: 60); hub.hub = true; hub.children = [dl]
+        let port = PortInfo(id: "p2", kind: "USB-C", number: 2, connected: true)
+        let sum = PortSum(port: port, roots: [hub], tb: [], tbLink: nil, notes: [], now: nil)
+        let shown = [DisplayInfo(id: 1, link: .builtIn), DisplayInfo(id: 2, link: .displayLink), DisplayInfo(id: 3, link: .displayLink), DisplayInfo(id: 4, link: .native)]
+        for internals in [false, true] {
+            let t = PortTree.build([sum], internals: internals, displays: shown)
+            let dev = PortTree.find("usb:61", in: t)
+            precondition(dev?.children.map(\.id) == ["disp:2", "disp:3"] && dev?.facts.first == "2 displays via DisplayLink" && dev?.info != nil, "dl boom")
+            precondition(PortTree.find("disp:2", in: t)?.portID == "p2" && t.last?.id == "displays" && t.last?.children.map(\.id) == ["disp:4"]
+                         && PortTree.find("disp:1", in: t) == nil, "eigen apart")
+        }
+        // Eén poort met video: het eigen scherm hangt daaronder
+        var vp = port; vp.links = [PortLink(type: "DisplayPort")]
+        let t2 = PortTree.build([PortSum(port: vp, roots: [], tb: [], tbLink: nil, notes: [], now: nil)], internals: false, displays: [shown[3]])
+        precondition(PortTree.find("src:p2", in: t2)?.children.map(\.id) == ["disp:4"] && t2.count == 1, "eigen onder poort")
     }
 }
 
@@ -651,6 +785,59 @@ enum PortReader {
     }
 }
 
+// MARK: - Schermen lezen (CoreGraphics + NSScreen; alleen voorkeur, maker- en modelnummer uit de framebuffer)
+
+extension PortReader {
+    /// Hoofdthread (NSScreen). Alleen bij openen en als schermen wijzigen, niet elke 5 s.
+    @MainActor static func displays() -> [DisplayInfo] {
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16), n: UInt32 = 0
+        guard CGGetOnlineDisplayList(16, &ids, &n) == .success else { return [] }
+        let key = NSDeviceDescriptionKey("NSScreenNumber")
+        let screens = Dictionary(NSScreen.screens.compactMap { s in (s.deviceDescription[key] as? NSNumber).map { ($0.uint32Value, s) } }, uniquingKeysWith: { a, _ in a })
+        var fbs = framebuffers()
+        let dl = hasDisplayLink()
+        return ids.prefix(Int(n)).map { id in
+            var d = DisplayInfo(id: id, vendor: Int(CGDisplayVendorNumber(id)), model: Int(CGDisplayModelNumber(id)))
+            (d.link, d.transport) = Displays.link(builtIn: CGDisplayIsBuiltin(id) != 0, vendor: d.vendor, model: d.model, framebuffers: &fbs, displayLink: dl)
+            d.main = CGDisplayIsMain(id) != 0; d.mirrored = CGDisplayIsInMirrorSet(id) != 0
+            d.rotation = Int(CGDisplayRotation(id))
+            let mm = CGDisplayScreenSize(id); d.mmW = mm.width; d.mmH = mm.height
+            if let m = CGDisplayCopyDisplayMode(id) { d.w = m.pixelWidth; d.h = m.pixelHeight; d.lw = m.width; d.lh = m.height; d.hz = m.refreshRate }
+            let all = CGDisplayCopyAllDisplayModes(id, [kCGDisplayShowDuplicateLowResolutionModes: true] as CFDictionary) as? [CGDisplayMode] ?? []
+            // 0x02000000 = kDisplayModeNativeFlag (IOGraphicsTypes.h)
+            if let b = Displays.best(all.map { Displays.Mode(w: $0.width, h: $0.height, pw: $0.pixelWidth, ph: $0.pixelHeight, hz: $0.refreshRate, native: $0.ioFlags & 0x0200_0000 != 0) }) {
+                (d.maxW, d.maxH, d.maxHz) = b
+            }
+            if let s = screens[id] {
+                d.name = s.localizedName; d.scale = s.backingScaleFactor; d.edr = s.maximumPotentialExtendedDynamicRangeColorComponentValue
+                d.bits = s.depth.bitsPerSample
+                if d.hz == 0 { d.hz = Double(s.maximumFramesPerSecond) }   // sommige panelen melden 0 Hz in de modus
+            }
+            return d
+        }
+    }
+
+    /// Externe framebuffers met een aangesloten scherm (DisplayAttributes): maker, model en HDMI/DP. DisplayLink heeft er geen.
+    private static func framebuffers() -> [Displays.Framebuffer] {
+        services("IOMobileFramebuffer").compactMap { e in
+            defer { IOObjectRelease(e) }
+            guard Ports.bool(prop(e, "external")), let a = prop(e, "DisplayAttributes") as? [String: Any],
+                  let p = a["ProductAttributes"] as? [String: Any] else { return nil }
+            return Displays.Framebuffer(vendor: Ports.int(p["LegacyManufacturerID"]) ?? -1, model: Ports.int(p["ProductID"]) ?? -1,
+                                        transport: (prop(e, "Transport") as? [String: Any]).flatMap { Ports.str($0["Downstream"]) })
+        }
+    }
+
+    /// Hangt er een DisplayLink-chip (USB 17E9) aan de Mac?
+    private static func hasDisplayLink() -> Bool {
+        guard let m = IOServiceMatching("IOUSBHostDevice") as NSMutableDictionary? else { return false }
+        m["IOPropertyMatch"] = ["idVendor": Displays.displayLinkVID]
+        let e = IOServiceGetMatchingService(kIOMainPortDefault, m)
+        if e != 0 { IOObjectRelease(e) }
+        return e != 0
+    }
+}
+
 // MARK: - Bijhouden zolang de pagina open is
 
 /// Leest bij openen, bij in-/uitpluggen (IOKit-meldingen, even gebundeld) en elke 5 s (laadvermogen). Stopt bij sluiten.
@@ -662,11 +849,16 @@ final class PortWatcher: ObservableObject {
     private var iterators: [io_iterator_t] = []
     private var timer: Timer?
     private var pending = false
+    private var screensChanged: NSObjectProtocol?
     private let queue = DispatchQueue(label: "fusebox.ports", qos: .utility)
 
     func start() {
         guard notify == nil else { return }
         refresh()
+        readDisplays()
+        screensChanged = NotificationCenter.default.addObserver(forName: NSApplication.didChangeScreenParametersNotification, object: nil, queue: .main) { [weak self] _ in
+            MainActor.assumeIsolated { self?.readDisplays() }
+        }
         let port = IONotificationPortCreate(kIOMainPortDefault)
         IONotificationPortSetDispatchQueue(port, .main)
         notify = port
@@ -699,6 +891,13 @@ final class PortWatcher: ObservableObject {
         iterators.forEach { IOObjectRelease($0) }; iterators = []
         if let notify { IONotificationPortDestroy(notify) }
         notify = nil
+        if let o = screensChanged { NotificationCenter.default.removeObserver(o) }
+        screensChanged = nil
+    }
+
+    private func readDisplays() {
+        let d = PortReader.displays()
+        if d != snap.displays { snap.displays = d }
     }
 
     /// Bij in-/uitpluggen komen meldingen in een golf; één keer lezen als het even stil is.
@@ -713,9 +912,10 @@ final class PortWatcher: ObservableObject {
 
     private func refresh() {
         queue.async { [weak self] in
-            let s = PortReader.read()
+            var s = PortReader.read()
             DispatchQueue.main.async {
                 guard let self, self.notify != nil || !self.loaded else { return }   // na stop niets meer bijwerken
+                s.displays = self.snap.displays
                 if s != self.snap { self.snap = s }
                 self.loaded = true
             }

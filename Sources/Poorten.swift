@@ -2,6 +2,7 @@ import SwiftUI
 
 // MARK: - Docked-pagina: bovenaan wat de Mac binnenkrijgt, daaronder per poort een korte lijst poort → kabel → lader/dock → apparaten
 //
+// Schermen: DisplayLink-schermen onder het DisplayLink-apparaat, eigen (DisplayPort/HDMI) onder de poort met video, de rest apart.
 // Per regel één getal rechts; hubs en de Billboard van een dock alleen met "Show hubs & internals".
 // Klik op een regel voor de details. Gegevens: PoortenData.swift; alleen bijgewerkt zolang deze pagina open is.
 
@@ -21,12 +22,13 @@ struct PortsContent: View {
     let snap: PortsSnapshot, loaded: Bool
     @AppStorage("dockedInternals") private var internals = false   // keuze onthouden
     @AppStorage("dockedEmpty") private var showEmpty = true         // lege poorten als één regel onderaan
+    @AppStorage("dockedDisplays") private var showDisplays = true
     @Environment(\.theme) private var theme
 
     var body: some View {
-        let sums = PortSum.all(snap)
+        let sums = PortSum.all(snap), displays = showDisplays ? snap.displays : []
         VStack(alignment: .leading, spacing: 14) {
-            IntoMac(snap: snap, sums: sums).padding(.top, 2)
+            IntoMac(snap: snap, sums: sums, displays: displays).padding(.top, 2)
             // Bovenaan (onder de kop): hubs en interne onderdelen van een dock tonen/verbergen
             HStack(spacing: 14) {
                 Spacer(minLength: 0)
@@ -39,7 +41,7 @@ struct PortsContent: View {
             if loaded && snap.ports.isEmpty {
                 Text("No USB-C or MagSafe ports found on this Mac.").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
             }
-            DockedList(groups: PortTree.build(sums, internals: internals), empty: showEmpty ? sums.filter { !$0.port.connected } : [], sums: sums)
+            DockedList(groups: PortTree.build(sums, internals: internals, displays: displays), empty: showEmpty ? sums.filter { !$0.port.connected } : [], sums: sums)
             otherDevices
         }
     }
@@ -61,11 +63,12 @@ struct PortsContent: View {
 // MARK: - Kop: wat er nu de Mac in gaat
 
 private struct IntoMac: View {
-    let snap: PortsSnapshot, sums: [PortSum]
+    let snap: PortsSnapshot, sums: [PortSum], displays: [DisplayInfo]
     @Environment(\.theme) private var theme
 
     var body: some View {
         let n = snap.power
+        let screens = displays.filter { $0.link != .builtIn }.count
         let inW = n.flatMap { $0.external ? $0.mW : nil }.map { Double($0) / 1000 }
         let charger = sums.compactMap(\.port.charger).max { $0.maxW < $1.maxW }
         let fastest = sums.filter { $0.port.links.contains { $0.type != "DisplayPort" } }.compactMap(\.dataBps).max()
@@ -88,6 +91,7 @@ private struct IntoMac: View {
                 if let c = charger { stat("bolt.fill", "\(trim(c.maxW)) W", "charger") }
                 if let f = fastest { stat("arrow.left.arrow.right", speedParts(f).0 + " " + speedParts(f).1, "link") }
                 if devices > 0 { stat("point.3.connected.trianglepath.dotted", "\(devices)", devices == 1 ? "device" : "devices") }
+                if screens > 0 { stat("display.2", "\(screens)", screens == 1 ? "display" : "displays").help(displays.map(Displays.line).joined(separator: "\n")) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -114,10 +118,10 @@ private struct IntoMac: View {
 // MARK: - Lijst per poort
 
 /// Wat er nu loopt naast wat maximaal kan (data in bit/s, stroom in W). `slow` = loopt duidelijk onder wat kan.
-struct LinkLoad { var now: Double?, max: Double?, power = false, slow = false }
+struct LinkLoad { var now: Double?, max: Double?, power = false, slow = false, unit: String? = nil }
 
 struct TNode: Identifiable {
-    enum Kind { case port, cable, source, hub, device, tb }
+    enum Kind { case port, cable, source, hub, device, tb, display }
     let id: String, kind: Kind, icon: String, title: String
     var main: LinkLoad? = nil       // het ene getal rechts
     var facts: [String] = []        // hooguit 4 korte feiten
@@ -127,12 +131,64 @@ struct TNode: Identifiable {
     var children: [TNode] = []
     var portID: String? = nil
     var usb: USBDev? = nil
+    var display: DisplayInfo? = nil
 }
 
 enum PortTree {
     /// Per aangesloten poort één groep. `internals`: ook hubs (ook die in een dock) en de Billboard tonen.
-    static func build(_ sums: [PortSum], internals: Bool) -> [TNode] {
-        sums.filter(\.port.connected).map { port($0, internals: internals) }
+    static func build(_ sums: [PortSum], internals: Bool, displays: [DisplayInfo] = []) -> [TNode] {
+        var groups = sums.filter(\.port.connected).map { port($0, internals: internals) }
+        var left = displays.filter { $0.link != .builtIn }
+        // DisplayLink: onder het DisplayLink-apparaat; zit dat als enige apparaat in de poort, dan is dat de bronregel
+        let vid = Displays.displayLinkVID
+        var dlRows = Set<String>()
+        for s in sums {
+            for d in s.roots.flatMap({ [$0] + $0.leaves }) where d.vid == vid { dlRows.insert("usb:\(d.id)") }
+            if !internals, s.roots.count == 1, s.roots[0].vid == vid { dlRows.insert("src:" + s.id) }
+        }
+        // ponytail: twee DisplayLink-apparaten → alle DisplayLink-schermen onder het eerste
+        if attach(left.filter { $0.link == .displayLink }, to: dlRows, in: &groups, displayLink: true) { left.removeAll { $0.link == .displayLink } }
+        // Eigen aansluiting: onder de enige poort met video.
+        // ponytail: met video op meerdere poorten is niet te zien welk scherm waar zit; dan in "Displays" (de crossbar kan dat later koppelen)
+        let video = sums.filter { $0.port.connected && $0.port.links.contains { $0.type == "DisplayPort" } }
+        if video.count == 1, attach(left.filter { $0.link == .native }, to: ["src:" + video[0].id], in: &groups, displayLink: false) {
+            left.removeAll { $0.link == .native }
+        }
+        if !left.isEmpty {
+            groups.append(TNode(id: "displays", kind: .port, icon: "display.2", title: "Displays", facts: ["not linked to a port"],
+                                children: left.map { display($0, portID: nil) }))
+        }
+        return groups
+    }
+
+    /// Hangt schermen onder de eerste regel met een van deze ids; true als dat lukte.
+    private static func attach(_ ds: [DisplayInfo], to ids: Set<String>, in groups: inout [TNode], displayLink: Bool) -> Bool {
+        guard !ds.isEmpty else { return false }
+        func walk(_ n: inout TNode, _ port: String?) -> Bool {
+            if ids.contains(n.id) {
+                n.children += ds.map { display($0, portID: port) }
+                if displayLink {
+                    n.facts.insert("\(ds.count) display\(ds.count == 1 ? "" : "s") via DisplayLink", at: 0)
+                    n.info = [n.info, Displays.displayLinkInfo].compactMap { $0 }.joined(separator: "\n\n")
+                }
+                return true
+            }
+            for i in n.children.indices where walk(&n.children[i], port) { return true }
+            return false
+        }
+        for i in groups.indices {
+            let port = groups[i].portID
+            if walk(&groups[i], port) { return true }
+        }
+        return false
+    }
+
+    /// Scherm: verversing rechts (met "/ max" als het lager loopt dan kan), pixels · inch · "looks like" eronder.
+    private static func display(_ d: DisplayInfo, portID: String?) -> TNode {
+        let below = d.maxHz > d.hz + 1
+        return TNode(id: "disp:\(d.id)", kind: .display, icon: "display", title: d.name,
+                     main: d.hz > 0 ? LinkLoad(now: d.hz, max: below ? d.maxHz : nil, slow: below, unit: "Hz") : nil,
+                     facts: Displays.facts(d), warn: Displays.warning(d), portID: portID, display: d)
     }
 
     /// Bij welke regel een oordeel hoort.
@@ -233,7 +289,7 @@ private struct LoadView: View {
     var size: CGFloat = 16
     @Environment(\.theme) private var theme
     var body: some View {
-        let f: (Double) -> (String, String) = { m.power ? (trim($0), "W") : speedParts($0) }
+        let f: (Double) -> (String, String) = { x in m.unit.map { (trim(x), $0) } ?? (m.power ? (trim(x), "W") : speedParts(x)) }
         let small = theme.label(max(size * 0.5, 9))
         HStack(alignment: .firstTextBaseline, spacing: 3) {
             if let n = m.now {
@@ -262,7 +318,8 @@ private struct NodeDetails: View {
     var body: some View {
         let p = node.portID.flatMap { id in sums.first { $0.id == id } }
         VStack(alignment: .leading, spacing: 8) {
-            if let d = node.usb { DeviceCard(dev: d) }
+            if let d = node.display { DisplayCard(d: d, sum: p) }
+            else if let d = node.usb { DeviceCard(dev: d) }
             else if let p {
                 Label(node.kind == .cable ? "Cable in \(p.port.title)" : node.title, systemImage: node.icon)
                     .font(theme.label(13).weight(.semibold))
@@ -562,6 +619,40 @@ private struct DeviceCard: View {
     }
 }
 
+/// Eén scherm: verversing groot, beeld en aansluiting eronder. Geen serienummers.
+private struct DisplayCard: View {
+    let d: DisplayInfo, sum: PortSum?
+    @Environment(\.theme) private var theme
+    var body: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Label(d.name, systemImage: "display").font(theme.label(14).weight(.semibold))
+            if d.hz > 0 { BigNum(value: trim(d.hz), unit: "Hz", size: 22) }
+            if let w = Displays.warning(d) { NoteBox(note: PortNote(text: w, level: .warn)) }
+            if d.link == .displayLink { NoteBox(note: PortNote(text: Displays.displayLinkInfo, level: .info)) }
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14, alignment: .top)], alignment: .leading, spacing: 12) {
+                PortGroup("Picture", icon: "display") {
+                    PortFact("Resolution", Displays.res(d.w, d.h) + (d.maxW == 0 ? "" : (d.maxW, d.maxH) == (d.w, d.h) ? " (native)" : " (native \(Displays.res(d.maxW, d.maxH)))"))
+                    if d.lw > 0 && (d.lw, d.lh) != (d.w, d.h) { PortFact("Looks like", Displays.res(d.lw, d.lh)) }
+                    if d.hz > 0 { PortFact("Refresh", Displays.hz(d.hz) + (d.maxHz > d.hz + 1 ? " (can do \(Displays.hz(d.maxHz)))" : "")) }
+                    PortFact("Scale", d.scale >= 2 ? "\(trim(d.scale))× (Retina)" : "1× (not Retina)")
+                    if let i = d.inches { PortFact("Size", "\(trim(i))″ (\(Int(d.mmW)) × \(Int(d.mmH)) mm)") }
+                    PortFact("HDR", d.edr > 1 ? "Up to \(trim(d.edr))× SDR brightness (EDR)" : "No")
+                    if let b = d.bits { PortFact("Color", "\(b) bits per channel") }
+                }
+                PortGroup("Connection", icon: "cable.connector.horizontal") {
+                    PortFact("Type", Displays.linkText(d))
+                    if let s = sum {
+                        PortFact("Port", s.port.title)
+                        if d.link == .native { ForEach(s.port.links.filter { $0.type == "DisplayPort" }, id: \.self) { PortFact("Link", Ports.linkText($0, tb: nil)) } }
+                    }
+                    PortFact("Role", [d.main ? "main display (menu bar)" : "extended desktop", d.mirrored ? "mirrored" : nil].compactMap { $0 }.joined(separator: ", "))
+                    if d.rotation != 0 { PortFact("Rotation", "\(d.rotation)°") }
+                    PortFact("IDs", String(format: "vendor %04X · model %04X", d.vendor, d.model))
+                }
+            }
+        }
+    }
+}
 
 // MARK: - Details (gedeeld): oordelen, kabel, lader, verbinding, aansluiting, apparaten, ruwe waarden
 

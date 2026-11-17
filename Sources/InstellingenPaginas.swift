@@ -211,6 +211,7 @@ struct DockedSettings: View {
     @AppStorage("dockedInternals") private var internals = false
     @AppStorage("dockedEmpty") private var showEmpty = true
     @AppStorage("dockedBytes") private var bytes = false
+    @AppStorage("dockedDisplays") private var displays = true
 
     var body: some View {
         Section("Ports") {
@@ -221,6 +222,10 @@ struct DockedSettings: View {
             Toggle(isOn: $showEmpty) {
                 Text("List empty ports")
                 Text("One line at the bottom, like \"USB-C 2 · USB-C 3 · empty\".")
+            }
+            Toggle(isOn: $displays) {
+                Text("Show displays")
+                Text("External monitors under the port or DisplayLink dock that drives them, with resolution and refresh rate.")
             }
         }
         Section("Speed") {
