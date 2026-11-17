@@ -315,6 +315,7 @@ struct LiveSettings: View {
     @AppStorage("showAdvice") private var showAdvice = false
     @AppStorage("absolute") private var absoluteRaw = "ram,ssd"
     @AppStorage("netBits") private var netBits = false
+    @AppStorage("perCore") private var perCore = false
     @AppStorage("warnCPU") private var warnCPU = 85.0
     @AppStorage("warnTemp") private var warnTemp = 95.0
     @AppStorage("warnPing") private var warnPing = 100.0
@@ -328,6 +329,10 @@ struct LiveSettings: View {
                 ForEach([1, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 60 ? "hour" : "\($0) min").tag($0) }
             }
             .disabled(graphs == .never)
+            Toggle(isOn: $perCore) {
+                Text("Per-core CPU")
+                Text("A thin bar per processor core on the CPU card")
+            }
         }
         Section("Small window") {
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)

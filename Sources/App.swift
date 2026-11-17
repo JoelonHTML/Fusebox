@@ -125,6 +125,8 @@ struct MeterkastApp: App {
         precondition(x.down >= 0 && x.up >= 0 && x.diskFreeGB > 0, "net/schijf")
         let avg = Sample.average([x, x])
         precondition(abs(avg.cpu - x.cpu) < 0.001, "gemiddelde")
+        precondition(Sampler.coreLoad([30, 10, 60, 0, 5, 0, 15, 0], [10, 0, 40, 0, UInt32.max, 0, 5, 0]) == [60, 37.5]
+                     && Sampler.coreLoad([1, 2, 3, 4], []) == [], "per kern")   // incl. teller-wrap en lege nulmeting
         precondition(downsample(Array(repeating: 2.0, count: 1000), to: 10) == Array(repeating: 2.0, count: 10), "downsample")
         precondition(short(1_000_000, bits: true) == "\(one(8)) Mbit/s" && Color(hex: "#FF8000")?.hex == "#FF8000", "eenheden/kleur")
         precondition(Metric.allCases.allSatisfy { (0...1).contains($0.fraction(x)) }, "menubalk-fractie")

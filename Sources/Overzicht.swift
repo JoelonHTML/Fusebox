@@ -181,6 +181,9 @@ struct MetricView: View {
                 if !stats.isEmpty {
                     Text(stats).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.8)
                 }
+                if !data.cores.isEmpty {
+                    CoreBars(values: data.cores, split: Sampler.efficiencyCores).frame(height: tier >= .l ? 20 : 12)
+                }
                 if graphs && !data.values.isEmpty {
                     SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
                         .frame(minHeight: 16, maxHeight: tier >= .l ? 320 : .infinity)
@@ -251,6 +254,30 @@ struct SparkView: View {
             if let axis { HStack { Text(axis); Spacer(); Text("now") }.padding(2) }
         }
         .font(theme.label(9)).foregroundStyle(theme.onRow(true))
+    }
+}
+
+/// Eén dun staafje per kern; zuinige kernen (vooraan) en snelle kernen met een kleine tussenruimte.
+struct CoreBars: View {
+    @Environment(\.theme) private var theme
+    let values: [Double]
+    var split = 0
+
+    var body: some View {
+        let color = theme.rowStyle == .blocks ? Color.white : theme.accent
+        HStack(alignment: .bottom, spacing: 2) {
+            ForEach(values.indices, id: \.self) { i in
+                RoundedRectangle(cornerRadius: 1).fill(color.opacity(0.15))
+                    .overlay {
+                        RoundedRectangle(cornerRadius: 1).fill(color)
+                            .scaleEffect(x: 1, y: min(max(values[i], 0), 100) / 100, anchor: .bottom)
+                            .animation(.easeInOut(duration: 0.8), value: values[i])
+                    }
+                    .frame(width: 4)
+                    .padding(.leading, i == split && split > 0 ? 4 : 0)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 }
 
