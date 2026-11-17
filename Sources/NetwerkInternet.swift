@@ -2,6 +2,8 @@ import SwiftUI
 import CoreWLAN
 import SystemConfiguration
 import Darwin
+import Network
+import os
 
 // MARK: - Internet: verbinding, Wi-Fi, kwaliteit (pings), live grafiek, snelheidstest, publiek IP
 //
@@ -64,8 +66,145 @@ struct WifiDetail {
     }
 }
 
+/// Snel of Volledig. Oude metingen (één stroom, vaste bytes) hebben geen soort.
+enum SpeedKind: String, Codable {
+    case quick, full
+    var streams: Int { self == .quick ? 4 : 6 }
+    var secs: Double { self == .quick ? 5 : 15 }               // per richting
+    var skip: Int { self == .quick ? 2 : 3 }                     // aanloop (s) die niet meetelt
+    var cap: Int64 { self == .quick ? 600_000_000 : 2_000_000_000 }   // max bytes per richting
+    var title: String { self == .quick ? "Quick" : "Full" }
+}
+
 struct SpeedResult: Codable, Equatable {
     let date: Date, down: Double, up: Double, ping: Double?   // Mbit/s, ms
+    // Nieuw (optioneel, oude opslag blijft leesbaar)
+    var kind: SpeedKind? = nil
+    var downPeak: Double? = nil, upPeak: Double? = nil
+    var loadedPing: Double? = nil      // ms tijdens de overdracht (slechtste richting)
+    var variation: Double? = nil       // spreiding per seconde, 0.1 = ±10% (slechtste richting)
+}
+
+/// Rekenwerk van de snelheidstest, los van het netwerk (zelftest op verzonnen data).
+enum SpeedMath {
+    /// Per-seconde-metingen zonder de aanloop; houdt er altijd minstens één over.
+    static func trimmed(_ s: [Double], skip: Int) -> [Double] { Array(s.dropFirst(min(skip, max(s.count - 1, 0)))) }
+
+    static func median(_ v: [Double]) -> Double? {
+        guard !v.isEmpty else { return nil }
+        let s = v.sorted(), m = s.count / 2
+        return s.count % 2 == 1 ? s[m] : (s[m - 1] + s[m]) / 2
+    }
+
+    static func mean(_ v: [Double]) -> Double? { v.isEmpty ? nil : v.reduce(0, +) / Double(v.count) }
+
+    /// Variatiecoëfficiënt (standaardafwijking / gemiddelde).
+    static func variation(_ v: [Double]) -> Double? {
+        guard v.count > 1, let m = mean(v), m > 0 else { return nil }
+        return (v.map { ($0 - m) * ($0 - m) }.reduce(0, +) / Double(v.count)).squareRoot() / m
+    }
+
+    static func stabilityText(_ cv: Double) -> String {
+        let pct = "±\(Int((cv * 100).rounded()))%"
+        return cv < 0.1 ? "steady (\(pct))" : cv < 0.25 ? "varies a little (\(pct))" : "unsteady (\(pct))"
+    }
+
+    /// Vertraging onder belasting ("bufferbloat") in gewone woorden. ok: true goed, false probleem, nil let op.
+    static func loadVerdict(idle: Double, loaded: Double) -> (text: String, ok: Bool?) {
+        let extra = max(0, loaded - idle), ms = "+\(Int(extra.rounded())) ms"
+        if extra < 30 { return ("Delay barely rises while the line is busy (\(ms)) → fine for calls and games", true) }
+        if extra < 100 { return ("Delay rises while the line is busy (\(ms)) → calls may stutter during big downloads", nil) }
+        return ("Delay rises a lot while the line is busy (\(ms), \"bufferbloat\") → calls and games suffer during downloads; a router with smart queueing (SQM) helps", false)
+    }
+
+    /// Geschat dataverbruik in bytes op basis van de vorige uitslag; nil = onbekend (dan geldt het plafond).
+    static func estimate(_ kind: SpeedKind, last: SpeedResult?) -> Int64? {
+        guard let last else { return nil }
+        func dir(_ mbit: Double) -> Int64 { min(kind.cap, Int64(mbit * 1.2 * 1e6 / 8 * kind.secs)) }   // 20% marge: oude metingen lazen laag
+        return dir(max(last.down, last.downPeak ?? 0)) + dir(max(last.up, last.upPeak ?? 0))
+    }
+
+    static func selfTest() {
+        precondition(trimmed([1, 2, 3, 4, 5], skip: 2) == [3, 4, 5] && trimmed([7], skip: 3) == [7] && trimmed([], skip: 2).isEmpty, "aanloop")
+        precondition(median([5, 1, 3]) == 3 && median([4, 1, 3, 2]) == 2.5 && median([]) == nil, "mediaan")
+        precondition(variation([100, 100, 100]) == 0 && variation([5]) == nil, "spreiding vlak")
+        precondition(abs(variation([90, 110])! - 0.1) < 1e-9, "spreiding ±10%")
+        // Verzonnen meting: traag begin (aanloop), daarna rond 500 met één piek
+        let run = trimmed([40, 220, 480, 510, 495, 620, 505], skip: 2)
+        precondition(median(run) == 505 && run.max() == 620 && mean(run)! > 480, "uitslag")
+        precondition(stabilityText(0.04).hasPrefix("steady") && stabilityText(0.3).hasPrefix("unsteady"), "stabiliteit")
+        precondition(loadVerdict(idle: 12, loaded: 20).ok == true && loadVerdict(idle: 12, loaded: 70).ok == nil, "bufferbloat licht")
+        let bad = loadVerdict(idle: 12, loaded: 300)
+        precondition(bad.ok == false && bad.text.contains("+288 ms") && bad.text.contains("bufferbloat"), "bufferbloat: \(bad.text)")
+        let last = SpeedResult(date: Date(), down: 100, up: 20, ping: 10)
+        precondition(estimate(.quick, last: last) == 75_000_000 + 15_000_000 && estimate(.full, last: nil) == nil, "schatting")
+        precondition(estimate(.quick, last: SpeedResult(date: Date(), down: 10_000, up: 10_000, ping: nil)) == 1_200_000_000, "plafond")
+        // Oude opslag (zonder soort) blijft leesbaar
+        let old = try? JSONDecoder().decode([SpeedResult].self, from: Data(#"[{"date":700000000,"down":90.5,"up":20,"ping":11}]"#.utf8))
+        precondition(old?.first?.down == 90.5 && old?.first?.kind == nil, "oude geschiedenis")
+        let full = SpeedResult(date: Date(timeIntervalSinceReferenceDate: 1), down: 1, up: 1, ping: nil, kind: .full, loadedPing: 40)
+        precondition((try? JSONDecoder().decode(SpeedResult.self, from: JSONEncoder().encode(full))) == full, "nieuwe velden")
+    }
+}
+
+/// Telt de bytes van alle stromen van één richting. Callbacks komen binnen op achtergrondwachtrijen (niets per stukje op main).
+final class SpeedMeter: NSObject, URLSessionDataDelegate, @unchecked Sendable {
+    static let upChunk = Data(count: 10_000_000)
+    static let downChunk = 50_000_000   // Cloudflare weigert vanaf 100 MB per verzoek
+    let upload: Bool, cap: Int64, deadline: Date
+    private let lock = NSLock()
+    private var total: Int64 = 0, stopped = false, alive = 0
+    private var lastError: Error?
+
+    init(upload: Bool, cap: Int64, secs: Double) {
+        self.upload = upload; self.cap = cap; deadline = Date().addingTimeInterval(secs)
+    }
+
+    var bytes: Int64 { lock.withLock { total } }
+    var finished: Bool { lock.withLock { stopped || alive == 0 } }
+    var error: Error? { lock.withLock { lastError } }
+    func stop() { lock.withLock { stopped = true } }
+    func shutdown(_ sessions: [URLSession]) { lock.withLock { stopped = true; sessions.forEach { $0.invalidateAndCancel() } } }
+
+    /// Eén stroom = één eigen sessie (eigen TCP-verbinding; HTTP/2 zou alles over één verbinding sturen).
+    func start(_ s: URLSession) {
+        lock.withLock { alive += 1 }
+        if !next(s) { lock.withLock { alive -= 1 } }
+    }
+
+    /// Onder het slot: zo kan `shutdown` nooit tussen de controle en het nieuwe verzoek vallen (taak op een opgeheven sessie = crash).
+    private func next(_ s: URLSession) -> Bool {
+        lock.withLock {
+            guard !stopped, total < cap, Date() < deadline else { return false }
+            if upload {
+                var req = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
+                req.httpMethod = "POST"
+                req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+                s.uploadTask(with: req, from: Self.upChunk).resume()
+            } else {
+                s.dataTask(with: URL(string: "https://speed.cloudflare.com/__down?bytes=\(Self.downChunk)")!).resume()
+            }
+            return true
+        }
+    }
+
+    private func add(_ n: Int64, _ task: URLSessionTask) {
+        let over = lock.withLock { total += n; return total >= cap }
+        if over { stop(); task.cancel() }
+    }
+
+    func urlSession(_ s: URLSession, dataTask: URLSessionDataTask, didReceive data: Data) { add(Int64(data.count), dataTask) }
+    func urlSession(_ s: URLSession, task: URLSessionTask, didSendBodyData sent: Int64, totalBytesSent: Int64, totalBytesExpectedToSend: Int64) { add(sent, task) }
+    func urlSession(_ s: URLSession, task: URLSessionTask, didCompleteWithError error: Error?) {
+        let status = (task.response as? HTTPURLResponse)?.statusCode
+        if error == nil, status == 200, next(s) { return }   // volgende stuk op dezelfde verbinding
+        lock.withLock {
+            alive -= 1
+            if !stopped, Date() < deadline, (error as? URLError)?.code != .cancelled {
+                lastError = error ?? URLError(.badServerResponse)   // fout of geweigerd: deze stroom stopt
+            }
+        }
+    }
 }
 
 struct PublicIP { let ip: String, isp: String?, place: String? }
@@ -84,6 +223,9 @@ final class InternetStats: ObservableObject {
     @Published private(set) var liveInternet: [Double] = []
     @Published private(set) var speedPhase: String?
     @Published private(set) var speedError: String?
+    @Published private(set) var speedLive: Double?        // Mbit/s, laatste seconde
+    @Published private(set) var speedProgress = 0.0       // 0…1
+    @Published private(set) var speedConfirm: SpeedKind?  // dure verbinding: wacht op ja
     @Published private(set) var history: [SpeedResult] = InternetStats.loadHistory()
     @Published private(set) var publicIP: PublicIP?
     @Published private(set) var publicIPState: String?
@@ -145,63 +287,127 @@ final class InternetStats: ObservableObject {
         task?.cancel(); task = nil
         speedTask?.cancel(); speedTask = nil
         ipTask?.cancel(); ipTask = nil
-        testing = false; speedPhase = nil; publicIPState = nil
+        testing = false; speedPhase = nil; speedLive = nil; speedConfirm = nil; publicIPState = nil
     }
 
     // MARK: Snelheidstest (Cloudflare, alleen na een klik)
 
-    func runSpeedTest() {
-        guard speedTask == nil else { return }
+    /// Eerst kijken of de verbinding duur is (mobiel, iPhone-hotspot, Weinig-data-modus): dan eerst vragen.
+    func requestSpeedTest(_ kind: SpeedKind) {
+        guard speedTask == nil, speedConfirm == nil else { return }
         speedError = nil
+        speedTask = Task { [weak self] in
+            let metered = await Self.isMetered()
+            guard let self, !Task.isCancelled else { return }
+            self.speedTask = nil
+            if metered { self.speedConfirm = kind } else { self.runSpeedTest(kind) }
+        }
+    }
+
+    func dismissSpeedConfirm() { speedConfirm = nil }
+
+    func runSpeedTest(_ kind: SpeedKind) {
+        guard speedTask == nil else { return }
+        speedConfirm = nil; speedError = nil; speedLive = nil; speedProgress = 0
         speedPhase = "Measuring delay…"
         speedTask = Task { [weak self] in
-            let cfg = URLSessionConfiguration.ephemeral
-            cfg.timeoutIntervalForRequest = 15
-            cfg.timeoutIntervalForResource = 60
-            cfg.urlCache = nil
-            cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
-            let session = URLSession(configuration: cfg)
-            defer { session.invalidateAndCancel() }
+            let probe = Self.speedSession(timeout: 5)
+            defer { probe.invalidateAndCancel() }
             do {
-                // Vertraging: kleinste van 3 lege verzoeken (de eerste opent de verbinding en telt niet mee)
-                let zero = URL(string: "https://speed.cloudflare.com/__down?bytes=0")!
-                var pings: [Double] = []
-                for i in 0..<4 {
-                    let t0 = Date()
-                    _ = try await session.data(from: zero)
-                    if i > 0 { pings.append(-t0.timeIntervalSinceNow * 1000) }
+                // Vertraging in rust: mediaan van 5 lege verzoeken (het eerste opent de verbinding en telt niet mee)
+                var idle: [Double] = []
+                for i in 0..<6 { let ms = try await Self.ping(probe); if i > 0 { idle.append(ms) } }
+                guard let down = try await self?.transfer(kind, upload: false, probe: probe),
+                      let up = try await self?.transfer(kind, upload: true, probe: probe), let self else { return }
+                let d = SpeedMath.trimmed(down.samples, skip: kind.skip), u = SpeedMath.trimmed(up.samples, skip: kind.skip)
+                let full = kind == .full
+                var r = SpeedResult(date: Date(), down: (full ? SpeedMath.median(d) : SpeedMath.mean(d)) ?? 0,
+                                    up: (full ? SpeedMath.median(u) : SpeedMath.mean(u)) ?? 0, ping: SpeedMath.median(idle), kind: kind)
+                if full {
+                    r.downPeak = d.max(); r.upPeak = u.max()
+                    r.loadedPing = [SpeedMath.median(down.pings), SpeedMath.median(up.pings)].compactMap { $0 }.max()
+                    r.variation = [SpeedMath.variation(d), SpeedMath.variation(u)].compactMap { $0 }.max()
                 }
-                self?.speedPhase = "Testing download…"
-                let t1 = Date()
-                let (file, resp) = try await session.download(from: URL(string: "https://speed.cloudflare.com/__down?bytes=25000000")!)
-                let downSecs = -t1.timeIntervalSinceNow
-                let bytes = (try? FileManager.default.attributesOfItem(atPath: file.path)[.size] as? Int) ?? 0
-                try? FileManager.default.removeItem(at: file)
-                guard (resp as? HTTPURLResponse)?.statusCode == 200, bytes > 1_000_000 else { throw URLError(.badServerResponse) }
-                self?.speedPhase = "Testing upload…"
-                var req = URLRequest(url: URL(string: "https://speed.cloudflare.com/__up")!)
-                req.httpMethod = "POST"
-                req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
-                let upBytes = 10_000_000
-                let t2 = Date()
-                let (_, upResp) = try await session.upload(for: req, from: Data(count: upBytes))
-                let upSecs = -t2.timeIntervalSinceNow
-                guard (upResp as? HTTPURLResponse)?.statusCode == 200 else { throw URLError(.badServerResponse) }
-                guard let self else { return }
-                let r = SpeedResult(date: Date(), down: Double(bytes) * 8 / max(downSecs, 0.001) / 1e6,
-                                    up: Double(upBytes) * 8 / max(upSecs, 0.001) / 1e6, ping: pings.min())
                 self.history = Array(([r] + self.history).prefix(10))
                 if let data = try? JSONEncoder().encode(self.history) { UserDefaults.standard.set(data, forKey: "speedHistory") }
             } catch {
                 if !Task.isCancelled { self?.speedError = "Speed test failed: \(error.localizedDescription)" }
             }
-            if !Task.isCancelled { self?.speedPhase = nil; self?.speedTask = nil }   // bij annuleren al opgeruimd
+            if !Task.isCancelled { self?.speedPhase = nil; self?.speedLive = nil; self?.speedTask = nil }   // bij annuleren al opgeruimd
+        }
+    }
+
+    /// Eén richting: `kind.streams` verbindingen tegelijk, op tijd (niet op bytes), tot het plafond.
+    /// Meet elke seconde de doorvoer; bij Volledig ook de vertraging tijdens de overdracht (na de aanloop).
+    private func transfer(_ kind: SpeedKind, upload: Bool, probe: URLSession) async throws -> (samples: [Double], pings: [Double]) {
+        let meter = SpeedMeter(upload: upload, cap: kind.cap, secs: kind.secs)
+        let sessions = (0..<kind.streams).map { _ in Self.speedSession(timeout: 15, delegate: meter) }
+        let pinger: Task<[Double], Never>? = kind == .full ? Task {
+            var out: [Double] = []
+            try? await Task.sleep(for: .seconds(kind.skip))
+            while !Task.isCancelled {
+                if let ms = try? await Self.ping(probe) { out.append(ms) }
+                try? await Task.sleep(for: .milliseconds(400))
+            }
+            return out
+        } : nil
+        defer { pinger?.cancel(); meter.shutdown(sessions) }
+        sessions.forEach(meter.start)
+        let start = Date(), name = upload ? "Upload" : "Download"
+        var samples: [Double] = [], lastBytes: Int64 = 0, lastT = start
+        while true {
+            try await Task.sleep(for: .milliseconds(250))   // vaak kijken (plafond, einde), per seconde meten
+            let now = Date(), dt = now.timeIntervalSince(lastT)
+            let done = meter.finished || now >= meter.deadline
+            if dt >= 1 || (done && dt >= 0.3) {
+                let b = meter.bytes
+                samples.append(Double(b - lastBytes) * 8 / dt / 1e6)
+                lastBytes = b; lastT = now
+                speedLive = samples.last
+            }
+            speedProgress = (upload ? 0.5 : 0) + 0.5 * min(1, now.timeIntervalSince(start) / kind.secs)
+            speedPhase = "\(kind.title) · \(name) · \(kind.streams) connections · \(max(0, Int(meter.deadline.timeIntervalSince(now).rounded(.up)))) s left"
+            if done { break }
+        }
+        meter.shutdown(sessions)
+        pinger?.cancel()
+        let pings = await pinger?.value ?? []
+        if samples.isEmpty || meter.bytes < 1_000_000 { throw meter.error ?? URLError(.badServerResponse) }
+        return (samples, pings)
+    }
+
+    nonisolated private static func speedSession(timeout: Double, delegate: URLSessionDelegate? = nil) -> URLSession {
+        let cfg = URLSessionConfiguration.ephemeral
+        cfg.timeoutIntervalForRequest = timeout
+        cfg.waitsForConnectivity = false
+        cfg.urlCache = nil
+        cfg.requestCachePolicy = .reloadIgnoringLocalCacheData
+        return URLSession(configuration: cfg, delegate: delegate, delegateQueue: nil)
+    }
+
+    /// Eén leeg verzoek, in ms.
+    nonisolated private static func ping(_ s: URLSession) async throws -> Double {
+        let t0 = Date()
+        _ = try await s.data(from: URL(string: "https://speed.cloudflare.com/__down?bytes=0")!)
+        return -t0.timeIntervalSinceNow * 1000
+    }
+
+    /// Dure verbinding: mobiel netwerk, iPhone-hotspot of Weinig-data-modus.
+    nonisolated static func isMetered() async -> Bool {
+        await withCheckedContinuation { c in
+            let m = NWPathMonitor(), once = OSAllocatedUnfairLock(initialState: false)
+            m.pathUpdateHandler = { p in
+                guard !once.withLock({ let was = $0; $0 = true; return was }) else { return }
+                m.cancel()
+                c.resume(returning: p.isExpensive || p.isConstrained)
+            }
+            m.start(queue: .global(qos: .userInitiated))
         }
     }
 
     func cancelSpeedTest() {
         speedTask?.cancel(); speedTask = nil
-        speedPhase = nil
+        speedPhase = nil; speedLive = nil
     }
 
     /// Alleen opnieuw decoderen als de opgeslagen data veranderd is (wordt bij elke meting gelezen, ook buiten de main actor).
@@ -398,23 +604,43 @@ struct InternetPanel: View {
     }
 
     @ViewBuilder private var speedTest: some View {
+        let warn = theme.rowStyle == .blocks ? Color.white : theme.warn
         if let phase = stats.speedPhase {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
-                Text(phase).foregroundStyle(theme.onRow())
+                Text(phase).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
                 Button { stats.cancelSpeedTest() } label: { NetPill(title: "Cancel", icon: "xmark") }.buttonStyle(.plain)
             }
+            ProgressView(value: stats.speedProgress).controlSize(.small)
+            if let live = stats.speedLive { kv("Now", mbitText(live)) }
+        } else if let kind = stats.speedConfirm {
+            Text("This connection is metered (mobile data, iPhone hotspot or Low Data Mode). The \(kind.title.lowercased()) test uses \(usage(kind)) of data.")
+                .foregroundStyle(warn).fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 6) {
+                Button { stats.runSpeedTest(kind) } label: { NetPill(title: "Run anyway", icon: "speedometer") }.buttonStyle(.plain)
+                Button { stats.dismissSpeedConfirm() } label: { NetPill(title: "Not now", icon: "xmark") }.buttonStyle(.plain)
+            }
         } else {
-            Button { stats.runSpeedTest() } label: { NetPill(title: "Run speed test", icon: "speedometer") }
-                .buttonStyle(.plain).help("Downloads 25 MB and uploads 10 MB via speed.cloudflare.com")
-            Text("Uses ~35 MB of data (via Cloudflare)").font(theme.label(10))
+            HStack(spacing: 6) {
+                Button { stats.requestSpeedTest(.quick) } label: { NetPill(title: "Quick", icon: "hare") }
+                    .buttonStyle(.plain).help("About 10 s, 4 connections at once. The first 2 s, while the line speeds up, don't count.")
+                Button { stats.requestSpeedTest(.full) } label: { NetPill(title: "Full", icon: "gauge.with.dots.needle.67percent") }
+                    .buttonStyle(.plain).help("About 30 s, 6 connections: typical and top speed, delay while the line is busy (bufferbloat) and how steady it is.")
+            }
+            Text("Quick uses \(usage(.quick)), Full \(usage(.full)) (via Cloudflare)").font(theme.label(10)).fixedSize(horizontal: false, vertical: true)
         }
-        if let e = stats.speedError { Text(e).foregroundStyle(theme.rowStyle == .blocks ? .white : theme.warn).fixedSize(horizontal: false, vertical: true) }
+        if let e = stats.speedError { Text(e).foregroundStyle(warn).fixedSize(horizontal: false, vertical: true) }
         if let last = stats.history.first {
-            kv("Download", mbitText(last.down))
-            kv("Upload", mbitText(last.up))
-            kv("Delay", last.ping.map { "\(msText($0)) ms" } ?? "–")
-            kv("Tested", last.date.formatted(date: .abbreviated, time: .shortened))
+            kv("Download", mbitText(last.down) + (last.downPeak.map { " · top \(mbitText($0))" } ?? ""))
+            kv("Upload", mbitText(last.up) + (last.upPeak.map { " · top \(mbitText($0))" } ?? ""))
+            kv("Delay", last.ping.map { "\(msText($0)) ms" + (last.loadedPing.map { " · busy \(msText($0)) ms" } ?? "") } ?? "–")
+            if let v = last.variation { kv("Stability", SpeedMath.stabilityText(v)) }
+            kv("Tested", last.date.formatted(date: .abbreviated, time: .shortened) + " · " + kindName(last.kind))
+            if let idle = last.ping, let busy = last.loadedPing {
+                let v = SpeedMath.loadVerdict(idle: idle, loaded: busy)
+                line(v.ok == false ? "exclamationmark.triangle" : v.ok == true ? "checkmark.circle" : "info.circle", v.text)
+                    .foregroundStyle(theme.rowStyle == .blocks ? .white : v.ok == false ? theme.warn : v.ok == true ? theme.good : theme.onRow(true))
+            }
             if stats.history.count > 1 { historyBars }
         }
         Divider().opacity(0.4).padding(.vertical, 2)
@@ -428,17 +654,24 @@ struct InternetPanel: View {
         }
     }
 
-    /// Laatste 10 metingen als staafjes (download), oudste links.
+    /// Geschat verbruik: op basis van de vorige uitslag, anders het plafond (beide richtingen).
+    private func usage(_ kind: SpeedKind) -> String {
+        SpeedMath.estimate(kind, last: stats.history.first).map { "about \(bytes(Double($0)))" } ?? "at most \(bytes(Double(kind.cap * 2)))"
+    }
+
+    private func kindName(_ k: SpeedKind?) -> String { k.map { "\($0.title) test" } ?? "single connection" }
+
+    /// Laatste 10 metingen als staafjes (download), oudste links. Volledig = brede staaf.
     private var historyBars: some View {
         let list = Array(stats.history.reversed()), top = max(list.map(\.down).max() ?? 1, 1)
         let color = theme.rowStyle == .blocks ? Color.white : theme.accent
         return HStack(alignment: .bottom, spacing: 3) {
             ForEach(Array(list.enumerated()), id: \.offset) { _, r in
                 Capsule().fill(color.opacity(r == stats.history.first ? 1 : 0.45))
-                    .frame(width: 7, height: max(3, 24 * r.down / top))
-                    .help("\(r.date.formatted(date: .abbreviated, time: .shortened)): ↓\(mbitText(r.down)) ↑\(mbitText(r.up))")
+                    .frame(width: r.kind == .full ? 9 : 5, height: max(3, 24 * r.down / top))
+                    .help("\(r.date.formatted(date: .abbreviated, time: .shortened)) · \(kindName(r.kind)): ↓\(mbitText(r.down)) ↑\(mbitText(r.up))")
             }
-            Text("last \(list.count)").font(theme.label(9)).padding(.leading, 4)
+            Text("last \(list.count) · wide = Full").font(theme.label(9)).padding(.leading, 4)
         }
         .frame(height: 26, alignment: .bottom)
     }

@@ -1352,6 +1352,7 @@ final class NetScanner: ObservableObject {
         precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: good, internet: net, dnsMs: 400, internetCheck: true).text.contains("DNS"), "trage dns")
         let meta = InternetStats.parseMeta(Data(#"{"clientIp":"203.0.113.7","asOrganization":"Example ISP","city":"Utrecht","country":"NL","colo":"AMS"}"#.utf8))
         precondition(meta?.ip == "203.0.113.7" && meta?.isp == "Example ISP" && meta?.place == "Utrecht, NL (Cloudflare AMS)" && InternetStats.parseMeta(Data("[]".utf8)) == nil, "meta")
+        SpeedMath.selfTest()
         // Opslag: oude bestanden (zonder nieuwe velden) blijven leesbaar
         let old = Data(#"{"created":"2025-01-01T00:00:00Z","devices":{"B8:27:EB:01:02:03":{"name":"pi","first":"2025-01-01T00:00:00Z","last":"2025-01-02T00:00:00Z"}}}"#.utf8)
         let dec = JSONDecoder(); dec.dateDecodingStrategy = .iso8601
