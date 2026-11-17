@@ -81,6 +81,7 @@ struct USBDev: Identifiable, Hashable {
     var bps: Double?
     var hub = false, billboard = false
     var powerMA: Int?
+    var bcd: Int?                    // USB-versie van het apparaat (0x0200 = 2.0, 0x0310 = 3.1)
     var children: [USBDev] = []
     var raw: [RawLine] = []
     /// Alle apparaten eronder (zonder hubs).
@@ -110,6 +111,7 @@ struct PowerNow: Hashable {
     var adapterW: Int?, adapterMV: Int?, adapterMA: Int?
     var adapterName: String?
     var charging = false, full = false, external = false
+    var percent: Double?, minutes: Int?   // batterij: procent en tijd tot vol/leeg (zoals Live)
 }
 
 struct PortsSnapshot: Hashable {
@@ -251,7 +253,7 @@ enum Ports {
         d.bps = (p["UsbLinkSpeed"] as? NSNumber)?.doubleValue
         d.hub = int(p["bDeviceClass"]) == 9
         d.billboard = int(p["bDeviceClass"]) == 0x11 || d.name.localizedCaseInsensitiveContains("billboard")
-        d.powerMA = int(p["UsbPowerSinkAllocation"])
+        d.powerMA = int(p["UsbPowerSinkAllocation"]); d.bcd = int(p["bcdUSB"])
         d.raw = rawLines(p)
         d.children = n.children.filter { $0.props["idVendor"] != nil }.map(usb)
         return d
@@ -324,6 +326,17 @@ enum Ports {
     /// Hoogste datasnelheid die de kabel volgens zijn e-marker aankan (bit/s).
     static func cableMax(_ s: Int, thunderbolt: Bool) -> Double {
         [0: 480e6, 1: 5e9, 2: thunderbolt ? 20e9 : 10e9, 3: 40e9, 4: 80e9][s] ?? 80e9
+    }
+
+    /// Hoogste snelheid volgens de USB-versie, alleen waar die vaststaat: 3.1/3.2 zegt niets over Gen 1 of 2 (nil).
+    static func usbMax(_ bcd: Int) -> Double? {
+        bcd >= 0x310 ? nil : bcd >= 0x300 ? 5e9 : bcd >= 0x200 ? 480e6 : 12e6
+    }
+
+    /// Hoogste datasnelheid van de poort zelf, uit wat hij kan.
+    /// ponytail: Thunderbolt 5 (80 Gbit/s) is hier niet te zien, dus CIO = 40; uitlezen zodra Apple het meldt.
+    static func portMax(_ supported: [String]) -> Double? {
+        supported.contains("CIO") ? 40e9 : supported.contains("USB3") ? 10e9 : supported.contains("USB2") ? 480e6 : nil
     }
 
     /// Unieke apparaten (geen hubs) achter een poort.
@@ -508,6 +521,8 @@ enum Ports {
                                          RegNode(name: "Disk@3", id: 44, props: ["idVendor": 0xABCD, "UsbLinkSpeed": 480_000_000, "UsbPowerSinkAllocation": 500]),
                                          RegNode(name: "NotADevice", id: 45)])
         let hub = usb(hubNode)
+        precondition(usbMax(0x0310) == nil && usbMax(0x0300) == 5e9 && usbMax(0x0210) == 480e6 && usbMax(0x0110) == 12e6, "usb max")
+        precondition(portMax(["USB2", "USB3", "CIO"]) == 40e9 && portMax(["USB2"]) == 480e6 && portMax([]) == nil, "poort max")
         precondition(hub.hub && hub.children.count == 2 && hub.leaves.count == 2, "usb boom")
         precondition(hub.children[1].name == "Disk" && hub.children[1].maker == "vendor 0xABCD" && hub.children[1].powerMA == 500, "usb naam")
         precondition(headline(p, roots: [hub], tb: []) == "Hub or dock with 2 devices · 60 W charger" && dataLine(p, tb: nil) == "USB 2 data active · USB 2.0 at 480 Mbit/s (High Speed)", "kop hub")
@@ -562,6 +577,9 @@ enum PortReader {
             return TBLink(socket: socket, speed: Ports.int(prop(e, "Current Link Speed")) ?? 0, width: w)
         }
         s.power = battery()
+        var b = Sample()
+        Sampler.battery(into: &b)   // zelfde bron als Live
+        s.power?.percent = b.battery; s.power?.minutes = b.batteryMinutes
         return s
     }
 
