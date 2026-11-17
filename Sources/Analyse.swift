@@ -35,7 +35,13 @@ fileprivate struct Minute: Sendable {
     var offline = false            // ping-kolom bestaat, maar meer dan de helft leeg (geen internet)
 }
 
-fileprivate struct AppAgg: Sendable { var kind: String; var cpu = 0.0, mem = 0.0, energy = 0.0, minutes = 0 }
+fileprivate struct AppAgg: Sendable {
+    var kind: String; var cpu = 0.0, mem = 0.0, energy = 0.0, minutes = 0
+    var peak = 0.0, peakMem = 0.0                      // hoogste minuut
+    var gpu = 0.0, gpuMinutes = 0                      // alleen regels met gpu_pct
+    var shared = 0.0                                   // energie in minuten mét mac_energie_w (voor het aandeel)
+    var hours = [Int](repeating: 0, count: 24)         // minuten per uur van de dag
+}
 
 fileprivate struct Day: Sendable {
     var minutes: [Minute] = []
@@ -43,6 +49,8 @@ fileprivate struct Day: Sendable {
     var busyApps: [Date: [String: Double]] = [:]   // alleen minuten met CPU ≥ 85: app → cpu
     var leaks: [Diag.Leak] = [], runaways: [Diag.Run] = [], jobs: [Diag.Run] = []
     var jobMinutes: [String: Int] = [:]             // macOS-huishouding: klus → minuten bezig
+    var macEnergy = 0.0                             // som van mac_energie_w (W·min) over de minuten die het hebben
+    var since: Date?                                // eerste minuut met de nieuwe kolommen
 }
 
 fileprivate struct AppStat: Sendable, Identifiable {
@@ -148,26 +156,41 @@ enum Analysis {
         var col: [Substring: Int] = [:]
         for (i, c) in (lines.first ?? "").split(separator: ",").enumerated() { col[c] = i }
         let iT = col["tijd"] ?? 0, iA = col["app"] ?? 1, iK = col["soort"] ?? 2, iC = col["cpu_pct"] ?? 3, iM = col["geheugen_gb"] ?? 4, iE = col["energie_w"]
+        let iG = col["gpu_pct"], iME = col["mac_energie_w"]
         let need = max(iT, iA, iK, iC, iM)
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm"
-        var lastKey: Substring = "", lastTime: Date?
+        var lastKey: Substring = "", lastTime: Date?, macKey: Substring = ""
         var series: [String: [Date: (cpu: Double, mem: Double)]] = [:], kinds: [String: String] = [:]
         for line in lines.dropFirst() {
             let v = line.split(separator: ",", omittingEmptySubsequences: false)
             guard v.count > need, v[iT].count >= 16, let cpu = Double(v[iC]), let mem = Double(v[iM]) else { continue }
             let kind = String(v[iK]), name = kind == "macos" && v[iA] == "macOS zelf" ? "macOS itself" : String(v[iA])
+            func opt(_ i: Int?) -> Double? { i.flatMap { $0 < v.count ? Double(v[$0]) : nil } }
+            let energy = opt(iE) ?? 0, macW = opt(iME)
             day.apps[name, default: AppAgg(kind: kind)].cpu += cpu
             day.apps[name]!.mem += mem
-            day.apps[name]!.energy += iE.flatMap { $0 < v.count ? Double(v[$0]) : nil } ?? 0
+            day.apps[name]!.energy += energy
             day.apps[name]!.minutes += 1
+            if let g = opt(iG) { day.apps[name]!.gpu += g; day.apps[name]!.gpuMinutes += 1 }
+            if macW != nil { day.apps[name]!.shared += energy }
             let k = v[iT].prefix(16)
             if k != lastKey { lastKey = k; lastTime = f.date(from: String(k)) }
             guard let t = lastTime else { continue }
+            if let macW, k != macKey { macKey = k; day.macEnergy += macW; day.since = day.since ?? t }   // één keer per minuut
             // dezelfde naam kan vaker per minuut voorkomen (Spotlight = mds + mdworker): optellen
             let prev = series[name]?[t] ?? (0, 0)
             series[name, default: [:]][t] = (prev.cpu + cpu, prev.mem + mem)
             kinds[name] = kind
             if kind != "macos", busy.contains(t) { day.busyApps[t, default: [:]][name, default: 0] += cpu }
+        }
+        // Per app: hoogste minuut en minuten per uur (zelfde naam vaker per minuut is hierboven al opgeteld)
+        let cal = Calendar.current
+        for (name, pts) in series {
+            for (t, p) in pts {
+                day.apps[name]!.hours[cal.component(.hour, from: t)] += 1
+                day.apps[name]!.peak = max(day.apps[name]!.peak, p.cpu)
+                day.apps[name]!.peakMem = max(day.apps[name]!.peakMem, p.mem)
+            }
         }
         // ponytail: per dag; een lek dat over middernacht loopt wordt in twee stukken beoordeeld
         let pts = series.mapValues { $0.sorted { $0.key < $1.key }.map { Diag.Point(t: $0.key, cpu: $0.value.cpu, mem: $0.value.mem) } }
@@ -187,20 +210,21 @@ enum Analysis {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"; return f.string(from: date)
     }
 
-    fileprivate static func day(_ date: Date, dir: URL) -> Day {
-        let name = dayName(date)
+    /// `withMain: false` = alleen de apps-log (app-pagina: de hoofdlog is daar niet nodig, scheelt bij 30 dagen veel lezen).
+    fileprivate static func day(_ date: Date, dir: URL, withMain: Bool = true) -> Day {
+        let name = dayName(date), key = withMain ? name : name + "~apps"
         let main = dir.appendingPathComponent("meterkast-\(name).csv"), apps = dir.appendingPathComponent("apps-\(name).csv")
         func mtime(_ u: URL) -> String { ((try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970).map { "\($0)" } ?? "-" }
-        let stamp = mtime(main) + "|" + mtime(apps)
+        let stamp = (withMain ? mtime(main) : "") + "|" + mtime(apps)
         cache.lock.lock()
-        if let c = cache.days[name], c.stamp == stamp { cache.lock.unlock(); return c.day }
+        if let c = cache.days[key], c.stamp == stamp { cache.lock.unlock(); return c.day }
         cache.lock.unlock()
         var d = Day()
-        if let t = try? String(contentsOf: main, encoding: .utf8) { d.minutes = parseMain(t) }
+        if withMain, let t = try? String(contentsOf: main, encoding: .utf8) { d.minutes = parseMain(t) }
         if let t = try? String(contentsOf: apps, encoding: .utf8) {
             parseApps(t, busy: Set(d.minutes.filter { $0.cpu >= busyCPU }.map(\.time)), into: &d)
         }
-        cache.lock.lock(); cache.days[name] = (stamp, d); cache.lock.unlock()
+        cache.lock.lock(); cache.days[key] = (stamp, d); cache.lock.unlock()
         return d
     }
 
@@ -211,11 +235,18 @@ enum Analysis {
             out.busyApps.merge(d.busyApps) { $1 }
             out.leaks += d.leaks; out.runaways += d.runaways; out.jobs += d.jobs
             out.jobMinutes.merge(d.jobMinutes, uniquingKeysWith: +)
+            out.macEnergy += d.macEnergy
+            out.since = [out.since, d.since].compactMap { $0 }.min()
             for (k, a) in d.apps {
                 out.apps[k, default: AppAgg(kind: a.kind)].cpu += a.cpu
                 out.apps[k]!.mem += a.mem
                 out.apps[k]!.energy += a.energy
                 out.apps[k]!.minutes += a.minutes
+                out.apps[k]!.peak = max(out.apps[k]!.peak, a.peak)
+                out.apps[k]!.peakMem = max(out.apps[k]!.peakMem, a.peakMem)
+                out.apps[k]!.gpu += a.gpu; out.apps[k]!.gpuMinutes += a.gpuMinutes
+                out.apps[k]!.shared += a.shared
+                out.apps[k]!.hours = zip(out.apps[k]!.hours, a.hours).map(+)
             }
         }
         return out
@@ -515,6 +546,55 @@ enum Analysis {
         return out
     }
 
+    // MARK: Eén app terugkijken (app-pagina)
+
+    /// Alles wat de app-pagina over een periode laat zien; uit dezelfde apps-logs (en cache) als Checkup.
+    struct AppHistory: Sendable {
+        var minutes = 0                                    // minuten gezien (open, of vóór de app-pagina: alleen in de top 10)
+        var avgCPU = 0.0, peakCPU = 0.0, avgMem = 0.0, peakMem = 0.0
+        var avgGPU: Double?                                // nil = nog geen gpu_pct in deze periode
+        var energyWh = 0.0, avgW = 0.0
+        var share: Double?                                 // deel (0…1) van de energie van alle processen; nil = nog niet gemeten
+        var hours = [Int](repeating: 0, count: 24)         // minuten per uur van de dag
+        var weekdays = [Int](repeating: 0, count: 7)       // minuten per weekdag, 0 = maandag
+        var since: Date?                                   // eerste minuut met de nieuwe kolommen
+    }
+
+    /// `name` zoals in de log (komma's vervangen door spaties, zoals bij het schrijven).
+    fileprivate static func appHistory(_ name: String, days: [(date: Date, day: Day)]) -> AppHistory {
+        var h = AppHistory(), cpu = 0.0, mem = 0.0, gpu = 0.0, gpuMin = 0, shared = 0.0, mac = 0.0, rows = 0
+        let cal = Calendar(identifier: .gregorian)
+        for (date, d) in days {
+            if let s = d.since { h.since = min(h.since ?? s, s) }
+            mac += d.macEnergy
+            guard let a = d.apps[name] else { continue }
+            let seen = a.hours.reduce(0, +)
+            h.minutes += seen
+            h.hours = zip(h.hours, a.hours).map(+)
+            h.weekdays[(cal.component(.weekday, from: date) + 5) % 7] += seen   // zondag = 1 → 6
+            cpu += a.cpu; mem += a.mem; rows += a.minutes
+            gpu += a.gpu; gpuMin += a.gpuMinutes
+            h.energyWh += a.energy / 60; shared += a.shared
+            h.peakCPU = max(h.peakCPU, a.peak); h.peakMem = max(h.peakMem, a.peakMem)
+        }
+        if rows > 0 { h.avgCPU = cpu / Double(rows); h.avgMem = mem / Double(rows); h.avgW = h.energyWh * 60 / Double(rows) }
+        if gpuMin > 0 { h.avgGPU = gpu / Double(gpuMin) }
+        if mac > 0 { h.share = min(shared / mac, 1) }
+        return h
+    }
+
+    /// Laatste `days` dagen (vandaag meegeteld). Leest alleen apps-logs; per dag bewaard zolang het bestand niet wijzigt.
+    static func appHistory(_ name: String, days n: Int, dir: URL, now: Date = Date()) -> AppHistory {
+        appHistory(name, days: dates(Array((0..<n).reversed()), now: now).map { ($0, day($0, dir: dir, withMain: false)) })
+    }
+
+    /// Accu-invloed in gewone woorden, op het gemiddelde vermogen terwijl de app open is.
+    /// < 0,5 W nauwelijks, < 2 W klein, < 6 W merkbaar, daarboven groot (een MacBook in rust zit rond 3–6 W totaal).
+    static func batteryWords(avgW: Double) -> String {
+        avgW < 0.5 ? "Barely affects your battery" : avgW < 2 ? "Small effect on your battery"
+            : avgW < 6 ? "Noticeable effect on your battery" : "Big drain on your battery"
+    }
+
     // MARK: Zelftest (Meterkast --selftest)
 
     static func selfTest() {
@@ -603,6 +683,32 @@ enum Analysis {
         let txt = shareText(r3, period: .week)
         precondition(txt.contains("OneDrive: crashed 3×") && txt.contains("Leaky grew from") && txt.contains("By energy: Hog"), txt)
         precondition(!txt.contains("/Users/") && !txt.contains(NSUserName()), "privacy")
+
+        // App-pagina: maandag een oude log (zonder gpu/mac-kolommen), dinsdag de nieuwe
+        let old = "tijd,app,soort,cpu_pct,geheugen_gb,energie_w\n2026-11-16 09:00:05,Quillo,app,10.0,1.00,2.00\n"
+        var new = AppUsage.csvHeader
+        for i in 0..<4 {
+            new += "2026-11-17 14:0\(i):05,Quillo,app,\(i == 2 ? "50.0" : "10.0"),\(i == 3 ? "2.00" : "1.00"),3.00,\(i == 0 ? "20.0" : "0.0"),12.00\n"
+            new += "2026-11-17 14:0\(i):05,Brambl,app,1.0,0.50,9.00,0.0,12.00\n"
+        }
+        new += "2026-11-17 15:00:05,Brambl,app,1.0,0.50,6.00,0.0,6.00\n"
+        var mon = Day(), tue = Day()
+        parseApps(old, busy: [], into: &mon); parseApps(new, busy: [], into: &tue)
+        let h = appHistory("Quillo", days: [(fm.date(from: "2026-11-16 12:00:00")!, mon), (fm.date(from: "2026-11-17 12:00:00")!, tue)])
+        precondition(h.minutes == 5 && abs(h.avgCPU - 18) < 0.01 && h.peakCPU == 50, "app cpu \(h)")
+        precondition(abs(h.avgMem - 1.2) < 0.01 && h.peakMem == 2, "app geheugen")
+        precondition(h.hours[9] == 1 && h.hours[14] == 4 && h.hours.reduce(0, +) == 5, "per uur \(h.hours)")
+        precondition(h.weekdays == [1, 4, 0, 0, 0, 0, 0], "per weekdag \(h.weekdays)")
+        precondition(h.avgGPU == 5 && abs(h.energyWh - 14.0 / 60) < 0.001 && abs(h.avgW - 2.8) < 0.01, "gpu/energie")
+        precondition(abs((h.share ?? 0) - 12.0 / 54) < 0.001, "aandeel \(String(describing: h.share))")   // 4×3 van (4×12 + 6)
+        precondition(h.since == fm.date(from: "2026-11-17 14:00:00"), "sinds")
+        let none = appHistory("Quillo", days: [(fm.date(from: "2026-11-16 12:00:00")!, mon)])
+        precondition(none.share == nil && none.avgGPU == nil && none.since == nil && none.minutes == 1, "oude log")
+        precondition(appHistory("Nobody", days: [(Date(), tue)]).minutes == 0, "onbekende app")
+        precondition(batteryWords(avgW: 0.2).hasPrefix("Barely") && batteryWords(avgW: 2.8).hasPrefix("Noticeable") && batteryWords(avgW: 9).hasPrefix("Big"), "accu-woorden")
+        precondition(AppMonitor.creatorPid("pid 35649, WindowServer") == 35649 && AppMonitor.creatorPid("kernel") == nil, "gpu-client pid")
+        precondition(AppAbout.signer("Developer ID Application: Quillo Labs B.V. (AB12CD34EF)") == "Quillo Labs B.V. (AB12CD34EF)"
+                     && AppAbout.signer("macOS Software Signing") == "Apple", "ondertekend door")
         print("analyse ok")
     }
 }

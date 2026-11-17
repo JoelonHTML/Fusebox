@@ -64,6 +64,7 @@ final class Meter: ObservableObject {
             guard let self else { return }
             if keep > 0 { self.deleteLogs(olderThan: keep) }
             Self.migrate(f)
+            Self.migrate(self.file(for: Date(), prefix: "apps"), header: AppUsage.csvHeader)   // apps-log van vandaag: nieuwe kolommen
             let loaded = self.loadToday()
             DispatchQueue.main.async { self.today = loaded + self.today }
         }
@@ -138,12 +139,14 @@ final class Meter: ObservableObject {
     private func minuteTasks(_ s: Sample) {
         let apps = minuteApps.apps
         do {   // loggen staat altijd aan
+            // Top 10 processor + top 10 geheugen, plus elke open app (dan klopt "hoe lang open" op de app-pagina)
             let top = Set(apps.sorted { $0.cpu > $1.cpu }.prefix(10).map(\.id) + apps.sorted { $0.memGB > $1.memGB }.prefix(10).map(\.id))
+            let macW = String(format: "%.2f", apps.reduce(0) { $0 + $1.energyW })
             var lines = ""
             let t = Sample.stamp.string(from: s.time)
-            for a in apps where top.contains(a.id) {
+            for a in apps where top.contains(a.id) || a.kind == .app {
                 let name = a.name.replacingOccurrences(of: ",", with: " ")
-                lines += "\(t),\(name),\(a.kind.rawValue),\(String(format: "%.1f", a.cpu)),\(String(format: "%.2f", a.memGB)),\(String(format: "%.2f", a.energyW))\n"
+                lines += "\(t),\(name),\(a.kind.rawValue),\(String(format: "%.1f", a.cpu)),\(String(format: "%.2f", a.memGB)),\(String(format: "%.2f", a.energyW)),\(String(format: "%.1f", a.gpu)),\(macW)\n"
             }
             let file = file(for: s.time, prefix: "apps")
             try? FileManager.default.createDirectory(at: logDir, withIntermediateDirectories: true)
@@ -205,16 +208,17 @@ final class Meter: ObservableObject {
         do { try h.seekToEnd(); try h.write(contentsOf: Data(text.utf8)); return true } catch { return false }
     }
 
-    /// Zet een CSV met andere kolommen om naar `Sample.csvHeader`: kolommen op naam, ontbrekende blijven leeg.
-    static func migrate(_ file: URL) {
+    /// Zet een CSV met andere kolommen om naar `header`: kolommen op naam, ontbrekende blijven leeg.
+    static func migrate(_ file: URL, header: String = Sample.csvHeader) {
         guard let text = try? String(contentsOf: file, encoding: .utf8) else { return }
         var lines = text.split(separator: "\n", omittingEmptySubsequences: true)
-        guard let head = lines.first, String(head) + "\n" != Sample.csvHeader else { return }
+        guard let head = lines.first, String(head) + "\n" != header else { return }
         lines.removeFirst()
         let old = head.split(separator: ",").map(String.init)
-        let new = Sample.csvHeader.dropLast().split(separator: ",").map(String.init)
+        let new = header.dropLast().split(separator: ",").map(String.init)
+        guard let first = new.first, old.contains(first) else { return }   // geen kopregel: niet omzetten (zou alles leeg maken)
         let map = new.map { old.firstIndex(of: $0) }
-        var out = Sample.csvHeader
+        var out = header
         for line in lines {
             let v = line.split(separator: ",", omittingEmptySubsequences: false)
             out += map.map { i in i.flatMap { $0 < v.count ? String(v[$0]) : nil } ?? "" }.joined(separator: ",") + "\n"

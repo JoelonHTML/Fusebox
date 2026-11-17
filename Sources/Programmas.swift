@@ -8,8 +8,8 @@ struct ProgramsView: View {
 }
 
 private enum Filter: String, CaseIterable { case all = "All", apps = "Apps", background = "Background", macos = "macOS" }
-private enum Column { case name, cpu, ram, disk, net, energy, threads, running }
-/// Breedte-banden: < 460 Naam/CPU/RAM, + Disk, + Energie (en Network als die instelling aan staat), + Threads/Proc. (bredere CPU-balk), + Running, ≥ 1100 lijst + detailpaneel.
+private enum Column { case name, cpu, ram, disk, net, energy, gpu, threads, running }
+/// Breedte-banden: < 460 Naam/CPU/RAM, + Disk, + Energie en GPU (en Network als die instelling aan staat), + Threads/Proc. (bredere CPU-balk), + Running, ≥ 1100 lijst + detailpaneel.
 private enum Width: Int, Comparable {
     case narrow, disk, energy, procs, running, split
     init(_ w: CGFloat) { self = w >= 1100 ? .split : w >= 820 ? .running : w >= 700 ? .procs : w >= 560 ? .energy : w >= 460 ? .disk : .narrow }
@@ -30,13 +30,30 @@ private struct ProgramsList: View {
     @State private var confirm: AppUsage?
     @State private var failed: String?
     @State private var open: String?          // id van de uitgeklapte regel (maximaal één); in split-modus de geselecteerde
+    @State private var page: AppRef?          // app-pagina open (in hetzelfde venster, zoals het Live-detail)
+    @State private var installed: [Installed.Item] = []   // pas ingelezen bij de eerste zoekopdracht
+    @FocusState private var searchFocused: Bool
     @AppStorage("netPerApp") private var netPerApp = false
 
-    static let ramW: CGFloat = 62, energyW: CGFloat = 50, procW: CGFloat = 40, stopW: CGFloat = 18
+    static let ramW: CGFloat = 62, energyW: CGFloat = 50, gpuW: CGFloat = 44, procW: CGFloat = 40, stopW: CGFloat = 18
     static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62, netW: CGFloat = 74
 
     var body: some View {
+        if let page {
+            AppPage(monitor: monitor, ref: page) { withAnimation(.snappy(duration: 0.3)) { self.page = nil } }
+                .transition(.opacity.combined(with: .scale(scale: 0.97)))
+        } else {
+            list.transition(.opacity)
+        }
+    }
+
+    private func show(_ ref: AppRef) { withAnimation(.snappy(duration: 0.3)) { page = ref } }
+
+    @ViewBuilder private var list: some View {
         let (rows, hidden) = visible()
+        let q = search.trimmingCharacters(in: .whitespaces)
+        // Zoeken: eerst wat nu draait, daaronder geïnstalleerde apps die niet open zijn
+        let found = q.isEmpty ? [] : Installed.matches(q, in: installed, running: Set(monitor.apps.map(\.name)))
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
         let split = width == .split
         let selected = split ? (rows.first(where: { $0.id == open }) ?? rows.first) : nil
@@ -52,14 +69,21 @@ private struct ProgramsList: View {
                 columnHeader.padding(.horizontal, tight ? 0 : 10)
                 ScrollView {
                     LazyVStack(spacing: tight ? 0 : 6) {
+                        if !q.isEmpty && !rows.isEmpty { sectionTitle("Running") }
                         ForEach(Array(rows.enumerated()), id: \.element.id) { i, app in
                             ProgramRow(app: app, width: width, net: showNet, index: i, isOpen: !split && open == app.id, isSelected: selected?.id == app.id,
                                        onTap: {
                                            if split { open = app.id } else { withAnimation(.snappy(duration: 0.25)) { open = open == app.id ? nil : app.id } }
                                        },
-                                       onStop: { confirm = app })
+                                       onStop: { confirm = app }, onDetails: { show(AppRef(id: app.id, name: app.name)) })
                         }
-                        if rows.isEmpty {
+                        if !found.isEmpty {
+                            sectionTitle("Apps")
+                            ForEach(Array(found.enumerated()), id: \.element.id) { i, item in
+                                InstalledRow(item: item, index: rows.count + i) { show(AppRef(id: item.path, name: item.name)) }
+                            }
+                        }
+                        if rows.isEmpty && found.isEmpty {
                             Text("Nothing found").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
                         }
                         if hidden > 0 || showAll {
@@ -73,6 +97,11 @@ private struct ProgramsList: View {
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
         .onGeometryChange(for: Width.self) { Width($0.size.width) } action: { width = $0 }
+        .background { Button("") { searchFocused = true }.keyboardShortcut("f").hidden() }   // ⌘F = zoeken
+        .onChange(of: search) {
+            guard installed.isEmpty, !search.isEmpty else { return }
+            Task { installed = await Task.detached(priority: .userInitiated) { Installed.all }.value }
+        }
         .alert("Stop \(confirm?.name ?? "")?", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } }), presenting: confirm) { app in
             Button("Stop", role: .destructive) { if !monitor.stop(app) { failed = app.name } }
             Button("Cancel", role: .cancel) {}
@@ -109,6 +138,7 @@ private struct ProgramsList: View {
                 case .cpu: a.cpu < b.cpu
                 case .ram: a.memGB < b.memGB
                 case .energy: a.energyW < b.energyW
+                case .gpu: a.gpu < b.gpu
                 case .disk: a.diskRead + a.diskWrite < b.diskRead + b.diskWrite
                 case .net: a.netIn + a.netOut < b.netIn + b.netOut
                 case .threads: a.threads < b.threads
@@ -139,7 +169,7 @@ private struct ProgramsList: View {
     private var searchField: some View {
         HStack(spacing: 4) {
             Image(systemName: "magnifyingglass").foregroundStyle(theme.secondary)
-            TextField("Search", text: $search).textFieldStyle(.plain).foregroundStyle(theme.text)
+            TextField("Search apps", text: $search).textFieldStyle(.plain).foregroundStyle(theme.text).focused($searchFocused)
             if !search.isEmpty {
                 Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(theme.secondary) }
                     .buttonStyle(.plain).help("Clear search")
@@ -159,7 +189,7 @@ private struct ProgramsList: View {
                         .frame(width: 28, height: 28)
                     Text(app.name).font(theme.label(14)).foregroundStyle(theme.onRow()).lineLimit(2)
                 }
-                ProgramDetails(app: app, onStop: { confirm = app })
+                ProgramDetails(app: app, onStop: { confirm = app }, onDetails: { show(AppRef(id: app.id, name: app.name)) })
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .themedRow(theme, index: 0)
@@ -169,6 +199,11 @@ private struct ProgramsList: View {
 
     private var showNet: Bool { netPerApp && width >= .energy }
 
+    private func sectionTitle(_ t: String) -> some View {
+        Text(t).font(theme.label(11).weight(.semibold)).foregroundStyle(theme.secondary)
+            .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
+    }
+
     private var columnHeader: some View {
         HStack(spacing: 8) {
             head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
@@ -177,6 +212,7 @@ private struct ProgramsList: View {
             if width >= .disk { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
             if showNet { head("Network", .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
             if width >= .energy { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
+            if width >= .energy { head("GPU", .gpu).frame(width: Self.gpuW, alignment: .trailing).help("Share of the graphics chip's time, like Activity Monitor's % GPU") }
             if width >= .procs { head("Threads", .threads).frame(width: Self.threadsW, alignment: .trailing) }
             if width >= .procs { Text("Proc.").font(theme.label(10)).foregroundStyle(theme.secondary).frame(width: Self.procW, alignment: .trailing) }
             if width >= .running { head("Running", .running).frame(width: Self.runW, alignment: .trailing) }
@@ -196,19 +232,19 @@ private struct ProgramsList: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .help("Sort by \(title == "CPU" || title == "RAM" ? title : title.lowercased())")
+        .help("Sort by \(["CPU", "RAM", "GPU"].contains(title) ? title : title.lowercased())")
     }
 }
 
 private struct ProgramRow: View {
-    let app: AppUsage, width: Width, net: Bool, index: Int, isOpen: Bool, isSelected: Bool, onTap: () -> Void, onStop: () -> Void
+    let app: AppUsage, width: Width, net: Bool, index: Int, isOpen: Bool, isSelected: Bool, onTap: () -> Void, onStop: () -> Void, onDetails: () -> Void
     @Environment(\.theme) private var theme
     @State private var hover = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             summary.contentShape(.rect).onTapGesture(perform: onTap)
-            if isOpen { ProgramDetails(app: app, onStop: onStop).transition(.opacity.combined(with: .move(edge: .top))) }
+            if isOpen { ProgramDetails(app: app, onStop: onStop, onDetails: onDetails).transition(.opacity.combined(with: .move(edge: .top))) }
         }
         .font(theme.number(12)).foregroundStyle(theme.onRow())
         .onHover { hover = $0 }
@@ -251,6 +287,7 @@ private struct ProgramRow: View {
                 .font(theme.number(10)).lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.netW, alignment: .trailing)
             }
             if width >= .energy { Text(app.energyW >= 0.05 ? "\(one(app.energyW)) W" : "–").frame(width: ProgramsList.energyW, alignment: .trailing) }
+            if width >= .energy { Text(app.gpu >= 0.5 ? pct(min(app.gpu, 100)) : "–").frame(width: ProgramsList.gpuW, alignment: .trailing) }
             if width >= .procs { Text(app.threads > 0 ? "\(app.threads)" : "–").frame(width: ProgramsList.threadsW, alignment: .trailing) }
             if width >= .procs { Text(app.pids.isEmpty ? "–" : "\(app.pids.count)").frame(width: ProgramsList.procW, alignment: .trailing) }
             if width >= .running {
@@ -274,11 +311,33 @@ private struct ProgramRow: View {
     private var barColor: Color { theme.rowStyle == .blocks ? .white : app.cpu >= 50 ? theme.warn : theme.accent }
 }
 
+/// Zoekresultaat: geïnstalleerde app die nu niet draait. Klik = app-pagina.
+private struct InstalledRow: View {
+    let item: Installed.Item, index: Int, onTap: () -> Void
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Button(action: onTap) {
+            HStack(spacing: 8) {
+                Image(nsImage: NSWorkspace.shared.icon(forFile: item.path)).resizable().interpolation(.high).frame(width: 18, height: 18)
+                Text(item.name).font(theme.label(12)).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.tail)
+                Spacer(minLength: 4)
+                Text("Not running").font(theme.label(10)).foregroundStyle(theme.onRow(true))
+                Image(systemName: "chevron.right").font(.system(size: 10, weight: .semibold)).foregroundStyle(theme.onRow(true))
+            }
+            .contentShape(.rect)
+        }
+        .buttonStyle(.plain)
+        .themedRow(theme, index: index)
+        .help("Usage over time and info about \(item.name)")
+    }
+}
+
 func mem(_ gb: Double) -> String { gb >= 1 ? "\(one(gb)) GB" : "\(Int((gb * 1024).rounded())) MB" }
 
 /// Uitgeklapte uitleg in gewone taal. Alleen opgebouwd voor de ene open regel, dus proc_name hier is goedkoop.
 private struct ProgramDetails: View {
-    let app: AppUsage, onStop: () -> Void
+    let app: AppUsage, onStop: () -> Void, onDetails: () -> Void
     @Environment(\.theme) private var theme
     private static let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
     private static let ramGB = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
@@ -293,6 +352,7 @@ private struct ProgramDetails: View {
                 line("square.stack.3d.up", parts)
             }
             if app.energyW >= 0.05 { line("bolt", "Uses about \(one(app.energyW)) W — \(energyWord).") }
+            if app.gpu >= 0.5 { line("cube.transparent", "Uses the graphics chip \(pct(min(app.gpu, 100))) of the time.") }
             if app.diskRead + app.diskWrite >= 1000 {
                 line("internaldrive", "Reading \(rate(app.diskRead)) and writing \(rate(app.diskWrite)) on the SSD.")
             }
@@ -303,6 +363,8 @@ private struct ProgramDetails: View {
             if let s = app.started { line("clock", "Running for \(duration(max(Int(Date().timeIntervalSince(s) / 60), 1))).") }
             line(verdict.icon, verdict.text).foregroundStyle(verdict.color)
             HStack(spacing: 12) {
+                Button(action: onDetails) { Label("Details", systemImage: "info.circle") }
+                    .help("Usage over time, energy and info about \(app.name)")
                 if app.id.hasPrefix("/") {
                     Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: app.id)]) } label: {
                         Label("Show in Finder", systemImage: "folder")

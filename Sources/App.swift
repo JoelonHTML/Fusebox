@@ -131,6 +131,7 @@ struct MeterkastApp: App {
         precondition(weird.csv.contains(",1000000000000000,"), "csv begrensd")
         Ports.selfTest()
         Spark.selfTest()
+        Installed.selfTest()
         let s = Sampler()
         _ = s.sample()
         let m = AppMonitor()

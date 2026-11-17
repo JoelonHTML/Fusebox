@@ -22,7 +22,7 @@ Got a newer Fusebox? Just open it. It asks **Update Fusebox?** and replaces the 
 ## Use
 
 - **Live:** drag the window larger for more columns, graphs and facts. Click a card for a full detail view of that measurement (5 min / 1 hour / today, min/avg/max and much more).
-- **Processes:** click a row for a plain-language explanation. Use ✕ to quit an app. Optional: internet use per app.
+- **Processes:** click a row for a plain-language explanation, and **Details** for a page per app: live CPU, memory, energy and GPU, history (average, peak, when you use it, share of your Mac's energy) and info about the app. Search (⌘F) finds running and installed apps. Use ✕ to quit an app. Optional: internet use per app.
 - **Checkup:** why your Mac is slow, health score, crashes, battery health, tips and a shareable report.
 - **Network:** every device on your network (name, IP, maker, type, ms), scan any IP range, search, router vs. internet speed and Wi-Fi signal. macOS asks once for Local Network access.
 - **Docked:** what is plugged into your Mac: power coming in, charger, cable (e-marker), link speed now vs. maximum, and the devices behind a dock.

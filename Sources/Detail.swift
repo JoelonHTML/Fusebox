@@ -195,19 +195,7 @@ struct MetricDetail: View {
         }
     }
 
-    private func facts(_ rows: [(String, String)]) -> some View {
-        card {
-            VStack(spacing: 7) {
-                ForEach(rows.indices, id: \.self) { i in
-                    HStack {
-                        Text(rows[i].0).font(theme.label(12)).foregroundStyle(theme.onRow(true)).lineLimit(1)
-                        Spacer()
-                        Text(rows[i].1).font(theme.number(13)).foregroundStyle(theme.onRow()).lineLimit(1)
-                    }
-                }
-            }
-        }
-    }
+    private func facts(_ rows: [(String, String)]) -> some View { Facts(rows: rows) }
 
     private func topApps(_ title: String, sort: (AppUsage, AppUsage) -> Bool, _ value: @escaping (AppUsage) -> String) -> some View {
         let apps = Array(meter.minuteApps.apps.sorted(by: sort).prefix(5))
@@ -250,10 +238,7 @@ struct MetricDetail: View {
         return m >= 1440 ? "\(m / 1440) d \(m % 1440 / 60) h" : "\(m / 60) h \(m % 60) min"
     }
 
-    /// Kaartje in de stijl van het thema (zelfde als de Live-rijen).
-    private func card(@ViewBuilder _ c: () -> some View) -> some View {
-        c().padding(10).frame(maxWidth: .infinity, alignment: .leading).themedRow(theme)
-    }
+    private func card(@ViewBuilder _ c: @escaping () -> some View) -> some View { DetailCard(content: c) }
 
     private func fmt(_ v: Double) -> String {
         switch metric {
@@ -265,6 +250,32 @@ struct MetricDetail: View {
     }
 }
 
-private extension String {
+extension String {
     func ifEmpty(_ s: String) -> String { isEmpty ? s : self }
+}
+
+/// Kaartje in de stijl van het thema (zelfde als de Live-rijen); ook op de app-pagina.
+struct DetailCard<C: View>: View {
+    @Environment(\.theme) private var theme
+    @ViewBuilder let content: () -> C
+    var body: some View { content().padding(10).frame(maxWidth: .infinity, alignment: .leading).themedRow(theme) }
+}
+
+/// Rijtje "naam … waarde" in een kaartje.
+struct Facts: View {
+    @Environment(\.theme) private var theme
+    let rows: [(String, String)]
+    var body: some View {
+        DetailCard {
+            VStack(spacing: 7) {
+                ForEach(rows.indices, id: \.self) { i in
+                    HStack {
+                        Text(rows[i].0).font(theme.label(12)).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                        Spacer()
+                        Text(rows[i].1).font(theme.number(13)).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
+                    }
+                }
+            }
+        }
+    }
 }

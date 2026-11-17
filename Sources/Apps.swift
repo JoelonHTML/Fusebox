@@ -1,5 +1,6 @@
 import SwiftUI
 import Darwin
+import IOKit
 
 // MARK: - Programma's meten (per app, niet per proces)
 
@@ -17,13 +18,15 @@ struct AppUsage: Identifiable {
     let icon: NSImage?
     var diskRead = 0.0, diskWrite = 0.0   // bytes per seconde (lezen/schrijven van de SSD)
     var netIn = 0.0, netOut = 0.0         // bytes per seconde internet (alleen met "netPerApp" aan)
+    var gpu = 0.0                         // % GPU-tijd (tellers van de GPU-driver per proces)
     var threads = 0
     var started: Date?                    // vroegste start van de processen in deze groep
     var canStop: Bool { kind != .macos && pids.first.map { $0 > 0 } == true && id != AppUsage.selfID }
     var runningApp: NSRunningApplication? { pids.lazy.compactMap { NSRunningApplication(processIdentifier: $0) }.first { $0.activationPolicy == .regular } }
 
     static let selfID = Bundle.main.bundlePath
-    static let csvHeader = "tijd,app,soort,cpu_pct,geheugen_gb,energie_w\n"
+    /// gpu_pct en mac_energie_w (som van alle processen die minuut) sinds de app-pagina; oudere logs missen ze.
+    static let csvHeader = "tijd,app,soort,cpu_pct,geheugen_gb,energie_w,gpu_pct,mac_energie_w\n"
 }
 
 /// Meet alle processen via proc_pid_rusage en groepeert ze per verantwoordelijke app.
@@ -31,7 +34,7 @@ struct AppUsage: Identifiable {
 /// `measure` (en alles wat het bijhoudt) draait op `Meter.work`; alleen `apps` is van de hoofdthread.
 final class AppMonitor: ObservableObject {
     @Published var apps: [AppUsage] = []      // hoogste processor eerst; gezet door Meter
-    private var last: [pid_t: (cpu: UInt64, energy: UInt64, rd: UInt64, wr: UInt64)] = [:]
+    private var last: [pid_t: (cpu: UInt64, energy: UInt64, rd: UInt64, wr: UInt64, gpu: UInt64)] = [:]
     private var lastTime = DispatchTime.now()
     private var info: [pid_t: (key: String, path: String)] = [:]
     private var names: [String: (name: String, explanation: String, kind: AppUsage.Kind, icon: NSImage?)] = [:]
@@ -58,9 +61,10 @@ final class AppMonitor: ObservableObject {
         pids = Array(pids.prefix(Int(max(count, 0))))
 
         var groups: [String: AppUsage] = [:]
-        var seen: [pid_t: (cpu: UInt64, energy: UInt64, rd: UInt64, wr: UInt64)] = [:]
+        var seen: [pid_t: (cpu: UInt64, energy: UInt64, rd: UInt64, wr: UInt64, gpu: UInt64)] = [:]
         let nowAbs = mach_absolute_time(), nowDate = Date()
         if network { pollNet() }
+        let gpuNs = Self.gpuTimes()
         for pid in pids where pid > 0 {
             var ri = rusage_info_v6()
             let ok = withUnsafeMutablePointer(to: &ri) { p in
@@ -68,7 +72,8 @@ final class AppMonitor: ObservableObject {
             }
             guard ok == 0 else { continue } // niet van ons: telt mee in "macOS zelf"
             let cpuNs = UInt64(Double(ri.ri_user_time + ri.ri_system_time) * tick)
-            seen[pid] = (cpuNs, ri.ri_energy_nj, ri.ri_diskio_bytesread, ri.ri_diskio_byteswritten)
+            let gpuTotal = gpuNs[pid] ?? 0
+            seen[pid] = (cpuNs, ri.ri_energy_nj, ri.ri_diskio_bytesread, ri.ri_diskio_byteswritten, gpuTotal)
             let (key, _) = identity(pid)
             let meta = describe(key: key, pid: pid)
             let prev = last[pid]
@@ -78,6 +83,7 @@ final class AppMonitor: ObservableObject {
             let watt = prev.map { dt > 0 ? delta(ri.ri_energy_nj, $0.energy) / 1e9 / dt : 0 } ?? 0
             let rd = prev.map { dt > 0 ? delta(ri.ri_diskio_bytesread, $0.rd) / dt : 0 } ?? 0
             let wr = prev.map { dt > 0 ? delta(ri.ri_diskio_byteswritten, $0.wr) / dt : 0 } ?? 0
+            let gpu = prev.map { dt > 0 ? delta(gpuTotal, $0.gpu) / 1e9 / dt * 100 : 0 } ?? 0
             var ti = proc_taskinfo()
             let threads = proc_pidinfo(pid, PROC_PIDTASKINFO, 0, &ti, Int32(MemoryLayout<proc_taskinfo>.size)) > 0 ? Int(ti.pti_threadnum) : 0
             let start = nowDate.addingTimeInterval(-Double(nowAbs &- ri.ri_proc_start_abstime) * tick / 1e9)
@@ -85,13 +91,13 @@ final class AppMonitor: ObservableObject {
             let net = netRate[pid] ?? (0, 0)
             if var g = groups[key] {
                 g.pids.append(pid); g.cpu += cpu; g.memGB += mem; g.energyW += watt
-                g.diskRead += rd; g.diskWrite += wr; g.netIn += net.0; g.netOut += net.1
+                g.diskRead += rd; g.diskWrite += wr; g.netIn += net.0; g.netOut += net.1; g.gpu += gpu
                 g.threads += threads; g.started = min(g.started ?? start, start)
                 groups[key] = g
             } else {
                 groups[key] = AppUsage(id: key, name: meta.name, explanation: meta.explanation, kind: meta.kind,
                                        pids: [pid], cpu: cpu, memGB: mem, energyW: watt, icon: meta.icon,
-                                       diskRead: rd, diskWrite: wr, netIn: net.0, netOut: net.1, threads: threads, started: start)
+                                       diskRead: rd, diskWrite: wr, netIn: net.0, netOut: net.1, gpu: gpu, threads: threads, started: start)
             }
         }
         last = seen
@@ -105,6 +111,35 @@ final class AppMonitor: ObservableObject {
         // nettop ziet ook root-processen: dat verkeer hoort bij "macOS zelf"
         for (pid, n) in netRate where seen[pid] == nil { groups["macos"]?.netIn += n.0; groups["macos"]?.netOut += n.1 }
         return groups.values.sorted { $0.cpu == $1.cpu ? $0.memGB > $1.memGB : $0.cpu > $1.cpu }
+    }
+
+    /// GPU-tijd (ns) per pid: elke GPU-client in de IORegistry (kind van een IOAccelerator) heeft "AppUsage"
+    /// met "accumulatedGPUTime", en "IOUserClientCreator" = "pid 123, naam". Zelfde bron als `ioreg`, geen toestemming nodig.
+    /// Niet gedocumenteerd: ontbreekt het (andere GPU, ander macOS), dan is alles 0. ~3 ms per keer.
+    static func gpuTimes() -> [pid_t: UInt64] {
+        var out: [pid_t: UInt64] = [:], it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else { return out }
+        defer { IOObjectRelease(it) }
+        while case let acc = IOIteratorNext(it), acc != 0 {
+            defer { IOObjectRelease(acc) }
+            var ch: io_iterator_t = 0
+            guard IORegistryEntryGetChildIterator(acc, kIOServicePlane, &ch) == KERN_SUCCESS else { continue }
+            defer { IOObjectRelease(ch) }
+            while case let c = IOIteratorNext(ch), c != 0 {
+                defer { IOObjectRelease(c) }
+                func prop(_ k: String) -> Any? { IORegistryEntryCreateCFProperty(c, k as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() }
+                guard let usage = prop("AppUsage") as? [[String: Any]], !usage.isEmpty,
+                      let pid = (prop("IOUserClientCreator") as? String).flatMap(creatorPid) else { continue }
+                out[pid, default: 0] += usage.reduce(0) { $0 + (($1["accumulatedGPUTime"] as? NSNumber)?.uint64Value ?? 0) }
+            }
+        }
+        return out
+    }
+
+    /// "pid 35649, WindowServer" → 35649
+    static func creatorPid(_ s: String) -> pid_t? {
+        guard s.hasPrefix("pid ") else { return nil }
+        return pid_t(s.dropFirst(4).prefix { $0.isNumber })
     }
 
     /// Start om de ~4 s één nettop-meting op de achtergrond; de snelheden komen in de volgende meting mee.
@@ -153,6 +188,14 @@ final class AppMonitor: ObservableObject {
         guard app.canStop else { return false }
         if let r = app.runningApp { return r.terminate() }
         return app.pids.allSatisfy { kill($0, SIGTERM) == 0 }
+    }
+
+    /// Geforceerd stoppen (zoals Forceer stoppen in macOS): de app krijgt geen kans om te bewaren.
+    @discardableResult
+    func forceStop(_ app: AppUsage) -> Bool {
+        guard app.canStop else { return false }
+        if let r = app.runningApp { return r.forceTerminate() }
+        return app.pids.allSatisfy { kill($0, SIGKILL) == 0 }
     }
 
     // Groepeer op de app die verantwoordelijk is (WebContent → Safari, Chrome Helper → Chrome)
