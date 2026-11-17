@@ -321,6 +321,7 @@ struct LiveSettings: View {
     @AppStorage("absolute") private var absoluteRaw = "ram,ssd"
     @AppStorage("netBits") private var netBits = false
     @AppStorage("perCore") private var perCore = false
+    @AppStorage("batteryTime") private var batteryTime = true
     @AppStorage("warnCPU") private var warnCPU = 85.0
     @AppStorage("warnTemp") private var warnTemp = 95.0
     @AppStorage("warnPing") private var warnPing = 100.0
@@ -341,8 +342,12 @@ struct LiveSettings: View {
                 Text("A thin bar per processor core on the CPU card. Large windows always show them.")
             }
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)
+            Toggle(isOn: $batteryTime) {
+                Text("Battery time left")
+                Text("Next to BAT: how long until empty (or until full while charging), e.g. 2:35")
+            }
         }
-        Section("Units (or click a number on the Live page)") {
+        Section("Units") {
             ForEach([Metric.cpu, .ram, .ssd]) { m in UnitPicker(metric: m) }
             LabeledContent("Internet (NET)") {
                 Picker("Internet (NET)", selection: $netBits) { Text("MB/s").tag(false); Text("Mbit/s").tag(true) }

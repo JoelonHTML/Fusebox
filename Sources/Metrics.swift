@@ -189,7 +189,9 @@ extension Metric {
         case .battery:
             guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: "no battery", valueSize: 24) }
             let time = s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? (s.charging ? "charging" : "")
-            return MetricRowData(label: abbr, value: pct(b), side: s.charging ? "⚡︎" : "", level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
+            // Naast BAT: ⚡︎ bij laden en (instelling "batteryTime") hoe lang nog: "2:35" tot leeg, of tot vol bij laden
+            let left = d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
+            return MetricRowData(label: abbr, value: pct(b), side: [s.charging ? "⚡︎" : nil, left].compactMap { $0 }.joined(separator: " "), level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
                                  detail: time.isEmpty ? "on power adapter" : time, values: h.compactMap(\.battery), valueSize: 24)
         case .fan:
             guard let rpm = s.fanRPM else { return MetricRowData(label: abbr, value: "–", detail: "no fans", valueSize: 24) }
