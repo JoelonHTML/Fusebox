@@ -1,4 +1,4 @@
-<p align="center"><img src="icon/AppIcon-1024.png" width="160" alt="Fusebox icon"></p>
+<p align="center"><img src="icon/social-preview.png" alt="Fusebox: Clear · Light · Live, made for Apple Silicon"></p>
 
 <h1 align="center">Fusebox (beta)</h1>
 
