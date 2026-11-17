@@ -13,8 +13,11 @@ struct IconView: View {
             // Squircle op Apple's icoongrid: 824 px binnen 1024 canvas, één effen kleur
             RoundedRectangle(cornerRadius: 185, style: .continuous).fill(tile)
             ZStack {
-                // Glazen buis (alleen de rand)
-                Capsule().stroke(.white.opacity(0.14), lineWidth: 18).frame(width: 470, height: 200)
+                // Glazen buis: lichte vulling, heldere rand en een glanslijn, zodat hij ook in het Dock leesbaar is
+                Capsule().fill(LinearGradient(colors: [.white.opacity(0.20), .white.opacity(0.07)], startPoint: .top, endPoint: .bottom))
+                    .frame(width: 470, height: 200)
+                Capsule().stroke(.white.opacity(0.42), lineWidth: 14).frame(width: 470, height: 200)
+                Capsule().fill(.white.opacity(0.45)).frame(width: 300, height: 14).offset(y: -62)
                 // Draad = hartslag
                 Path { p in
                     p.addLines([.init(x: 0, y: 100), .init(x: 150, y: 100), .init(x: 190, y: 40), .init(x: 245, y: 170), .init(x: 300, y: 20),
