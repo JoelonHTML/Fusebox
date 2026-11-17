@@ -80,6 +80,7 @@ final class Meter: ObservableObject {
         if ticks % 5 == 1 { pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? "" }
         if ticks % 5 == 1 && !pingHost.isEmpty { pinger.ping(host: pingHost) }   // "" = uit: geen netwerk
         s.pingMs = pingHost.isEmpty ? nil : pinger.lastMs
+        s.pingPending = !pingHost.isEmpty && !pinger.answered
         if programsVisible { ui.refresh(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) }
         fanControl.update(s)
         if ticks % 30 == 0 { minuteTasks(s) }

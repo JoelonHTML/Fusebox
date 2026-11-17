@@ -104,9 +104,9 @@ extension Metric {
                                  values: h.map(\.ramUsedGB), top: total)
         case .net:
             return MetricRowData(label: abbr, value: "↓\(short(s.down, bits: bits)) ↑\(short(s.up, bits: bits))",
-                                 side: host.isEmpty ? "" : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms",
+                                 side: host.isEmpty || s.pingPending ? "" : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms",
                                  template: "↓888 KB/s ↑888 KB/s",
-                                 sideLevel: host.isEmpty ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
+                                 sideLevel: host.isEmpty || s.pingPending ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
                                  detail: host.isEmpty ? "response time check is off" : "internet response time",
                                  values: h.map(\.down), second: h.map(\.up), top: nil, valueSize: 16)
         case .ssd:

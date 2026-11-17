@@ -15,6 +15,7 @@ struct Sample {
     var gpuTemp: Double?                       // grafische chip °C
     var down = 0.0, up = 0.0                   // bytes per seconde
     var pingMs: Double?                        // reactietijd internet
+    var pingPending = false                    // nog geen antwoord op de eerste ping (net opgestart): niets tonen i.p.v. rood "–"
     var diskFreeGB = 0.0, diskTotalGB = 0.0
     var diskRead = 0.0, diskWrite = 0.0        // bytes per seconde (SSD-activiteit)
     var swapGB = 0.0
@@ -343,6 +344,7 @@ func downsample(_ v: [Double], to n: Int = 240) -> [Double] {
 /// Reactietijd (ms) via een TCP-verbinding naar een vaste server: zelfde orde als "ping", zonder root.
 final class Pinger {
     private(set) var lastMs: Double?
+    private(set) var answered = false   // eerste ping klaar (gelukt of niet)
     private var busy = false
     func ping(host: String) {
         guard !busy else { return }
@@ -350,7 +352,7 @@ final class Pinger {
         let start = DispatchTime.now()
         let c = NWConnection(host: NWEndpoint.Host(host), port: 443, using: .tcp)
         var done = false
-        func finish(_ ms: Double?) { guard !done else { return }; done = true; lastMs = ms; busy = false; c.cancel() }
+        func finish(_ ms: Double?) { guard !done else { return }; done = true; lastMs = ms; answered = true; busy = false; c.cancel() }
         c.stateUpdateHandler = { state in
             switch state {
             case .ready: finish(Double(DispatchTime.now().uptimeNanoseconds - start.uptimeNanoseconds) / 1e6)
