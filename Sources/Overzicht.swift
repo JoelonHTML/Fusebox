@@ -61,12 +61,16 @@ struct OverviewView: View {
     @State private var box = SizeBox()
     @State private var layout: LiveLayout?
     @State private var contentHeight: CGFloat = 0
+    @State private var detail: Metric?          // aangeklikte kaart → detailweergave in hetzelfde venster
 
     private var metrics: [Metric] { Metric.enabled(metricsRaw) }
 
     var body: some View {
         Group {
-            if let layout { content(layout) } else { Color.clear }
+            if let d = detail {
+                MetricDetail(metric: d) { withAnimation(.snappy(duration: 0.3)) { detail = nil } }
+                    .transition(.opacity.combined(with: .scale(scale: 0.97)))
+            } else if let layout { content(layout).transition(.opacity) } else { Color.clear }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
         .onGeometryChange(for: CGSize.self) { $0.size } action: { box.v = $0; relayout() }
@@ -100,8 +104,8 @@ struct OverviewView: View {
                                                stats: "", axis: nil, graphs: graphs != .never, ready: !meter.recent.isEmpty)
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
-                                        .onTapGesture { toggleAbsolute(m) }
-                                        .help("Click to switch between % and real values")
+                                        .onTapGesture { withAnimation(.snappy(duration: 0.3)) { detail = m } }
+                                        .help("Click for details")
                                 } else {
                                     Color.clear.frame(height: 1)
                                 }
