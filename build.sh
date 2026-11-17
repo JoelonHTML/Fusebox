@@ -45,7 +45,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundleExecutable</key><string>Fusebox</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.2</string>
+  <key>CFBundleShortVersionString</key><string>0.3</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
