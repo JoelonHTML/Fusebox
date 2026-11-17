@@ -19,11 +19,12 @@ Got a newer Fusebox? Just open it. It asks **Update Fusebox?** and replaces the 
 
 ## Use
 
-- **Live:** drag the window larger for more columns, small graphs and details. Click a number to switch between % and real values (cores, GB).
-- **Processes:** click a row for a plain-language explanation. Use ✕ to quit an app.
+- **Live:** drag the window larger for more columns, graphs and facts. Click a card for a full detail view of that measurement (5 min / 1 hour / today, min/avg/max and much more).
+- **Processes:** click a row for a plain-language explanation. Use ✕ to quit an app. Optional: internet use per app.
 - **Checkup:** why your Mac is slow, health score, crashes, battery health, tips and a shareable report.
-- **Network:** every device on your network (name, IP, maker, type, ms), router vs. internet speed and Wi-Fi signal. macOS asks once for Local Network access.
+- **Network:** every device on your network (name, IP, maker, type, ms), scan any IP range, search, router vs. internet speed and Wi-Fi signal. macOS asks once for Local Network access.
+- **Docked:** what is plugged into your Mac: power coming in, charger, cable (e-marker), link speed now vs. maximum, and the devices behind a dock.
 - **Fans** (MacBook Pro, Mac Studio, Mac mini): live fan speed, and in Settings › Fans your own fan curve. Control needs a small helper that asks for your password once; Fusebox never runs fans slower than macOS's minimum.
-- **Settings (gear):** style, which measurements you see and in what order, graphs, menu bar and notifications.
+- **Settings (gear):** style, font, which measurements you see and in what order, graphs, menu bar, notifications and a keyboard shortcut (⌃⌥⌘F) to show or hide Fusebox.
 
-Measurements are saved in `Documents/Fusebox` as CSV (one small file per day; open the folder via Settings → Privacy). Nothing goes to the internet, except a short connection to measure latency (ms). You choose the address for that yourself in Settings.
+Measurements are saved in `Documents/Fusebox` as CSV (one small file per day; open the folder via Settings → Privacy). Nothing goes to the internet, except a short connection to measure latency (ms), checking GitHub for updates, and a speed test only when you start one. You choose the latency address yourself in Settings.
