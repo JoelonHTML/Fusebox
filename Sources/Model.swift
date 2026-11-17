@@ -30,7 +30,10 @@ final class Meter: ObservableObject {
     /// Weer in beeld (venster terug, scherm wakker): meteen de nieuwste waarden tonen, niet pas bij de volgende meting.
     func refresh() { objectWillChange.send() }
     /// Programma's: `ui` ververst elke 2 s zolang die pagina open is; `minuteApps` meet per minuut voor de log/analyse.
-    let ui = AppMonitor(network: true), minuteApps = AppMonitor()
+    /// `minuteApps` leest ook internet per app (één nettop per minuut, alleen als iemand kijkt): de NET-kaart toont de grootste.
+    let ui = AppMonitor(network: true), minuteApps = AppMonitor(netMaxAge: 150)
+    /// Live › klik op een top-app: Processes opent meteen deze app-pagina.
+    var openApp: AppRef?
     /// Pieken en wat ze veroorzaakte (Pieken.swift).
     lazy var peaks = PeakWatch { [unowned self] in self.file(for: $0, prefix: "peaks") }
     /// Bij openen van de Programs-pagina meteen meten, zodat de lijst niet 2 s leeg is.
@@ -129,8 +132,10 @@ final class Meter: ObservableObject {
         if programs { programsAt = now }
         let minute = now.timeIntervalSince(minuteAt) >= 59   // één keer per minuut, bij elk meettempo
         if minute { minuteAt = now }
+        let minuteNet = watched && Metric.enabled(UserDefaults.standard.string(forKey: "metrics") ?? Metric.defaultOrder).contains(.net)
         Self.work.async { [self] in
             let s = sampler.sample()
+            if minute { minuteApps.network = minuteNet }
             let list = programs ? ui.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
             let minuteList = minute ? minuteApps.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
             DispatchQueue.main.async { self.publish(s, programs: list, minuteList: minuteList, watched: watched) }

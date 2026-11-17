@@ -70,6 +70,7 @@ struct OverviewView: View {
     @State private var layout: LiveLayout?
     @State private var detail: Metric?          // aangeklikte kaart → detailweergave in hetzelfde venster
     @State private var focus: Peak?             // geopend via een piek: die piek in het detail aanwijzen
+    @State private var thermal = ProcessInfo.processInfo.thermalState   // macOS remt af bij hitte: icoontje bij CPU
 
     private var metrics: [Metric] { Metric.enabled(metricsRaw) }
 
@@ -85,6 +86,10 @@ struct OverviewView: View {
         .onChange(of: metricsRaw) { relayout() }
         .onChange(of: showAdvice) { relayout() }
         .onChange(of: theme.rowPad) { relayout() }
+        // Geen polling: macOS meldt zelf wanneer de warmtetoestand verandert (op een willekeurige thread)
+        .onReceive(NotificationCenter.default.publisher(for: ProcessInfo.thermalStateDidChangeNotification).receive(on: DispatchQueue.main)) { _ in
+            thermal = ProcessInfo.processInfo.thermalState
+        }
     }
 
     private func relayout() {
@@ -99,6 +104,8 @@ struct OverviewView: View {
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
         let gap: CGFloat = tight ? 0 : t == .xs ? 3 : 6
         let apps = t >= .l ? meter.minuteApps.apps : []   // top-apps in grote kaarten (per minuut gemeten)
+        let today = t >= .l && metrics.contains(.ssd) ? meter.samples(.today) : []   // SSD: geschreven vandaag
+        let hot = switch thermal { case .nominal: 0; case .fair: 1; case .serious: 2; default: 3 }
         return HStack(alignment: .top, spacing: 12) {
             VStack(spacing: 0) {
                 if showAdvice && t > .xs { advice.frame(minHeight: 20).padding(.bottom, 4) }
@@ -109,13 +116,15 @@ struct OverviewView: View {
                                 let i = r * l.cols + c
                                 if i < metrics.count {
                                     let m = metrics[i]
-                                    MetricView(data: lastPeak(m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps), m, t), tier: t, fill: fill, index: i,
+                                    let row = { var r = m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps, today: today); if m == .cpu { r.hot = hot }; return r }()
+                                    MetricView(data: lastPeak(row, m, t), tier: t, fill: fill, index: i,
                                                side: l.side, graphs: graphs != .never, ready: !meter.recent.isEmpty,
                                                // Pieken op de kaart alleen in grote vensters (L/XL); klein en middel blijven rustig,
                                                // de detailweergave (klik) toont ze altijd
                                                peaks: t >= .l ? PeakContext(metric: m, watch: meter.peaks, times: h.map(\.time)) { p in
                                                    withAnimation(.snappy(duration: 0.3)) { focus = p; detail = m }
-                                               } : nil)
+                                               } : nil,
+                                               openApp: { ref in meter.openApp = ref; page = .programs })   // top-app: naar zijn app-pagina
                                         .id(m)   // kaart hoort bij de meting, niet bij de plek: anders toont NET even de I/O-waarde na een andere indeling
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
@@ -174,6 +183,7 @@ struct MetricView: View {
     var graphs = true
     var ready = true            // false tot de eerste echte meting binnen is
     var peaks: PeakContext?     // pieken: stipje (XS/S), hover op de grafiek (M+)
+    var openApp: ((AppRef) -> Void)?   // klik op een top-app in de feiten
     @AppStorage("perCore") private var perCore = false   // per kern ook in kleine vensters
 
     var body: some View {
@@ -186,6 +196,11 @@ struct MetricView: View {
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text(data.label).font(theme.label(xs ? 11 : 13)).foregroundStyle(labelColor).fixedSize()   // label valt nooit weg
                 if tier < .m, let peaks { PeakDot(ctx: peaks) }
+                if data.hot > 0 {   // macOS remt de processor af om af te koelen (1 = alleen warm)
+                    Image(systemName: "thermometer.high").font(.system(size: xs ? 11 : 13, weight: .medium))
+                        .foregroundStyle(data.hot >= 3 ? theme.danger : data.hot == 2 ? theme.warn : theme.onRow(true))
+                        .help(data.hot >= 2 ? "Your Mac is slowing itself down to cool off" : "Your Mac is warm")
+                }
                 if let icon = data.sideIcon {   // batterij: laden (bliksem) of hoe vol, als icoontje
                     Image(systemName: icon).font(.system(size: xs ? 11 : 13, weight: .medium)).foregroundStyle(data.sideLevel > 0 ? color(data.sideLevel) : theme.onRow(true))
                 }
@@ -259,12 +274,15 @@ struct MetricView: View {
         return LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 28, alignment: .top)], alignment: .leading, spacing: tier >= .xl ? 8 : 6) {
             ForEach(shown.indices, id: \.self) { i in
                 let f = shown[i]
-                HStack(spacing: 6) {
+                let line = HStack(spacing: 6) {
                     if let icon = f.icon { Image(nsImage: icon).resizable().frame(width: size + 3, height: size + 3) }
                     Text(f.label).font(theme.label(size)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                     Spacer(minLength: 8)
                     Text(f.value).font(theme.number(size)).foregroundStyle(theme.onRow()).lineLimit(1).fixedSize()
                 }
+                if let app = f.app, let openApp {   // top-app: klik = zijn app-pagina (de knop wint van de tik op de kaart)
+                    Button { openApp(app) } label: { line.contentShape(.rect) }.buttonStyle(.plain).pointerStyle(.link).help("Open \(app.name)")
+                } else { line }
             }
         }
     }

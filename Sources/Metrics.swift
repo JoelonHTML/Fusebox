@@ -75,12 +75,14 @@ struct MetricRowData {
     var top: Double? = 100, bottom = 0.0
     var valueSize: CGFloat = 30
     var facts: [Fact] = []              // L/XL op de Live-pagina: extra regels, belangrijkste eerst
+    var hot = 0                         // CPU: thermalState van macOS (1 warm, 2 remt af, 3 kritiek); icoontje naast het label
 }
 
 /// Eén regel extra info in een grote kaart: "Swap   0.8 GB", of een app met icoon.
 struct Fact {
     var label: String, value: String
     var icon: NSImage? = nil
+    var app: AppRef? = nil              // top-app: klik opent zijn app-pagina
 }
 
 
@@ -90,14 +92,15 @@ extension Metric {
     var prefersAbsolute: Bool { (UserDefaults.standard.string(forKey: "absolute") ?? "").split(separator: ",").contains(Substring(rawValue)) }
 
     /// `abs`: echte waarden (kernen, GB) i.p.v. percentages, waar dat kan. `apps`: voor de top-apps in grote kaarten.
-    func row(_ s: Sample, _ h: [Sample], abs: Bool, apps: [AppUsage] = []) -> MetricRowData {
+    /// `today`: minuutpunten van vandaag (SSD: geschreven vandaag).
+    func row(_ s: Sample, _ h: [Sample], abs: Bool, apps: [AppUsage] = [], today: [Sample] = []) -> MetricRowData {
         var r = data(s, h, abs: abs)
-        r.facts = facts(s, h, apps)
+        r.facts = facts(s, h, apps, today)
         return r
     }
 
     /// Extra regels voor grote kaarten (L/XL), belangrijkste eerst: wat niet past valt onderaan weg.
-    private func facts(_ s: Sample, _ h: [Sample], _ apps: [AppUsage]) -> [Fact] {
+    private func facts(_ s: Sample, _ h: [Sample], _ apps: [AppUsage], _ today: [Sample]) -> [Fact] {
         let d = UserDefaults.standard, bits = d.bool(forKey: "netBits"), host = d.string(forKey: "pingHost") ?? ""
         let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
         /// Laagste · gemiddelde · hoogste over de periode van de grafiek; eenheid één keer achteraan
@@ -105,8 +108,8 @@ extension Metric {
             guard v.count > 1, let lo = v.min(), let hi = v.max() else { return nil }
             return Fact(label: "Low · avg · high", value: "\(f(lo)) · \(f(v.reduce(0, +) / Double(v.count))) · \(f(hi))\(unit)")
         }
-        func top(_ by: (AppUsage) -> Double, _ f: (AppUsage) -> String) -> [Fact?] {
-            apps.sorted { by($0) > by($1) }.prefix(3).filter { by($0) > 0 }.map { Fact(label: $0.name, value: f($0), icon: $0.icon) }
+        func top(_ by: (AppUsage) -> Double, n: Int = 3, _ f: (AppUsage) -> String) -> [Fact?] {
+            apps.sorted { by($0) > by($1) }.prefix(n).filter { by($0) > 0 }.map { Fact(label: $0.name, value: f($0), icon: $0.icon, app: AppRef(id: $0.id, name: $0.name)) }
         }
         let gb = { (v: Double) in "\(one(v)) GB" }
         let rate = { (v: Double) in short(v, bits: bits) }
@@ -129,22 +132,31 @@ extension Metric {
         case .net:
             // Niet het grote getal herhalen: wat er in de periode doorheen ging, en de piek
             out = [host.isEmpty || s.pingPending ? nil : Fact(label: "Response time", value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "no answer"),
+                   // Welke app nu het meeste internet gebruikt (minuutgemiddelde; alleen met "netPerApp" aan)
+                   top({ $0.netIn + $0.netOut }, n: 1) { let (d, u, unit) = ratePair($0.netIn, $0.netOut, bits: bits); return "↓\(d) ↑\(u) \(unit)" }.first ?? nil,
                    Fact(label: "Downloaded", value: bytes(total(h, \.down))),
                    Fact(label: "Uploaded", value: bytes(total(h, \.up)))]
             if let dn = h.map(\.down).max(), let up = h.map(\.up).max() { out.append(Fact(label: "Peak", value: "↓\(rate(dn)) ↑\(rate(up))")) }
             out.append(LinkRate.fact.map { Fact(label: $0.0, value: $0.1) })
+            out.append(LinkRate.signal.map { Fact(label: "Wi-Fi signal", value: $0) })
         case .ssd:
-            out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"), Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
+            out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"),
+                   today.isEmpty ? nil : Fact(label: "Written today", value: bytes(total(today, \.diskWrite))),
+                   Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
         case .io:
             out = [Fact(label: "Read", value: bytes(total(h, \.diskRead))),
                    Fact(label: "Written", value: bytes(total(h, \.diskWrite))),
                    Fact(label: "Swap", value: gb(s.swapGB))]
             if let r = h.map(\.diskRead).max(), let w = h.map(\.diskWrite).max() { out.append(Fact(label: "Peak", value: "R \(rate(r)) W \(rate(w))")) }
         case .battery:
-            guard s.battery != nil else { return [] }
-            out = [Fact(label: s.charging ? "Charging" : "On battery",
-                        value: s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? "–"),
-                   spread(h.compactMap(\.battery))]
+            guard let b = s.battery else { return [] }
+            let w = s.batteryW.map { "\(Int(Swift.abs($0).rounded())) W" }
+            // Aan de lader maar niet aan het laden en niet vol: macOS houdt hem vast (oplaadlimiet / geoptimaliseerd laden)
+            out = s.charging ? [Fact(label: "Charging", value: s.batteryMinutes.map { "full in \(duration($0))" } ?? "–"), w.map { Fact(label: "Charging at", value: $0) }]
+                : s.onAC ? [b < 99 ? Fact(label: "Charge limit", value: "holding at \(pct(b))") : nil]
+                : [Fact(label: "On battery", value: s.batteryMinutes.map { "\(duration($0)) left" } ?? "–"), w.map { Fact(label: "Using", value: $0) }]
+            if s.onAC { out.append(Fact(label: "Power adapter", value: s.adapterW.map { "\($0) W" } ?? "connected")) }
+            out.append(spread(h.compactMap(\.battery)))
         case .fan:
             out = s.fans.count > 1 ? s.fans.indices.map { Fact(label: "Fan \($0 + 1)", value: "\(Int(s.fans[$0].rpm.rounded())) rpm") } : []
             out.append(spread(h.compactMap(\.fanRPM), unit: " rpm"))
@@ -225,15 +237,21 @@ extension Metric {
 
 }
 
-/// Wi-Fi-verbindingssnelheid (Mbit/s), hooguit eens per 30 s opgevraagd. nil op kabel of zonder Wi-Fi.
+/// Wi-Fi-verbindingssnelheid (Mbit/s), signaal en kanaal, hooguit eens per 10 s opgevraagd. nil op kabel of zonder Wi-Fi.
+/// Geen netwerknaam (SSID): die vraagt om locatietoestemming en hoort hier niet.
 enum LinkRate {
-    nonisolated(unsafe) private static var cached: (at: Date, mbit: Double?) = (.distantPast, nil)
-    static func wifiMbit() -> Double? {
-        if Date().timeIntervalSince(cached.at) > 30 {
-            let r = CWWiFiClient.shared().interface()?.transmitRate() ?? 0
-            cached = (Date(), r > 0 ? r : nil)
-        }
-        return cached.mbit
+    nonisolated(unsafe) private static var cached: (at: Date, mbit: Double?, rssi: Int, ch: Int) = (.distantPast, nil, 0, 0)
+    private static func read() {
+        guard Date().timeIntervalSince(cached.at) > 10 else { return }
+        let i = CWWiFiClient.shared().interface(), r = i?.transmitRate() ?? 0
+        cached = (Date(), r > 0 ? r : nil, i?.rssiValue() ?? 0, i?.wlanChannel()?.channelNumber ?? 0)
+    }
+    static func wifiMbit() -> Double? { read(); return cached.mbit }
+    /// "Good · −52 dBm · ch 36"
+    static var signal: String? { read(); return cached.mbit != nil && cached.rssi < 0 ? signalText(cached.rssi, cached.ch) : nil }
+    static func signalText(_ rssi: Int, _ ch: Int) -> String {
+        let q = rssi >= -55 ? "Excellent" : rssi >= -67 ? "Good" : rssi >= -75 ? "Fair" : "Weak"
+        return "\(q) · −\(-rssi) dBm" + (ch > 0 ? " · ch \(ch)" : "")
     }
     /// Regel voor de NET-feiten: ("Wi-Fi link", "286 Mbit/s"). Wat de router je Mac geeft, niet je internetsnelheid.
     static var fact: (String, String)? { wifiMbit().map { ("Wi-Fi link", "\(Int($0.rounded())) Mbit/s") } }

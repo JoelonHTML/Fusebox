@@ -45,6 +45,8 @@ private struct ProgramsList: View {
     static let ramW: CGFloat = 62, energyW: CGFloat = 50, gpuW: CGFloat = 44, procW: CGFloat = 40, stopW: CGFloat = 18
     static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62, netW: CGFloat = 74
 
+    @EnvironmentObject private var meter: Meter
+
     var body: some View {
         Group {
             if let page {
@@ -54,8 +56,11 @@ private struct ProgramsList: View {
                 list.transition(.opacity)
             }
         }
-        // "Show" in een piekmelding: meteen de app-pagina (ook als Processes al open stond)
-        .onAppear(perform: takePending)
+        // "Show" in een piekmelding of een top-app op Live: meteen de app-pagina (ook als Processes al open stond)
+        .onAppear {
+            takePending()
+            if let r = meter.openApp { page = r; meter.openApp = nil }
+        }
         .onReceive(NotificationCenter.default.publisher(for: PeakAlert.openPage)) { _ in takePending() }
     }
 

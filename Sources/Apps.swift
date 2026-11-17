@@ -42,12 +42,14 @@ final class AppMonitor: ObservableObject {
     private let tick: Double = { var t = mach_timebase_info(); mach_timebase_info(&t); return Double(t.numer) / Double(t.denom) }()
     private typealias Resp = @convention(c) (pid_t) -> pid_t
     private let responsible: Resp? = dlsym(dlopen(nil, RTLD_NOW), "responsibility_get_pid_responsible_for_pid").map { unsafeBitCast($0, to: Resp.self) }
-    // Internet per proces via nettop: alleen voor de Programs-pagina (`network`), en alleen met de instelling aan
-    private let network: Bool
+    // Internet per proces via nettop: Programs-pagina (elke meting) en Live (minuutmeting, zolang iemand kijkt),
+    // alleen met de instelling aan. `netMaxAge`: hoe oud de vorige nettop-telling mag zijn om een snelheid te geven.
+    var network: Bool
+    private let netMaxAge: Double
     private var netBytes: [pid_t: (UInt64, UInt64)] = [:], netRate: [pid_t: (Double, Double)] = [:]
     private var netTime = DispatchTime.now(), netBusy = false
 
-    init(network: Bool = false) { self.network = network }
+    init(network: Bool = false, netMaxAge: Double = 10) { self.network = network; self.netMaxAge = netMaxAge }
 
     /// Eén meting; percentages gelden voor de tijd sinds de vorige aanroep.
     /// `totalCPU`/`totalMemGB` (van de hele Mac) bepalen de restpost "macOS zelf".
@@ -152,7 +154,7 @@ final class AppMonitor: ObservableObject {
         // Low impact: geen nettop (elke paar seconden een los proces starten is het duurste van deze pagina)
         guard UserDefaults.standard.bool(forKey: "netPerApp"), !LowImpact.on else { netBytes = [:]; netRate = [:]; return }
         let age = Double(DispatchTime.now().uptimeNanoseconds - netTime.uptimeNanoseconds) / 1e9
-        if age > 10 { netRate = [:] }   // pagina was dicht: oude snelheden niet meer tonen
+        if age > netMaxAge { netRate = [:] }   // pagina was dicht: oude snelheden niet meer tonen
         guard !netBusy, age >= 3 || netBytes.isEmpty else { return }
         netBusy = true
         DispatchQueue.global(qos: .utility).async { [self] in
@@ -160,7 +162,7 @@ final class AppMonitor: ObservableObject {
             let bytes = Self.parseNettop(out), now = DispatchTime.now()
             Meter.work.async { [self] in
                 let dt = Double(now.uptimeNanoseconds - netTime.uptimeNanoseconds) / 1e9
-                netRate = dt <= 10 ? Self.netRates(netBytes, bytes, dt: dt) : [:]   // te oud = alleen nieuw nulpunt
+                netRate = dt <= netMaxAge ? Self.netRates(netBytes, bytes, dt: dt) : [:]   // te oud = alleen nieuw nulpunt
                 netBytes = bytes; netTime = now; netBusy = false
             }
         }
