@@ -14,6 +14,9 @@ struct MetricDetail: View {
     @State private var height: CGFloat = 400
     @State private var battery: Diag.Battery?          // gezondheid: één keer ophalen bij openen
     @AppStorage("shortMinutes") private var shortMinutes = 5   // zodat "5 min" meteen klopt na wijzigen
+    @AppStorage("cpuGraph") private var cpuGraph = "usage"
+    @AppStorage("gpuGraph") private var gpuGraph = "usage"
+    private var graphTemp: Bool { (metric == .cpu ? cpuGraph : metric == .gpu ? gpuGraph : "") == "temp" }
 
     var body: some View {
         let s = meter.latest, h = meter.samples(range)
@@ -241,7 +244,8 @@ struct MetricDetail: View {
     private func card(@ViewBuilder _ c: @escaping () -> some View) -> some View { DetailCard(content: c) }
 
     private func fmt(_ v: Double) -> String {
-        switch metric {
+        if graphTemp { return deg(v) }
+        return switch metric {
         case .cpu, .gpu, .battery: pct(v)
         case .ram, .ssd: "\(one(v)) GB"
         case .net, .io: rate(v)

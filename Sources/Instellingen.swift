@@ -333,6 +333,8 @@ struct LiveSettings: View {
     @AppStorage("absolute") private var absoluteRaw = "ram,ssd"
     @AppStorage("netBits") private var netBits = false
     @AppStorage("perCore") private var perCore = false
+    @AppStorage("cpuGraph") private var cpuGraph = "usage"
+    @AppStorage("gpuGraph") private var gpuGraph = "usage"
     @AppStorage("batteryTime") private var batteryTime = true
     @AppStorage("netSpeed") private var netSpeed = false
     @AppStorage("netPing") private var netPing = false
@@ -349,6 +351,15 @@ struct LiveSettings: View {
                 ForEach([1, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 60 ? "hour" : "\($0) min").tag($0) }
             }
             .disabled(graphs == .never)
+            ForEach([("CPU graph", $cpuGraph), ("GPU graph", $gpuGraph)], id: \.0) { title, sel in
+                LabeledContent(title) {
+                    Picker(title, selection: sel) {
+                        Text("Usage").tag("usage"); Text("Temperature").tag("temp"); Text("Both").tag("both")
+                    }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+                }
+                .disabled(graphs == .never)
+            }
         }
         Section("Small window") {
             Toggle(isOn: $perCore) {

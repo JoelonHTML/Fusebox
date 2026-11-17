@@ -71,6 +71,7 @@ struct MetricRowData {
     var detail = ""                     // (niet meer op de Live-pagina; voor andere plekken)
     var values: [Double] = [], second: [Double] = []
     var cores: [Double] = []            // CPU per kern (staafjes onder de grafiek, M+)
+    var graphIsTemp = false             // grafiek toont temperatuur (°C) i.p.v. gebruik (%)
     var top: Double? = 100, bottom = 0.0
     var valueSize: CGFloat = 30
     var facts: [Fact] = []              // L/XL op de Live-pagina: extra regels, belangrijkste eerst
@@ -161,10 +162,11 @@ extension Metric {
                                  side: deg(s.temp), template: abs ? "88.8" : "100%",
                                  level: lvl(s.cpu, warnCPU, warnCPU + 10), sideLevel: lvl(s.temp ?? 0, warnTemp, warnTemp + 10),
                                  detail: abs ? "\(pct(s.cpu)) · hottest core \(deg(s.temp))" : "\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores · hottest core \(deg(s.temp))",
-                                 values: h.map(\.cpu), cores: s.cores)
+                                 values: h.map(\.cpu), cores: s.cores).graph(usage: h.map(\.cpu), temp: h.map(\.temp), mode: d.string(forKey: "cpuGraph"))
         case .gpu:
             return MetricRowData(label: abbr, value: pct(s.gpu), side: deg(s.gpuTemp), level: lvl(s.gpu, 90, 98), sideLevel: lvl(s.gpuTemp ?? 0, warnTemp, warnTemp + 10),
                                  detail: s.gpuTemp.map { "temperature \(deg($0))" } ?? "", values: h.map(\.gpu))
+                .graph(usage: h.map(\.gpu), temp: h.map(\.gpuTemp), mode: d.string(forKey: "gpuGraph"))
         case .ram:
             let total = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
             let druk = s.pressure >= 4 ? "critical" : s.pressure == 2 ? "high" : "normal"
@@ -233,6 +235,21 @@ enum LinkRate {
             cached = (Date(), r > 0 ? r : nil)
         }
         return cached.mbit
+    }
+}
+
+extension MetricRowData {
+    /// CPU/GPU-grafiek: "usage" (standaard), "temp" of "both" (temperatuur als tweede, dunne lijn).
+    /// Temperatuur wordt elke 10 s gemeten: tussenliggende punten krijgen de laatst bekende waarde.
+    func graph(usage: [Double], temp: [Double?], mode: String?) -> MetricRowData {
+        var r = self, last: Double?
+        let t = temp.map { v -> Double in if let v { last = v }; return last ?? v ?? 0 }
+        switch mode {
+        case "temp": r.values = t; r.second = []; r.top = 110; r.bottom = 20; r.graphIsTemp = true
+        case "both": r.values = usage; r.second = t.map { min(max(($0 - 20) / 90 * 100, 0), 100) }   // 20–110 °C op de %-schaal
+        default: r.values = usage
+        }
+        return r
     }
 }
 
