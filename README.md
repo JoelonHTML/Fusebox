@@ -2,7 +2,7 @@
 
 <h1 align="center">Fusebox (beta)</h1>
 
-A clear, light overview of your Apple Silicon Mac, live: CPU, GPU, RAM, temperature, internet, SSD and ports, which apps use the most, and advice.
+**Clear · Light · Live.** A Mac activity monitor made for Apple Silicon: CPU, GPU, RAM, temperature, internet, SSD and ports, which apps use the most, and advice.
 
 > **Beta.** Fusebox is still in development. Expect rough edges; updates arrive automatically.
 
