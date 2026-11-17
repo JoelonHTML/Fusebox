@@ -36,6 +36,7 @@ struct MetricDetail: View {
                         SparkView(values: r.values, second: r.second, top: r.top, bottom: r.bottom, fill: 1, axis: nil)
                             .id(range)   // andere periode: niet laten glijden maar meteen tekenen
                             .overlay { highlight(h) }
+                            .padding(.top, PeakHover.band)   // vaste strook boven de grafiek voor het label
                             .overlay { PeakHover(ctx: PeakContext(metric: metric, watch: meter.peaks, times: h.map(\.time)), values: r.values, second: r.second,
                                                  full: true, temp: r.graphIsTemp, color: theme.rowStyle == .blocks ? .white : theme.accent) }
                     } else {

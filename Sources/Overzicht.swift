@@ -243,6 +243,7 @@ struct MetricView: View {
     @ViewBuilder private var graph: some View {
         if graphs && !data.values.isEmpty {
             SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
+                .padding(.top, peaks != nil ? PeakHover.band : 0)   // vaste strook boven de grafiek voor het label
                 .overlay { if let peaks { PeakHover(ctx: peaks, values: data.values, second: data.second, full: tier >= .l, temp: data.graphIsTemp, color: theme.rowStyle == .blocks ? .white : theme.accent) } }
                 .frame(minHeight: 16, maxHeight: .infinity)
         }

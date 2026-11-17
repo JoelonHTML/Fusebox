@@ -410,6 +410,8 @@ struct PeakDot: View {
 /// Muis boven een grafiek: tijd en waarde (M), met lijn en grootste oorzaak (L/XL, detail). Een klik op een piek
 /// (alleen `full`) toont de top 3 apps van dat moment. AppKit-laag: bewegen kost geen SwiftUI-verversing.
 struct PeakHover: NSViewRepresentable {
+    /// Hoogte van de vaste strook boven de grafiek waarin het label staat (de grafiek begint eronder).
+    static let band: CGFloat = 20
     let ctx: PeakContext
     let values: [Double], second: [Double]
     var full = false
@@ -536,15 +538,14 @@ final class PeakHoverView: NSView {
         if let cause { add("  " + cause, style.accent, bold: true) }
         let ts = s.size(), w = min(ceil(ts.width) + 2, bounds.width), h = ceil(ts.height)
         label.string = s
-        label.shadowColor = style.card; label.shadowOpacity = 1; label.shadowRadius = 3; label.shadowOffset = .zero   // zacht halo: leesbaar boven de lijn
-        // Tekst vast linksboven (rechtsboven als de muis links staat, zodat de lijn vrij blijft); lijn over de hele hoogte
-        let left = px > bounds.width / 2 || bounds.width - px < w + 12
-        label.frame = CGRect(x: left ? 4 : max(bounds.width - w - 4, 0), y: 2, width: w, height: h)
+        // Tekst altijd op dezelfde plek: links in de strook boven de grafiek; het streepje alleen door de grafiek
+        let band = PeakHover.band
+        label.frame = CGRect(x: 0, y: max((band - h) / 2, 0), width: w, height: h)
         label.isHidden = false
         line.isHidden = false
         line.frame = bounds
         line.strokeColor = color.copy(alpha: 0.55)
-        line.path = CGPath(rect: CGRect(x: px, y: 0, width: 0, height: bounds.height), transform: nil)
+        line.path = CGPath(rect: CGRect(x: px, y: band, width: 0, height: max(bounds.height - band, 0)), transform: nil)
     }
 }
 
