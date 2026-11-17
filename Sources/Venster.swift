@@ -66,6 +66,7 @@ struct RootView: View {
     static let namesWidth: CGFloat = 660, iconsWidth: CGFloat = 620
     @Environment(\.openWindow) private var openWindow
     @State private var baseBehavior: NSWindow.CollectionBehavior?
+    @State private var onScreen = true       // venster te zien? Anders animeert er niets (kost processor voor niets)
 
     var body: some View {
         let _ = (accent, textScale) // afhankelijkheid: kleur/tekstgrootte wijzigen → opnieuw tekenen
@@ -103,6 +104,12 @@ struct RootView: View {
         .foregroundStyle(theme.text)
         .tint(theme.accent)
         .environment(\.theme, theme)
+        .environment(\.onScreen, onScreen)
+        .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { n in
+            guard let w = window, n.object as? NSWindow === w else { return }
+            let now = w.occlusionState.contains(.visible)
+            if now != onScreen { onScreen = now }
+        }
         .preferredColorScheme(mode == .system ? nil : target)
         .containerBackground(theme.bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.thinMaterial), for: .window)
         .background(WindowGrabber { w in

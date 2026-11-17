@@ -204,8 +204,12 @@ final class InternetStats: ObservableObject {
         speedPhase = nil
     }
 
+    /// Alleen opnieuw decoderen als de opgeslagen data veranderd is (kan bij elke meting gelezen worden).
+    private static var decoded: (data: Data, list: [SpeedResult])?
     static func loadHistory() -> [SpeedResult] {
-        (UserDefaults.standard.data(forKey: "speedHistory")).flatMap { try? JSONDecoder().decode([SpeedResult].self, from: $0) } ?? []
+        guard let data = UserDefaults.standard.data(forKey: "speedHistory") else { return [] }
+        if decoded?.data != data { decoded = (data, (try? JSONDecoder().decode([SpeedResult].self, from: data)) ?? []) }
+        return decoded?.list ?? []
     }
 
     // MARK: Publiek IP (Cloudflare, alleen na een klik; niet opgeslagen)

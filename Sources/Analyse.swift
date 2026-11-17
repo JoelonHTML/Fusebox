@@ -611,9 +611,20 @@ enum Analysis {
 
 struct AnalysisView: View {
     @EnvironmentObject var meter: Meter
+    var body: some View { AnalysisPage(meter: meter).equatable() }
+}
+
+/// De pagina zelf volgt alleen de programmalijst (per minuut), niet elke meting: anders werd het hele rapport
+/// elke 2 s opnieuw opgebouwd (~10 ms) terwijl er niets verandert.
+private struct AnalysisPage: View, Equatable {
+    let meter: Meter
+    @ObservedObject private var apps: AppMonitor
     @Environment(\.theme) private var theme
     @AppStorage("analysisPeriod") private var period: Period = .today
     @State private var report: Report?
+    /// Laatste rapport per tijdvak: bij terugkomen op het tabblad staat het er meteen, daarna wordt het ververst.
+    @MainActor private static var cache: [Period: Report] = [:]
+    static func == (a: Self, b: Self) -> Bool { a.meter === b.meter }
     @State private var loading = false
     @State private var reload = 0
     @State private var columns = 1
@@ -622,6 +633,13 @@ struct AnalysisView: View {
     @State private var note: String?
     @State private var checking = false
     @State private var share: String?
+
+    init(meter: Meter) {
+        self.meter = meter
+        _apps = ObservedObject(wrappedValue: meter.minuteApps)
+        let p = Period(rawValue: UserDefaults.standard.string(forKey: "analysisPeriod") ?? "") ?? .today
+        _report = State(initialValue: MainActor.assumeIsolated { Self.cache[p] })
+    }
 
     var body: some View {
         let tips = report.map { Analysis.tips($0, current: meter.minuteApps.apps) } ?? []
@@ -653,7 +671,10 @@ struct AnalysisView: View {
         .task(id: "\(period.rawValue)#\(reload)") {
             loading = true
             let p = period, dir = meter.logDir
-            report = await Task.detached(priority: .utility) { Analysis.load(p, dir: dir) }.value
+            if let c = Self.cache[p] { report = c }
+            let r = await Task.detached(priority: .utility) { Analysis.load(p, dir: dir) }.value
+            Self.cache[p] = r
+            report = r
             loading = false
         }
         .alert("Quit \(confirm?.name ?? "")?", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {

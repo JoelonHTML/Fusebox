@@ -28,8 +28,9 @@ struct AppUsage: Identifiable {
 
 /// Meet alle processen via proc_pid_rusage en groepeert ze per verantwoordelijke app.
 /// Processen van andere gebruikers (root) mag alleen macOS meten: die komen samen in de regel "macOS zelf".
+/// `measure` (en alles wat het bijhoudt) draait op `Meter.work`; alleen `apps` is van de hoofdthread.
 final class AppMonitor: ObservableObject {
-    @Published private(set) var apps: [AppUsage] = []      // hoogste processor eerst
+    @Published var apps: [AppUsage] = []      // hoogste processor eerst; gezet door Meter
     private var last: [pid_t: (cpu: UInt64, energy: UInt64, rd: UInt64, wr: UInt64)] = [:]
     private var lastTime = DispatchTime.now()
     private var info: [pid_t: (key: String, path: String)] = [:]
@@ -47,7 +48,7 @@ final class AppMonitor: ObservableObject {
 
     /// Eén meting; percentages gelden voor de tijd sinds de vorige aanroep.
     /// `totalCPU`/`totalMemGB` (van de hele Mac) bepalen de restpost "macOS zelf".
-    func refresh(totalCPU: Double, totalMemGB: Double) {
+    func measure(totalCPU: Double, totalMemGB: Double) -> [AppUsage] {
         let now = DispatchTime.now()
         let dt = Double(now.uptimeNanoseconds - lastTime.uptimeNanoseconds) / 1e9
         lastTime = now
@@ -101,10 +102,10 @@ final class AppMonitor: ObservableObject {
                                    energyW: 0, icon: NSImage(systemSymbolName: "apple.logo", accessibilityDescription: nil))
         // nettop ziet ook root-processen: dat verkeer hoort bij "macOS zelf"
         for (pid, n) in netRate where seen[pid] == nil { groups["macos"]?.netIn += n.0; groups["macos"]?.netOut += n.1 }
-        apps = groups.values.sorted { $0.cpu == $1.cpu ? $0.memGB > $1.memGB : $0.cpu > $1.cpu }
+        return groups.values.sorted { $0.cpu == $1.cpu ? $0.memGB > $1.memGB : $0.cpu > $1.cpu }
     }
 
-    /// Start om de ~4 s één nettop-meting op de achtergrond; de snelheden komen in de volgende refresh mee.
+    /// Start om de ~4 s één nettop-meting op de achtergrond; de snelheden komen in de volgende meting mee.
     /// Kost per run ~10 ms processor (gemeten op M-serie), dus ~0,3% van één kern.
     private func pollNet() {
         guard UserDefaults.standard.bool(forKey: "netPerApp") else { netBytes = [:]; netRate = [:]; return }
@@ -115,7 +116,7 @@ final class AppMonitor: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [self] in
             let out = Diag.run("/usr/bin/nettop", ["-P", "-L", "1", "-n", "-x", "-J", "bytes_in,bytes_out"], timeout: 2)
             let bytes = Self.parseNettop(out), now = DispatchTime.now()
-            DispatchQueue.main.async { [self] in
+            Meter.work.async { [self] in
                 let dt = Double(now.uptimeNanoseconds - netTime.uptimeNanoseconds) / 1e9
                 netRate = dt <= 10 ? Self.netRates(netBytes, bytes, dt: dt) : [:]   // te oud = alleen nieuw nulpunt
                 netBytes = bytes; netTime = now; netBusy = false

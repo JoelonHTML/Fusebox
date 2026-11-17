@@ -257,24 +257,14 @@ struct SparkView: View {
     let fill: Double
     var axis: String?           // nil = geen aslabels
     var order = 0               // volgorde bij het inschuiven: grafiekjes komen één voor één, net als de rijen
-    @State private var shift: CGFloat = 0
-    @State private var count: CGFloat = 0
     @State private var drawn: CGFloat = 1        // 0…1: hoeveel van de lijn getekend is (opstart-animatie)
     @State private var waiting = false           // opgestart zonder lijn: inschuiven zodra de 2e meting er is
 
     var body: some View {
-        // Uitdunnen gebeurt in Spark.path(in:), op basis van de getekende breedte.
+        // Uitdunnen en glijden gebeuren in SparkLayers, op basis van de getekende breedte.
         let scale = top ?? max(values.max() ?? 1, second.max() ?? 1, 1)
-        let color = theme.rowStyle == .blocks ? Color.white : theme.accent
-        ZStack {
-            Spark(values: values, top: scale, fill: fill, closed: true, bottom: bottom, shift: shift, count: count).fill(color.opacity(0.15))
-            Spark(values: values, top: scale, fill: fill, closed: false, bottom: bottom, shift: shift, count: count)
-                .stroke(color, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
-            if !second.isEmpty {
-                Spark(values: second, top: scale, fill: fill, closed: false, bottom: bottom, shift: shift, count: count)
-                    .stroke(color.opacity(0.5), lineWidth: 1)
-            }
-        }
+        SparkLayers(values: values, second: second, top: scale, bottom: bottom, fill: fill,
+                    color: theme.rowStyle == .blocks ? Color.white : theme.accent)
         // Grafiek verschijnt (opstarten, tabwissel): vanaf rechts in beeld schuiven, één voor één
         .clipShape(Reveal(drawn: drawn))
         // Alleen bij opstarten/tabwissel; bij venster slepen (andere indeling → nieuwe views) gewoon meteen tonen.
@@ -285,21 +275,6 @@ struct SparkView: View {
             if values.count > 1 { reveal() } else { waiting = true }
         }
         .onChange(of: values.count > 1) { _, has in if has && waiting { waiting = false; reveal() } }
-        // Glijden: na een nieuwe meting begint de lijn precies waar hij stond (nieuw punt nog rechts buiten beeld)
-        // en schuift/rekt hij in ~2 s rustig naar de nieuwe stand. Werkt zowel bij een vol als bij een groeiend venster.
-        .onAppear { count = CGFloat(values.count) }
-        .onChange(of: values) { old, new in
-            guard new.count > 1, old != new else { return }
-            // Eerste lijn: geen glijden, het inschuiven is dan de enige beweging (anders komen ze allemaal tegelijk)
-            guard old.count > 1 else { count = CGFloat(new.count); return }
-            let grew = new.count == old.count + 1, slid = new.count == old.count
-            var t = Transaction(); t.disablesAnimations = true
-            guard grew || slid else { withTransaction(t) { shift = 0; count = CGFloat(new.count) }; return }
-            withTransaction(t) { shift = 1; count = CGFloat(old.count) }
-            DispatchQueue.main.async {
-                withAnimation(.linear(duration: 1.9)) { shift = 0; count = CGFloat(new.count) }
-            }
-        }
         .overlay(alignment: .topLeading) {
             if axis != nil { Text(top == 100 ? "100%" : top == nil ? short(scale) : "\(Int(scale.rounded())) GB").padding(2) }
         }
@@ -310,12 +285,101 @@ struct SparkView: View {
     }
 }
 
+/// De lijnen zelf, met Core Animation. Glijden na een nieuwe meting is één animatie die de render-server afspeelt:
+/// de app doet daar per frame niets voor. (Als SwiftUI-animatie rekende de app elke frame het hele venster door: ~40% processor.)
+private struct SparkLayers: NSViewRepresentable {
+    let values: [Double], second: [Double], top: Double, bottom: Double, fill: Double, color: Color
+    func makeNSView(context: Context) -> SparkNSView { SparkNSView() }
+    func updateNSView(_ v: SparkNSView, context: Context) {
+        v.set(values, second, top: top, bottom: bottom, fill: fill, color: color.resolve(in: context.environment).cgColor,
+              glide: !context.environment.accessibilityReduceMotion)   // "Verminder beweging": lijn verspringt gewoon
+    }
+}
+
+final class SparkNSView: NSView {
+    private let area = CAShapeLayer(), line = CAShapeLayer(), line2 = CAShapeLayer()
+    private var a: [Double] = [], b: [Double] = []
+    private var leadA: [Double] = [], leadB: [Double] = []   // punten die net uit het venster vielen (schuiven links uit beeld)
+    private var top = 1.0, bottom = 0.0, fill = 1.0, stretch = false
+    private var drawn = CGSize.zero
+    private var from: CGFloat = 0, at: CFTimeInterval = 0    // lopende glij-animatie: beginstand en starttijd
+    /// Iets korter dan de 2 s tussen metingen: de lijn staat heel even stil en loopt nooit achter.
+    static let duration: CFTimeInterval = 1.9
+
+    override var isFlipped: Bool { true }
+    override func hitTest(_ point: NSPoint) -> NSView? { nil }   // klikken gaan naar de kaart eronder
+
+    override init(frame: NSRect) {
+        super.init(frame: frame)
+        wantsLayer = true
+        layer?.masksToBounds = true
+        area.strokeColor = nil
+        line.fillColor = nil; line.lineWidth = 1.5; line.lineCap = .round; line.lineJoin = .round
+        line2.fillColor = nil; line2.lineWidth = 1
+        for l in [area, line, line2] { layer?.addSublayer(l) }
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:)") }
+
+    override func viewDidChangeBackingProperties() {
+        super.viewDidChangeBackingProperties()
+        for l in [area, line, line2] { l.contentsScale = window?.backingScaleFactor ?? 2 }
+    }
+
+    override func layout() {
+        super.layout()
+        if bounds.size != drawn { draw(from: nil) }   // andere maat: meteen goed tekenen
+    }
+
+    func set(_ na: [Double], _ nb: [Double], top nt: Double, bottom nbot: Double, fill nf: Double, color: CGColor, glide: Bool) {
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        area.fillColor = color.copy(alpha: color.alpha * 0.15); line.strokeColor = color; line2.strokeColor = color.copy(alpha: color.alpha * 0.5)
+        CATransaction.commit()
+        guard na != a || nb != b || nt != top || nbot != bottom || nf != fill else { return }
+        let kind = Spark.glide(a, na), same = (b.isEmpty && nb.isEmpty) || Spark.glide(b, nb) == kind
+        // Kwam de meting iets te vroeg, dan is de vorige glide nog niet klaar: verder vanaf waar de lijn nu staat
+        let rest = from * CGFloat(max(0, 1 - (CACurrentMediaTime() - at) / Self.duration)), oldTop = top
+        if kind == .slide && same {
+            leadA = Array((leadA + a.prefix(1)).suffix(2)); leadB = Array((leadB + b.prefix(1)).suffix(2))
+        } else { leadA = []; leadB = [] }
+        stretch = kind == .grow && nf >= 1   // smaller dan de volle breedte: de lijn groeit naar links aan en schuift gewoon
+        (a, b, top, bottom, fill) = (na, nb, nt, nbot, nf)
+        draw(from: glide && same && kind != .none ? (1 + rest, oldTop) : nil)
+    }
+
+    /// Tekent de eindstand. Met `from` (beginstand en de schaal van toen) glijdt de lijn daar rustig naartoe:
+    /// begin = precies waar hij stond, nieuw punt nog rechts buiten beeld, het oudste schuift links uit beeld.
+    private func draw(from start: (shift: CGFloat, top: Double)?) {
+        drawn = bounds.size
+        let w = bounds.width * fill, r = CGRect(x: bounds.maxX - w, y: 0, width: w, height: bounds.height)
+        let thin = Spark.thinned(a.count, width: w), n = max(Int(w), 2)
+        func paths(_ shift: CGFloat, _ top: Double) -> [CGPath] {
+            let pa = Spark.points(thin ? downsample(a, to: n) : a, lead: thin ? [] : leadA, in: r, top: top, bottom: bottom, shift: shift, stretch: stretch)
+            let pb = Spark.points(thin ? downsample(b, to: n) : b, lead: thin ? [] : leadB, in: r, top: top, bottom: bottom, shift: shift, stretch: stretch)
+            return [Spark.path(pa, closed: true, floor: r.maxY).cgPath, Spark.path(pa, closed: false, floor: r.maxY).cgPath,
+                    Spark.path(pb, closed: false, floor: r.maxY).cgPath]
+        }
+        let layers = [area, line, line2]
+        CATransaction.begin(); CATransaction.setDisableActions(true)
+        for (l, p) in zip(layers, paths(0, top)) { l.frame = bounds; l.path = p; l.removeAnimation(forKey: "glide") }
+        CATransaction.commit()
+        from = 0
+        guard let start, !thin, w > 0 else { return }
+        from = start.shift; at = CACurrentMediaTime()
+        for (l, p) in zip(layers, paths(start.shift, start.top)) {
+            let g = CABasicAnimation(keyPath: "path")
+            g.fromValue = p; g.toValue = l.path; g.duration = Self.duration; g.timingFunction = CAMediaTimingFunction(name: .linear)
+            l.add(g, forKey: "glide")
+        }
+    }
+}
+
 /// Eén dun staafje per kern; zuinige kernen (vooraan) en snelle kernen met een kleine tussenruimte.
 struct CoreBars: View {
     @Environment(\.theme) private var theme
     let values: [Double]
     var split = 0
     var wide = false            // groot venster: staafjes vullen de hele breedte
+    @Environment(\.onScreen) private var onScreen
 
     var body: some View {
         let color = theme.rowStyle == .blocks ? Color.white : theme.accent
@@ -325,7 +389,7 @@ struct CoreBars: View {
                     .overlay {
                         RoundedRectangle(cornerRadius: 1).fill(color)
                             .scaleEffect(x: 1, y: min(max(values[i], 0), 100) / 100, anchor: .bottom)
-                            .animation(.easeInOut(duration: 0.8), value: values[i])
+                            .animation(onScreen ? .easeInOut(duration: 0.8) : nil, value: values[i])
                     }
                     .frame(width: wide ? nil : 4)
                     .frame(maxWidth: wide ? .infinity : nil)
@@ -412,6 +476,7 @@ struct ChangingText: View {
     /// false = nog geen echte meting (net opgestart): leeg laten i.p.v. "0%".
     var ready = true
     @AppStorage("numberStyle") private var style: NumberStyle = .fade
+    @Environment(\.onScreen) private var onScreen
     @State private var shown: String?
     @State private var flip = false   // eerste echte waarde komt eenmalig binnen met een flip, daarna het gekozen effect
 
@@ -420,13 +485,13 @@ struct ChangingText: View {
         Group {
             if flip || style == .roll {
                 // countsDown: nieuwe cijfers schuiven van boven naar beneden in beeld
-                Text(t).contentTransition(.numericText(countsDown: true)).animation(.snappy(duration: 0.35), value: t)
+                Text(t).contentTransition(.numericText(countsDown: true)).animation(onScreen ? .snappy(duration: 0.35) : nil, value: t)
             } else if style == .fade {
                 // Zacht overvloeien van getal naar getal, op exact dezelfde plek (rechts uitgelijnd), geen dip naar zwart
                 ZStack(alignment: .trailing) {
                     Text(t).id(t).transition(.opacity)
                 }
-                .animation(.easeInOut(duration: 0.5), value: t)
+                .animation(onScreen ? .easeInOut(duration: 0.5) : nil, value: t)
             } else {
                 Text(t)
             }
@@ -434,6 +499,7 @@ struct ChangingText: View {
         .onAppear { if ready { shown = text } }
         .onChange(of: ready ? text : nil) { _, new in
             guard let new else { return }
+            guard onScreen else { shown = new; return }   // venster niet te zien: meteen, zonder animatie
             let first = shown == nil
             if first { flip = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + (first ? 0.1 + delay / 3 : delay)) {
