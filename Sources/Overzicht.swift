@@ -145,6 +145,7 @@ struct MetricView: View {
     var axis: String?           // L+: aslabel links onder ("−5 min")
     var graphs = true
     var ready = true            // false tot de eerste echte meting binnen is
+    @AppStorage("perCore") private var perCore = false   // per kern ook in kleine vensters
 
     var body: some View {
         let xs = tier == .xs
@@ -176,13 +177,17 @@ struct MetricView: View {
                 }
             }
             .frame(minHeight: xs ? nil : 36) // gelijke rijhoogte, ongeacht valueSize
+            if tier < .m && perCore && !data.cores.isEmpty {
+                CoreBars(values: data.cores, split: Sampler.efficiencyCores).frame(height: xs ? 6 : 8)
+            }
             if tier >= .m {
                 // Geen uitlegregels op de Live-pagina: alleen labels en getallen.
                 if !stats.isEmpty {
                     Text(stats).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.8)
                 }
-                if !data.cores.isEmpty {
-                    CoreBars(values: data.cores, split: Sampler.efficiencyCores).frame(height: tier >= .l ? 20 : 12)
+                // Groot venster (L/XL): altijd per kern, over de hele breedte. Kleiner: alleen met de instelling.
+                if !data.cores.isEmpty && (tier >= .l || perCore) {
+                    CoreBars(values: data.cores, split: Sampler.efficiencyCores, wide: tier >= .l).frame(height: tier >= .l ? 28 : 12)
                 }
                 if graphs && !data.values.isEmpty {
                     SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
@@ -262,10 +267,11 @@ struct CoreBars: View {
     @Environment(\.theme) private var theme
     let values: [Double]
     var split = 0
+    var wide = false            // groot venster: staafjes vullen de hele breedte
 
     var body: some View {
         let color = theme.rowStyle == .blocks ? Color.white : theme.accent
-        HStack(alignment: .bottom, spacing: 2) {
+        HStack(alignment: .bottom, spacing: wide ? 3 : 2) {
             ForEach(values.indices, id: \.self) { i in
                 RoundedRectangle(cornerRadius: 1).fill(color.opacity(0.15))
                     .overlay {
@@ -273,8 +279,9 @@ struct CoreBars: View {
                             .scaleEffect(x: 1, y: min(max(values[i], 0), 100) / 100, anchor: .bottom)
                             .animation(.easeInOut(duration: 0.8), value: values[i])
                     }
-                    .frame(width: 4)
-                    .padding(.leading, i == split && split > 0 ? 4 : 0)
+                    .frame(width: wide ? nil : 4)
+                    .frame(maxWidth: wide ? .infinity : nil)
+                    .padding(.leading, i == split && split > 0 ? (wide ? 8 : 4) : 0)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)

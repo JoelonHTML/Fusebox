@@ -329,12 +329,12 @@ struct LiveSettings: View {
                 ForEach([1, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 60 ? "hour" : "\($0) min").tag($0) }
             }
             .disabled(graphs == .never)
-            Toggle(isOn: $perCore) {
-                Text("Per-core CPU")
-                Text("A thin bar per processor core on the CPU card")
-            }
         }
         Section("Small window") {
+            Toggle(isOn: $perCore) {
+                Text("Per-core CPU")
+                Text("A thin bar per processor core on the CPU card. Large windows always show them.")
+            }
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)
         }
         Section("Units (or click a number on the Live page)") {

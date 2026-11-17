@@ -24,7 +24,7 @@ struct Sample {
     var charging = false
     var fans: [FanReading] = []                // per ventilator; leeg op Macs zonder ventilator
     var fanRPM: Double?                        // gemiddelde toeren van alle ventilatoren
-    var cores: [Double] = []                   // procent per kern (instelling "perCore"; leeg als die uit staat)
+    var cores: [Double] = []                   // procent per kern (leeg bij de eerste meting)
 
     static let stamp: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f }()
     static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb\n"
@@ -176,8 +176,8 @@ final class Sampler {
         }
         lastTicks = t
 
-        // Per kern (alleen als de instelling aan staat): zelfde delta, maar per processor
-        if UserDefaults.standard.bool(forKey: "perCore") {
+        // Per kern: zelfde delta, maar per processor (één goedkope mach-call; groot venster toont het altijd)
+        do {
             var info: processor_info_array_t?, count = mach_msg_type_number_t(0), ncpu = natural_t(0)
             if host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &ncpu, &info, &count) == KERN_SUCCESS, let info {
                 let now = (0..<Int(count)).map { UInt32(bitPattern: info[$0]) }
@@ -185,7 +185,7 @@ final class Sampler {
                 if let l = lastCores { s.cores = Self.coreLoad(now, l) }
                 lastCores = now
             }
-        } else { lastCores = nil }
+        }
 
         // Geheugen: zelfde formule als "Gebruikt geheugen" in Activiteitenweergave
         var vm = vm_statistics64()
