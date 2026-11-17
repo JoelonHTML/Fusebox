@@ -111,9 +111,11 @@ struct OverviewView: View {
                                     let m = metrics[i]
                                     MetricView(data: lastPeak(m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps), m, t), tier: t, fill: fill, index: i,
                                                side: l.side, graphs: graphs != .never, ready: !meter.recent.isEmpty,
-                                               peaks: PeakContext(metric: m, watch: meter.peaks, times: t >= .m ? h.map(\.time) : []) { p in
+                                               // Pieken op de kaart alleen in grote vensters (L/XL); klein en middel blijven rustig,
+                                               // de detailweergave (klik) toont ze altijd
+                                               peaks: t >= .l ? PeakContext(metric: m, watch: meter.peaks, times: h.map(\.time)) { p in
                                                    withAnimation(.snappy(duration: 0.3)) { focus = p; detail = m }
-                                               })
+                                               } : nil)
                                         .id(m)   // kaart hoort bij de meting, niet bij de plek: anders toont NET even de I/O-waarde na een andere indeling
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
