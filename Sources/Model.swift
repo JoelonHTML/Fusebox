@@ -24,8 +24,18 @@ final class Meter: ObservableObject {
     let ui = AppMonitor(network: true), minuteApps = AppMonitor()
     /// Bij openen van de Programs-pagina meteen meten, zodat de lijst niet 2 s leeg is.
     var programsVisible = false {
-        didSet { if programsVisible && !oldValue { ui.refresh(totalCPU: latest.cpu, totalMemGB: latest.ramUsedGB) } }
+        didSet {
+            guard programsVisible && !oldValue else { return }
+            let s = latest
+            Self.work.async { [self] in
+                let apps = ui.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB)
+                DispatchQueue.main.async { self.ui.apps = apps }
+            }
+        }
     }
+    /// Meten gebeurt hier (één tegelijk), niet op de hoofdthread: de SMC-sensoren (~11 ms per 10 s), de schijf
+    /// (~6 ms per minuut) en de programmalijst (~120 ms de eerste keer) lieten anders animaties en tabwissels haperen.
+    static let work = DispatchQueue(label: "fusebox.meten", qos: .utility)
     private let pinger = Pinger()
     private var ticks = 0
     private var pingHost = ""
@@ -33,7 +43,7 @@ final class Meter: ObservableObject {
     /// Wordt waar bij afsluiten (dan geen instellingen meer terugzetten vanuit het stappenplan).
     private(set) var quitting = false
     let logDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox")
-    private let sampler = Sampler()
+    private lazy var sampler = Sampler()   // alleen op `work` gebruiken
     private let fanControl = FanController()
     private var timer: Timer?
     private var minute: [Sample] = []
@@ -64,7 +74,7 @@ final class Meter: ObservableObject {
             let m = d.string(forKey: "metrics") ?? Metric.defaultOrder
             if !m.split(separator: ",").contains("fan") { d.set(m.isEmpty ? "fan" : m + ",fan", forKey: "metrics") }
         }
-        _ = sampler.sample() // eerste meting = nulpunt voor de deltas
+        Self.work.async { [self] in _ = sampler.sample() } // eerste meting = nulpunt voor de deltas
         // Eerste echte waarden snel tonen (de getallen flippen dan binnen), daarna elke 2 s
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.tick() }
         let t = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.tick() }
@@ -74,16 +84,27 @@ final class Meter: ObservableObject {
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { [weak self] _ in self?.quitting = true; self?.flush() }
     }
 
+    /// Elke 2 s (hoofdthread): meten op `work`, het resultaat in één keer terug op de hoofdthread verwerken.
     func tick() {
-        var s = sampler.sample()
         ticks += 1
-        if ticks % 5 == 1 { pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? "" }
-        if ticks % 5 == 1 && !pingHost.isEmpty { pinger.ping(host: pingHost) }   // "" = uit: geen netwerk
+        let n = ticks, programs = programsVisible
+        Self.work.async { [self] in
+            let s = sampler.sample()
+            let list = programs ? ui.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
+            let minuteList = n % 30 == 0 ? minuteApps.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
+            DispatchQueue.main.async { self.publish(s, tick: n, programs: list, minuteList: minuteList) }
+        }
+    }
+
+    private func publish(_ sample: Sample, tick n: Int, programs: [AppUsage]?, minuteList: [AppUsage]?) {
+        var s = sample
+        if n % 5 == 1 { pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? "" }
+        if n % 5 == 1 && !pingHost.isEmpty { pinger.ping(host: pingHost) }   // "" = uit: geen netwerk
         s.pingMs = pingHost.isEmpty ? nil : pinger.lastMs
         s.pingPending = !pingHost.isEmpty && !pinger.answered
-        if programsVisible { ui.refresh(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) }
+        if let programs, programsVisible { ui.apps = programs }
         fanControl.update(s)
-        if ticks % 30 == 0 { minuteTasks(s) }
+        if let minuteList { minuteApps.apps = minuteList; minuteTasks(s) }
         let cal = Calendar.current
         if let first = minute.first, !cal.isDate(first.time, equalTo: s.time, toGranularity: .minute) {
             if !cal.isDate(first.time, inSameDayAs: s.time) { today.removeAll() }
@@ -113,9 +134,8 @@ final class Meter: ObservableObject {
         return logDir.appendingPathComponent("\(prefix)-\(f.string(from: day)).csv")
     }
 
-    /// Elke minuut: programma's meten, top naar apps-CSV schrijven, en zo nodig een melding geven.
+    /// Elke minuut (programma's zijn net gemeten): top naar apps-CSV schrijven, en zo nodig een melding geven.
     private func minuteTasks(_ s: Sample) {
-        minuteApps.refresh(totalCPU: s.cpu, totalMemGB: s.ramUsedGB)
         let apps = minuteApps.apps
         do {   // loggen staat altijd aan
             let top = Set(apps.sorted { $0.cpu > $1.cpu }.prefix(10).map(\.id) + apps.sorted { $0.memGB > $1.memGB }.prefix(10).map(\.id))

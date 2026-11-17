@@ -119,10 +119,11 @@ struct MeterkastApp: App {
         var weird = Sample(); weird.diskRead = 9.2e18; weird.down = .infinity
         precondition(weird.csv.contains(",1000000000000000,"), "csv begrensd")
         Ports.selfTest()
+        Spark.selfTest()
         let s = Sampler()
         _ = s.sample()
         let m = AppMonitor()
-        m.refresh(totalCPU: 0, totalMemGB: 0)
+        _ = m.measure(totalCPU: 0, totalMemGB: 0)
         sleep(1)
         let x = s.sample()
         precondition((0...100).contains(x.cpu), "cpu \(x.cpu)")   // 0 kan bij een stille seconde
@@ -139,16 +140,16 @@ struct MeterkastApp: App {
         precondition(short(1_000_000, bits: true) == "\(one(8)) Mbit/s" && Color(hex: "#FF8000")?.hex == "#FF8000", "eenheden/kleur")
         precondition(Metric.allCases.allSatisfy { (0...1).contains($0.fraction(x)) }, "menubalk-fractie")
         let t0 = Date()
-        m.refresh(totalCPU: x.cpu, totalMemGB: x.ramUsedGB)
+        let apps = m.measure(totalCPU: x.cpu, totalMemGB: x.ramUsedGB)
         let ms = Int(-t0.timeIntervalSinceNow * 1000)
-        precondition(m.apps.count > 5 && m.apps.contains { $0.id == "macos" }, "apps \(m.apps.count)")
-        precondition(m.apps.allSatisfy { $0.cpu >= 0 && $0.memGB >= 0 }, "apps negatief")
+        precondition(apps.count > 5 && apps.contains { $0.id == "macos" }, "apps \(apps.count)")
+        precondition(apps.allSatisfy { $0.cpu >= 0 && $0.memGB >= 0 }, "apps negatief")
         let nt = AppMonitor.parseNettop(",bytes_in,bytes_out,\nlaunchd.1,0,0,\nSome App, Helper.v2.4321,1500,200,\nkapot.x,1,2,\n")
         precondition(nt.count == 2 && nt[4321].map { $0 == (1500, 200) } == true && nt[1].map { $0 == (0, 0) } == true, "nettop \(nt)")
         let nr = AppMonitor.netRates([4321: (500, 100), 7: (900, 9)], [4321: (1500, 200), 7: (10, 9), 8: (5, 5)], dt: 2)
         precondition(nr.count == 1 && nr[4321].map { $0 == (500, 50) } == true, "nettop-delta \(nr)")
-        let top = m.apps.prefix(5).map { "\($0.name) \(String(format: "%.1f", $0.cpu))% \(String(format: "%.2f", $0.memGB)) GB" }
-        print("apps: \(m.apps.count) groepen in \(ms) ms; top: \(top.joined(separator: " | "))")
+        let top = apps.prefix(5).map { "\($0.name) \(String(format: "%.1f", $0.cpu))% \(String(format: "%.2f", $0.memGB)) GB" }
+        print("apps: \(apps.count) groepen in \(ms) ms; top: \(top.joined(separator: " | "))")
         print("ok:", x.csv, terminator: "")
     }
 }

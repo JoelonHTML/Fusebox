@@ -155,8 +155,12 @@ extension Theme {
 }
 
 private struct ThemeKey: EnvironmentKey { static let defaultValue = Theme.instrument }
+private struct OnScreenKey: EnvironmentKey { static let defaultValue = true }
 extension EnvironmentValues {
     var theme: Theme { get { self[ThemeKey.self] } set { self[ThemeKey.self] = newValue } }
+    /// false = het venster is niet te zien (dicht, geminimaliseerd, helemaal bedekt): dan niets animeren,
+    /// want SwiftUI rekent animaties ook voor een onzichtbaar venster elke frame door.
+    var onScreen: Bool { get { self[OnScreenKey.self] } set { self[OnScreenKey.self] = newValue } }
 }
 
 /// Zet een rij/kaart in de vorm van het thema. `index` kiest de kleur bij kleurblokken.
@@ -187,39 +191,52 @@ extension View {
 }
 
 /// Goedkope sparkline: één Path, rechts uitgelijnd, hoogstens 1 punt per 2 pt breedte.
+/// Stilstaand; de Live-grafieken glijden via `SparkLayers` (Overzicht.swift) en delen de rekenregels hieronder.
 struct Spark: Shape {
     let values: [Double], top: Double, fill: Double, closed: Bool
     var bottom = 0.0
-    /// Glijden na een nieuwe meting: `shift` (1 → 0) schuift de lijn een punt naar links,
-    /// `count` (oud → nieuw aantal punten) rekt hem geleidelijk op als de reeks nog groeit. Beide animeerbaar.
-    var shift: CGFloat = 0
-    var count: CGFloat = 0
-    var animatableData: AnimatablePair<CGFloat, CGFloat> {
-        get { AnimatablePair(shift, count) }
-        set { shift = newValue.first; count = newValue.second }
-    }
     /// Hoe rond de hoeken zijn: 0 = recht, 0,5 = helemaal rond. Licht afgerond oogt rustig maar niet "bollig".
     static let roundness: CGFloat = 0.2
 
     func path(in r: CGRect) -> Path {
-        var p = Path()
         let w = r.width * fill
-        // Pas uitdunnen als er veel meer punten dan pixels zijn (lange periodes); dan niet glijden
-        let thinned = self.values.count > Int(w * 2)
-        let values = thinned ? downsample(self.values, to: max(Int(w), 2)) : self.values
-        guard values.count > 1 else { return p }
+        let v = Self.thinned(values.count, width: w) ? downsample(values, to: max(Int(w), 2)) : values
+        return Self.path(Self.points(v, in: CGRect(x: r.maxX - w, y: r.minY, width: w, height: r.height), top: top, bottom: bottom), closed: closed, floor: r.maxY)
+    }
+
+    /// Pas uitdunnen als er veel meer punten dan pixels zijn (lange periodes); dan niet glijden.
+    static func thinned(_ count: Int, width: CGFloat) -> Bool { count > Int(width * 2) }
+
+    /// Wat er tussen twee metingen met de reeks gebeurde.
+    enum Glide { case none, slide, grow }
+    /// `slide`: oudste punt eraf en een nieuw erbij (vol venster); `grow`: alleen een punt erbij; anders `none` (niet glijden).
+    static func glide(_ old: [Double], _ new: [Double]) -> Glide {
+        guard old.count > 1 else { return .none }   // eerste lijn: geen glijden, alleen het inschuiven
+        if new.count == old.count, new.dropLast().elementsEqual(old.dropFirst()) { return .slide }
+        if new.count == old.count + 1, new.dropLast().elementsEqual(old) { return .grow }
+        return .none
+    }
+
+    /// Plek van elk punt, nieuwste rechts tegen de rand. `lead`: punten die net uit het venster vielen en links
+    /// uit beeld schuiven (oudste eerst). `shift`: 1 = waar de lijn stond vóór de nieuwe meting (nieuw punt nog rechts
+    /// buiten beeld), 0 = eindstand. `stretch`: de reeks groeit nog, dan rekt de lijn uit i.p.v. te schuiven.
+    static func points(_ values: [Double], lead: [Double] = [], in r: CGRect, top: Double, bottom: Double,
+                       shift s: CGFloat = 0, stretch: Bool = false) -> [CGPoint] {
         let n = CGFloat(values.count)
-        let c = thinned || count < 2 ? n : count
-        let step = w / (c - 1)
-        let s = thinned ? 0 : shift
-        let pts = values.enumerated().map { i, v in
-            CGPoint(x: r.maxX - step * (n - 1 - CGFloat(i)) + step * s,
+        let step = r.width / max((stretch ? max(n - s, 2) : n) - 1, 1)
+        return (lead + values).enumerated().map { i, v in
+            CGPoint(x: r.maxX - step * (n - 1 - CGFloat(i - lead.count) - s),
                     y: r.maxY - r.height * min(max((v - bottom) / (top - bottom), 0), 1))
         }
-        // Rechte stukken met licht afgeronde hoeken
+    }
+
+    /// Rechte stukken met licht afgeronde hoeken; `closed` vult tot de onderrand (`floor`).
+    static func path(_ pts: [CGPoint], closed: Bool, floor: CGFloat) -> Path {
+        var p = Path()
+        guard pts.count > 1 else { return p }
         p.move(to: pts[0])
         if pts.count > 2 {
-            let k = Self.roundness
+            let k = roundness
             func lerp(_ a: CGPoint, _ b: CGPoint, _ t: CGFloat) -> CGPoint { CGPoint(x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t) }
             for i in 1..<(pts.count - 1) {
                 p.addLine(to: lerp(pts[i], pts[i - 1], k))
@@ -227,8 +244,37 @@ struct Spark: Shape {
             }
         }
         p.addLine(to: pts[pts.count - 1])
-        if closed { p.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: r.maxY)); p.addLine(to: CGPoint(x: pts[0].x, y: r.maxY)); p.closeSubpath() }
+        if closed { p.addLine(to: CGPoint(x: pts[pts.count - 1].x, y: floor)); p.addLine(to: CGPoint(x: pts[0].x, y: floor)); p.closeSubpath() }
         return p
+    }
+
+    /// Zelftest: de eindstand van een glij-animatie is exact de beginstand van de volgende (niets springt terug).
+    static func selfTest() {
+        let r = CGRect(x: 10, y: 0, width: 298, height: 80)
+        func pts(_ v: [Double], lead: [Double] = [], s: CGFloat = 0, stretch: Bool = false) -> [CGPoint] {
+            points(v, lead: lead, in: r, top: 100, bottom: 0, shift: s, stretch: stretch)
+        }
+        func same(_ a: some Collection<CGPoint>, _ b: some Collection<CGPoint>) -> Bool {
+            a.count == b.count && zip(a, b).allSatisfy { abs($0.x - $1.x) < 1e-6 && abs($0.y - $1.y) < 1e-6 }
+        }
+        let v0 = (0..<150).map { Double($0 % 37) * 2.5 }, v1 = Array(v0.dropFirst()) + [42], v2 = Array(v1.dropFirst()) + [7]
+        precondition(glide(v0, v1) == .slide && glide(v1, v2) == .slide && glide(v0, v0 + [1]) == .grow, "soort")
+        precondition(glide(v0, v0.dropLast() + [99]) == .none && glide([1], [1, 2]) == .none && glide(v0, []) == .none, "niet glijden")
+        // Vol venster: eind van glide 1 (shift 0) == begin van glide 2 (shift 1), voor elk punt dat blijft; links begint de lijn op de rand
+        let end1 = pts(v1, lead: [v0[0]]), start2 = pts(v2, lead: [v0[0], v1[0]], s: 1), end2 = pts(v2, lead: [v0[0], v1[0]])
+        precondition(same(end1, start2.dropLast()) && abs(start2[1].x - r.minX) < 1e-6 && abs(end1[1].x - r.minX) < 1e-6, "eind = begin (schuiven)")
+        precondition(start2[0].x < r.minX && end2[1].x < r.minX && abs(end2[2].x - r.minX) < 1e-6 && start2.last!.x > r.maxX
+                     && abs(end2.last!.x - r.maxX) < 1e-6, "oud punt schuift links uit beeld, nieuw komt rechts binnen")
+        // Te vroege meting (vorige glide nog op 0,2): verder vanaf precies die stand
+        precondition(same(pts(v1, lead: [v0[0]], s: 0.2), pts(v2, lead: [v0[0], v1[0]], s: 1.2).dropLast()), "onderbroken glide")
+        // Groeiende reeks: lijn blijft over de hele breedte en rekt uit; eind = begin van de volgende
+        let g0 = Array(v0.prefix(40)), g1 = g0 + [5], g2 = g1 + [60]
+        precondition(same(pts(g0), pts(g1, s: 1, stretch: true).dropLast()) && same(pts(g1), pts(g2, s: 1, stretch: true).dropLast()), "eind = begin (groeien)")
+        precondition((0...10).allSatisfy { abs(pts(g1, s: CGFloat($0) / 10, stretch: true)[0].x - r.minX) < 1e-6 }, "groeien: links vast")
+        // Laatste keer groeien → eerste keer schuiven
+        let full = Array(v0.prefix(41)), next = Array(full.dropFirst()) + [3]
+        precondition(same(pts(full), pts(next, lead: [full[0]], s: 1).dropLast()), "groeien → schuiven")
+        print("grafiek: ok")
     }
 }
 

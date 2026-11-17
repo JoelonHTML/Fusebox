@@ -60,6 +60,7 @@ struct FanReading {
 final class SMC {
     private var conn: io_connect_t = 0
     private var cpuKeys: [(key: UInt32, size: UInt32)] = [], gpuKeys: [(key: UInt32, size: UInt32)] = []
+    private var keyInfo: [UInt32: (size: UInt32, type: UInt32)] = [:]
     /// FNum: aantal ventilatoren (0 op o.a. MacBook Air).
     private(set) var fanCount = 0
 
@@ -116,9 +117,10 @@ final class SMC {
     /// Eén sleutel lezen en omzetten naar een getal volgens zijn eigen type (flt/fpe2/ui8/ui16/ui32).
     func value(_ name: String) -> Double? {
         let key = Self.code(name)
-        guard let info = call(9, key: key), let o = call(5, key: key, size: u32(info, 28)) else { return nil }
-        let size = Int(Swift.min(u32(info, 28), 32))
-        return Self.decode(type: u32(info, 32), Array(o[48..<48 + size]))
+        // Maat en type van een sleutel veranderen nooit: één keer opvragen (scheelt de helft van de SMC-aanroepen)
+        if keyInfo[key] == nil, let i = call(9, key: key) { keyInfo[key] = (u32(i, 28), u32(i, 32)) }
+        guard let info = keyInfo[key], let o = call(5, key: key, size: info.size) else { return nil }
+        return Self.decode(type: info.type, Array(o[48..<48 + Int(Swift.min(info.size, 32))]))
     }
 
     /// SMC-bytes → getal. `flt ` is little-endian (Apple Silicon); fpe2/ui16/ui32 zijn big-endian (Intel-erfenis).
