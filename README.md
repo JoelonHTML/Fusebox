@@ -10,14 +10,23 @@
 
 ## Install
 
+**Easiest (no security warning):** open **Terminal** and paste this one line, then press Return:
+
+```bash
+curl -sL https://github.com/JoelonHTML/Fusebox/releases/latest/download/Fusebox.zip -o /tmp/Fusebox.zip && mkdir -p ~/Applications && ditto -x -k /tmp/Fusebox.zip ~/Applications && open ~/Applications/Fusebox.app
+```
+
+It downloads the latest Fusebox into your Applications folder and opens it. A short setup follows: one question per step (style, what to show, menu bar, notifications…). You can change everything later in Settings.
+
+**Or by hand (download from the Releases page):**
+
 1. Unzip `Fusebox.zip` and drag **Fusebox** into your **Applications** folder.
-2. Open it. The first time, macOS says the app can't be verified, because it doesn't come from the App Store.
-3. Go to **System Settings → Privacy & Security**, scroll down and click **Open Anyway** next to Fusebox. You only need to do this once.
-4. A short setup opens: one question per step (style, what to show, menu bar, notifications…). You can change everything later in Settings.
+2. Open it. macOS says *"Fusebox" not opened – Apple could not verify…*, because Fusebox isn't notarised by Apple. Click **Done** (not Move to Trash).
+3. Go to **System Settings → Privacy & Security**, scroll down to *"Fusebox" was blocked…* and click **Open Anyway**, then confirm with your password. You only need to do this once.
 
 ## Update
 
-Got a newer Fusebox? Just open it. It asks **Update Fusebox?** and replaces the old one in Applications. Your settings and history stay. (macOS may ask **Open Anyway** once again for the new version.)
+Fusebox updates itself: it checks GitHub every 15 minutes, installs new versions (only ones signed by its maker) and tells you what's new. No security warning for updates. Your settings and history stay.
 
 ## Use
 
