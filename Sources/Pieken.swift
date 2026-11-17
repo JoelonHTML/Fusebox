@@ -451,7 +451,7 @@ final class PeakHoverView: NSView {
         super.init(frame: frame)
         wantsLayer = true
         line.lineWidth = 1; line.isHidden = true
-        label.cornerRadius = 8; label.borderWidth = 1; label.alignmentMode = .center; label.isHidden = true
+        label.alignmentMode = .left; label.isHidden = true   // los tekst linksboven, geen kaartje (rustig, zoals Aandelen)
         layer?.addSublayer(line); layer?.addSublayer(label)
     }
     required init?(coder: NSCoder) { fatalError("init(coder:)") }
@@ -534,16 +534,17 @@ final class PeakHoverView: NSView {
         add(time + "  ", style.sub, bold: false)
         add(value, style.text, bold: true)
         if let cause { add("  " + cause, style.accent, bold: true) }
-        let ts = s.size(), w = min(ceil(ts.width) + 20, bounds.width), h = ceil(ts.height) + 8
-        label.string = s; label.backgroundColor = style.card.copy(alpha: 0.96); label.borderColor = style.accent.copy(alpha: 0.45)
-        label.frame = CGRect(x: min(max(px - w / 2, 0), max(bounds.width - w, 0)), y: 1, width: w, height: h)
+        let ts = s.size(), w = min(ceil(ts.width) + 2, bounds.width), h = ceil(ts.height)
+        label.string = s
+        label.shadowColor = style.card; label.shadowOpacity = 1; label.shadowRadius = 3; label.shadowOffset = .zero   // zacht halo: leesbaar boven de lijn
+        // Tekst vast linksboven (rechtsboven als de muis links staat, zodat de lijn vrij blijft); lijn over de hele hoogte
+        let left = px > bounds.width / 2 || bounds.width - px < w + 12
+        label.frame = CGRect(x: left ? 4 : max(bounds.width - w - 4, 0), y: 2, width: w, height: h)
         label.isHidden = false
-        line.isHidden = !full
-        if full {
-            line.frame = bounds
-            line.strokeColor = color.copy(alpha: 0.7)
-            line.path = CGPath(rect: CGRect(x: px, y: h + 2, width: 0, height: max(bounds.height - h - 2, 0)), transform: nil)
-        }
+        line.isHidden = false
+        line.frame = bounds
+        line.strokeColor = color.copy(alpha: 0.55)
+        line.path = CGPath(rect: CGRect(x: px, y: 0, width: 0, height: bounds.height), transform: nil)
     }
 }
 
