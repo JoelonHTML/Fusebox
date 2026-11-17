@@ -270,6 +270,7 @@ struct LookSettings: View {
             ThemeTiles()
         }
         Section("Text size") { TextSizeCards() }
+        Section("Font") { FontCards() }
         Section {
             AccentPicker()
             NumberStylePicker()

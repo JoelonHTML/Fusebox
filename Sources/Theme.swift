@@ -24,15 +24,16 @@ struct Theme: Identifiable, Equatable {
     let blocks: [Color]            // alleen voor .blocks
     let scheme: ColorScheme?       // donker/licht forceren
     var scale: CGFloat = 1         // tekstgrootte (instelling "textScale")
+    var font = AppFont.style       // lettertype (instelling "font"); .style = wat bij de stijl hoort
 
-    func number(_ size: CGFloat) -> Font { .system(size: size * scale, weight: weight, design: design).monospacedDigit() }
-    func label(_ size: CGFloat = 12) -> Font { .system(size: size * scale, weight: .medium, design: design) }
+    func number(_ size: CGFloat) -> Font { font.font(size * scale, weight: weight, style: design).monospacedDigit() }
+    func label(_ size: CGFloat = 12) -> Font { font.font(size * scale, weight: .medium, style: design) }
     /// Tekstkleur op een rij (bij kleurblokken altijd wit).
     func onRow(_ secondaryText: Bool = false) -> Color {
         rowStyle == .blocks ? .white.opacity(secondaryText ? 0.8 : 1) : (secondaryText ? secondary : text)
     }
     var background: AnyShapeStyle { bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.clear) }
-    static func == (a: Theme, b: Theme) -> Bool { a.id == b.id && a.accent == b.accent && a.scale == b.scale }
+    static func == (a: Theme, b: Theme) -> Bool { a.id == b.id && a.accent == b.accent && a.scale == b.scale && a.font == b.font }
     /// Verticale ruimte per rij bovenop de inhoud (padding + tussenruimte), per rijstijl; voor layout-berekeningen.
     var rowPad: CGFloat {
         switch rowStyle { case .lines: 15; case .plain: 10; case .cards, .blocks, .glass: 22 }
@@ -83,7 +84,36 @@ struct Theme: Identifiable, Equatable {
         let d = UserDefaults.standard
         if let c = Color(hex: d.string(forKey: "accent") ?? "") { t.accent = c }
         t.scale = min(max(d.double(forKey: "textScale"), 0.8), 1.6)
+        t.font = AppFont(rawValue: d.string(forKey: "font") ?? "") ?? .style
         return t
+    }
+}
+
+/// Lettertype voor getallen en labels. Montserrat en Ubuntu zitten in de app (Resources/Fonts, ATSApplicationFontsPath).
+enum AppFont: String, CaseIterable, Identifiable {
+    case style, sfPro, rounded, mono, serif, montserrat, ubuntu
+    var id: String { rawValue }
+    var title: String {
+        switch self {
+        case .style: "Matches style"
+        case .sfPro: "SF Pro"
+        case .rounded: "SF Rounded"
+        case .mono: "SF Mono"
+        case .serif: "New York"
+        case .montserrat: "Montserrat"
+        case .ubuntu: "Ubuntu"
+        }
+    }
+    func font(_ size: CGFloat, weight: Font.Weight, style: Font.Design) -> Font {
+        switch self {
+        case .style: .system(size: size, weight: weight, design: style)
+        case .sfPro: .system(size: size, weight: weight, design: .default)
+        case .rounded: .system(size: size, weight: weight, design: .rounded)
+        case .mono: .system(size: size, weight: weight, design: .monospaced)
+        case .serif: .system(size: size, weight: weight, design: .serif)
+        case .montserrat: .custom("Montserrat", size: size).weight(weight)
+        case .ubuntu: .custom("Ubuntu", size: size).weight(weight)
+        }
     }
 }
 

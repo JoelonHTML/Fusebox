@@ -249,6 +249,7 @@ struct TextSizeCards: View {
     @AppStorage("theme") private var themeID = "instrument"
     @AppStorage("textScale") private var textScale = 1.0
     @AppStorage("accent") private var accent = ""   // zodat het voorbeeld meteen meekleurt
+    @AppStorage("font") private var font = "style"   // idem bij een ander lettertype
     @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
     @Environment(\.colorScheme) private var system
     var body: some View {
@@ -449,6 +450,26 @@ private struct Summary: View {
                 Text("You can change everything later in Settings (⌘,).").font(.caption).foregroundStyle(.secondary)
                 Spacer()
                 Button("Share my settings…") { Prefs.shareDialog() }.controlSize(.small)
+            }
+        }
+    }
+}
+
+/// Lettertype kiezen: elk kaartje toont "17%" en "CPU" in dat lettertype, in het gewicht van de gekozen stijl.
+struct FontCards: View {
+    @AppStorage("font") private var font: AppFont = .style
+    @AppStorage("theme") private var themeID = "instrument"
+    var body: some View {
+        let t = Theme.resolved(themeID)
+        LazyVGrid(columns: grid(4), spacing: 10) {
+            ForEach(AppFont.allCases) { f in
+                Card(selected: font == f, action: { font = f }) {
+                    VStack(spacing: 2) {
+                        Text("17%").font(f.font(22, weight: t.weight, style: t.design).monospacedDigit()).frame(height: 30)
+                        Text("CPU 47°").font(f.font(11, weight: .medium, style: t.design)).foregroundStyle(.secondary)
+                        Text(f.title).font(.caption).padding(.top, 2)
+                    }
+                }
             }
         }
     }

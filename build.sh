@@ -31,6 +31,7 @@ iconutil -c icns "$TMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns
 cp "$TMP/Fusebox" "$APP/Contents/MacOS/Fusebox"
 cp "$TMP/fusebox-fand" "$APP/Contents/Resources/fusebox-fand"
 cp Resources/oui.tsv "$APP/Contents/Resources/oui.tsv"   # officiële IEEE-fabrikantenlijst (MAC → merk) voor de LAN-scanner
+rm -rf "$APP/Contents/Resources/Fonts" && cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"   # Montserrat (OFL) en Ubuntu (UFL), met licenties
 codesign --force --sign - --identifier local.fusebox.fand "$APP/Contents/Resources/fusebox-fand"
 
 cat > "$APP/Contents/Info.plist" <<'EOF'
@@ -50,6 +51,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>
   <key>FuseboxUpdateRepo</key><string>JoelonHTML/Fusebox</string>
+  <key>ATSApplicationFontsPath</key><string>Fonts</string>
   <key>NSLocalNetworkUsageDescription</key><string>Fusebox scans your local network to show which devices are connected.</string>
   <key>NSBonjourServices</key><array><string>_companion-link._tcp</string><string>_device-info._tcp</string><string>_airplay._tcp</string><string>_raop._tcp</string><string>_googlecast._tcp</string><string>_sonos._tcp</string><string>_spotify-connect._tcp</string><string>_ipp._tcp</string><string>_printer._tcp</string><string>_smb._tcp</string><string>_hap._tcp</string><string>_homekit._tcp</string><string>_http._tcp</string><string>_scanner._tcp</string><string>_afpovertcp._tcp</string><string>_workstation._tcp</string><string>_ssh._tcp</string><string>_sftp-ssh._tcp</string><string>_rfb._tcp</string><string>_hap._udp</string><string>_meshcop._udp</string><string>_matter._tcp</string></array>
 </dict></plist>
