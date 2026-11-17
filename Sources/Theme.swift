@@ -138,6 +138,17 @@ extension Theme {
     /// Dezelfde stijl (accent, lettertype, rijvorm, kleurblokken) in een lichte of donkere variant.
     /// Stijlen die al zo zijn (of Liquid Glass, dat met het systeem meegaat) blijven ongewijzigd.
     func adapted(to s: ColorScheme) -> Theme {
+        var t = converted(to: s)
+        // Accent leesbaar houden: een donker accent verdwijnt op donker, een licht accent (zoals cyaan) op wit
+        if let c = NSColor(t.accent).usingColorSpace(.sRGB) {
+            let l = Self.luminance(c)
+            if s == .dark && l < 0.3 { t.accent = Color(hue: c.hueComponent, saturation: c.saturationComponent * 0.6, brightness: 1) }
+            if s == .light && l > 0.6 && t.rowStyle != .blocks { t.accent = Color(hue: c.hueComponent, saturation: min(c.saturationComponent * 1.3 + 0.2, 1), brightness: 0.55) }
+        }
+        return t
+    }
+
+    private func converted(to s: ColorScheme) -> Theme {
         guard let own = scheme, own != s else { return self }
         let dark = s == .dark
         var t = Theme(id: id, name: name,
@@ -152,10 +163,6 @@ extension Theme {
         t.font = font   // gekozen lettertype ook in de licht/donker-variant
         // Lichte accenten (zoals wit bij Glas) zijn onleesbaar op wit: dan de tekstkleur als accent
         if !dark && (id == "glas") { t.accent = Color(white: 0.08) }
-        // En andersom: een donker accent (eigen keuze) verdwijnt op donker: dan iets lichter
-        if dark, let c = NSColor(accent).usingColorSpace(.sRGB), Self.luminance(c) < 0.3 {
-            t.accent = Color(hue: c.hueComponent, saturation: c.saturationComponent * 0.6, brightness: 1)
-        }
         return t
     }
 }
