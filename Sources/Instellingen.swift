@@ -246,6 +246,7 @@ struct ProfileSettings: View {
             }
             if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
         }
+        Section { LowImpactPicker() }
         Section("Share with friends") {
             HStack {
                 Button("Share my settings…") { Prefs.shareDialog() }
@@ -376,7 +377,7 @@ struct LiveSettings: View {
             }
             Toggle(isOn: $netSpeed) {
                 Text("Internet speed next to NET")
-                Text("Your download speed from the last speed test (Network tab). Until you run one: your Wi-Fi link speed.")
+                Text("Your download speed from your last speed test (Network tab). Empty until you run one.")
             }
             OptionPreview(label: "NET", icon: "wifi", side: [netPing ? "17 ms" : nil, netSpeed ? "412 Mbit" : nil].compactMap { $0 }.joined(separator: " · "), value: "↓8 ↑2", unit: "KB/s")
             Toggle(isOn: $batteryTime) {
@@ -716,6 +717,22 @@ struct NumberStylePicker: View {
             }
         }
         .help("Roll: digits flip from top to bottom · Fade: a short crossfade · Instant: no animation")
+    }
+}
+
+/// Low impact: uit, aan, of automatisch (energiebesparingsmodus van macOS, of op de accu onder 20%).
+struct LowImpactPicker: View {
+    @AppStorage("lowImpact") private var mode = "auto"
+    @State private var on = LowImpact.on
+    var body: some View {
+        Picker(selection: $mode) {
+            Text("Off").tag("off"); Text("On").tag("on"); Text("Automatic").tag("auto")
+        } label: {
+            Label { Text(on ? "Low impact · on now" : "Low impact") } icon: { Image(systemName: "leaf").foregroundStyle(on ? .green : .secondary) }
+            Text("Fusebox measures every 5 seconds instead of 2, without animations or glass effects. LOWIMPACT_SAVING Automatic: on in Low Power Mode, or on battery below 20%.")
+        }
+        .pickerStyle(.segmented)
+        .onReceive(NotificationCenter.default.publisher(for: LowImpact.changed)) { _ in on = LowImpact.on }
     }
 }
 

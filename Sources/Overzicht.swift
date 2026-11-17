@@ -430,7 +430,7 @@ struct CoreBars: View {
                 RoundedRectangle(cornerRadius: 1).fill(color.opacity(0.15))
                     .overlay {
                         RoundedRectangle(cornerRadius: 1).fill(color)
-                            .scaleEffect(x: 1, y: min(max(values[i], 0), 100) / 100, anchor: .bottom)
+                            .modifier(SteppedHeight(value: min(max(values[i], 0), 100) / 100))
                             .animation(onScreen ? .easeInOut(duration: 0.8) : nil, value: values[i])
                     }
                     .frame(width: wide ? nil : barWidth)
@@ -521,6 +521,8 @@ struct ChangingText: View {
     @Environment(\.onScreen) private var onScreen
     @State private var shown: String?
     @State private var flip = false   // eerste echte waarde komt eenmalig binnen met een flip, daarna het gekozen effect
+    @State private var old: String?   // overvloeien: het vorige getal, zolang het nog te zien is
+    @State private var fade = 1.0     // overvloeien: 0 = nog het oude getal, 1 = het nieuwe
 
     var body: some View {
         let t = shown ?? ""
@@ -529,11 +531,26 @@ struct ChangingText: View {
                 // countsDown: nieuwe cijfers schuiven van boven naar beneden in beeld
                 Text(t).contentTransition(.numericText(countsDown: true)).animation(onScreen ? .snappy(duration: 0.35) : nil, value: t)
             } else if style == .fade {
-                // Zacht overvloeien van getal naar getal, op exact dezelfde plek (rechts uitgelijnd), geen dip naar zwart
+                // Zacht overvloeien van getal naar getal, op exact dezelfde plek (rechts uitgelijnd), geen dip naar zwart.
+                // In 8 stappen van de app zelf, niet als SwiftUI-animatie: die liet macOS het venster een halve seconde lang
+                // op de beeldfrequentie (60–120×/s) opnieuw samenstellen, en met zes getallen na elkaar stond het nooit stil.
+                // Dat was het grootste deel van het GPU-gebruik bij een groot venster, en de helft van het processorgebruik.
                 ZStack(alignment: .trailing) {
-                    Text(t).id(t).transition(.opacity)
+                    if let old { Text(old).opacity(1 - fade) }
+                    Text(t).opacity(fade)
                 }
-                .animation(onScreen ? .easeInOut(duration: 0.5) : nil, value: t)
+                .task(id: t) {
+                    guard old != nil else { return }
+                    for i in 1...8 {
+                        // Op een vast raster van 1/16 s: getallen die tegelijk overvloeien delen dan hun tekenbeurten
+                        let now = CACurrentMediaTime(), next = (now / 0.0625).rounded(.down) * 0.0625 + 0.0625
+                        try? await Task.sleep(for: .seconds(next - now))
+                        if Task.isCancelled { return }   // alweer een nieuw getal: dat neemt het over
+                        let p = Double(i) / 8
+                        fade = p * p * (3 - 2 * p)   // rustig in en uit, zoals easeInOut
+                    }
+                    old = nil
+                }
             } else {
                 Text(t)
             }
@@ -541,15 +558,27 @@ struct ChangingText: View {
         .onAppear { if ready { shown = text } }
         .onChange(of: ready ? text : nil) { _, new in
             guard let new else { return }
-            guard onScreen else { shown = new; return }   // venster niet te zien: meteen, zonder animatie
+            guard onScreen else { old = nil; fade = 1; shown = new; return }   // venster niet te zien of low impact: meteen, zonder animatie
             let first = shown == nil
             if first { flip = true }
             DispatchQueue.main.asyncAfter(deadline: .now() + (first ? 0.1 + delay / 3 : delay)) {
+                // Overvloeien vanaf het getal dat er nu staat (alleen bij "Fade", en niet bij de eerste waarde: die flipt)
+                old = style == .fade && !first ? shown : nil
+                fade = old == nil ? 1 : 0
                 shown = new
                 if first { DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { flip = false } }
             }
         }
     }
+}
+
+/// Staafje dat in de hoogte meebeweegt (0…1 van onderaf), in stappen van 1/40: fijner dan een halve pixel bij 18 pt hoog.
+/// SwiftUI rekent de animatie elke frame door, maar het beeld verandert alleen als de afgeronde hoogte verandert;
+/// alleen dan hoeft macOS het venster opnieuw samen te stellen.
+struct SteppedHeight: ViewModifier, Animatable {
+    var value: Double
+    var animatableData: Double { get { value } set { value = newValue } }
+    func body(content: Content) -> some View { content.scaleEffect(x: 1, y: (value * 40).rounded() / 40, anchor: .bottom) }
 }
 
 /// Opstart-animatie: rijen glijden één voor één omhoog in beeld (alleen in de eerste seconden na het starten).

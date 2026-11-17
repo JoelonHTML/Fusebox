@@ -58,7 +58,13 @@ import CryptoKit
         guard Self.repo != nil, timer == nil else { return }
         announceIfUpdated()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in self?.check(userInitiated: false) }
-        let t = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in Task { @MainActor in self?.check(userInitiated: false) } }
+        let t = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                // Low impact: één keer per uur is genoeg
+                if LowImpact.on, let last = self?.lastCheck, Date().timeIntervalSince(last) < 55 * 60 { return }
+                self?.check(userInitiated: false)
+            }
+        }
         t.tolerance = 60   // 4 vragen per uur; GitHub staat er 60 per uur toe zonder inloggen
         RunLoop.main.add(t, forMode: .common)
         timer = t

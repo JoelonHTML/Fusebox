@@ -129,14 +129,15 @@ extension Metric {
         case .net:
             // Niet het grote getal herhalen: wat er in de periode doorheen ging, en de piek
             out = [host.isEmpty || s.pingPending ? nil : Fact(label: "Response time", value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "no answer"),
-                   Fact(label: "Downloaded", value: bytes(h.reduce(0) { $0 + $1.down } * 2)),
-                   Fact(label: "Uploaded", value: bytes(h.reduce(0) { $0 + $1.up } * 2))]
+                   Fact(label: "Downloaded", value: bytes(total(h, \.down))),
+                   Fact(label: "Uploaded", value: bytes(total(h, \.up)))]
             if let dn = h.map(\.down).max(), let up = h.map(\.up).max() { out.append(Fact(label: "Peak", value: "↓\(rate(dn)) ↑\(rate(up))")) }
+            out.append(LinkRate.fact.map { Fact(label: $0.0, value: $0.1) })
         case .ssd:
             out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"), Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
         case .io:
-            out = [Fact(label: "Read", value: bytes(h.reduce(0) { $0 + $1.diskRead } * 2)),
-                   Fact(label: "Written", value: bytes(h.reduce(0) { $0 + $1.diskWrite } * 2)),
+            out = [Fact(label: "Read", value: bytes(total(h, \.diskRead))),
+                   Fact(label: "Written", value: bytes(total(h, \.diskWrite))),
                    Fact(label: "Swap", value: gb(s.swapGB))]
             if let r = h.map(\.diskRead).max(), let w = h.map(\.diskWrite).max() { out.append(Fact(label: "Peak", value: "R \(rate(r)) W \(rate(w))")) }
         case .battery:
@@ -179,11 +180,10 @@ extension Metric {
             let (dn, upv, unit) = ratePair(s.down, s.up, bits: bits)
             // Reactietijd (ms) naast NET alleen met de optie "netPing"; meten gebeurt altijd (meldingen, Checkup)
             let ping = host.isEmpty || s.pingPending || !d.bool(forKey: "netPing") ? nil : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms"
-            // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms
-            // Nog geen snelheidstest gedaan? Dan de Wi-Fi-verbindingssnelheid (wat de router je Mac geeft)
-            let speed = d.bool(forKey: "netSpeed")
-                ? (InternetStats.loadHistory().last.map { "\(Int($0.down.rounded())) Mbit" } ?? LinkRate.wifiMbit().map { "\(Int($0.rounded())) Mbit" })
-                : nil
+            // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms.
+            // Nog geen snelheidstest gedaan: niets. (De Wi-Fi-verbindingssnelheid stond hier als noodoplossing, maar die
+            // verandert bijna nooit en is geen internetsnelheid; hij staat nu als "Wi-Fi link" bij de NET-feiten.)
+            let speed = d.bool(forKey: "netSpeed") ? InternetStats.loadHistory().last.map { "\(Int($0.down.rounded())) Mbit" } : nil
             var row = MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
                                  side: [ping, speed].compactMap { $0 }.joined(separator: " · "),
                                  template: "↓888 ↑888",
@@ -236,6 +236,16 @@ enum LinkRate {
         }
         return cached.mbit
     }
+    /// Regel voor de NET-feiten: ("Wi-Fi link", "286 Mbit/s"). Wat de router je Mac geeft, niet je internetsnelheid.
+    static var fact: (String, String)? { wifiMbit().map { ("Wi-Fi link", "\(Int($0.rounded())) Mbit/s") } }
+}
+
+/// Bytes over een reeks metingen: snelheid × de tijd sinds de vorige meting. Het meettempo is 2 s, 5 s (low impact)
+/// of een minuut ("Today"); een gat (Mac sliep, app stond uit) telt als hoogstens één minuut.
+func total(_ h: [Sample], _ rate: KeyPath<Sample, Double>) -> Double {
+    guard h.count > 1 else { return (h.first?[keyPath: rate] ?? 0) * LowImpact.interval }
+    func gap(_ i: Int) -> Double { min(max(h[i].time.timeIntervalSince(h[i - 1].time), 0), 60) }
+    return h.indices.reduce(0) { $0 + h[$1][keyPath: rate] * gap(max($1, 1)) }   // eerste punt: de stap naar het tweede
 }
 
 extension MetricRowData {

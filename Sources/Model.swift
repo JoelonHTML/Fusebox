@@ -1,6 +1,6 @@
 import SwiftUI
 
-// MARK: - Model: elke 2 s meten, geschiedenis van 1 uur + vandaag per minuut, CSV per minuut wegschrijven
+// MARK: - Model: elke 2 s meten (low impact: 5 s), geschiedenis van 1 uur + vandaag per minuut, CSV per minuut wegschrijven
 
 enum TimeRange: String, CaseIterable, Identifiable {
     // `fiveMin` = de periode van de Live-grafieken (instelbaar, standaard 10 min). Id "5m" blijft voor bestaande instellingen.
@@ -19,7 +19,7 @@ enum TimeRange: String, CaseIterable, Identifiable {
 
 final class Meter: ObservableObject {
     // Niet @Published: `publish` meldt zelf een wijziging, en alleen als er iemand kijkt (zie `looking`).
-    private(set) var recent: [Sample] = []   // laatste uur, elke 2 s
+    private(set) var recent: [Sample] = []   // laatste uur, elke 2 s (low impact: 5 s)
     private(set) var today: [Sample] = []    // vandaag, gemiddelde per minuut
     /// Kijkt er iemand naar Fusebox (een venster dat te zien is, of een menubalk-plekje)? Zo niet, dan wel meten,
     /// loggen en melden, maar SwiftUI niet elke 2 s wakker maken: een verborgen venster hertekende anders gewoon door.
@@ -48,6 +48,8 @@ final class Meter: ObservableObject {
     private let pinger = Pinger()
     private var ticks = 0
     private var pingHost = ""
+    // Wanneer voor het laatst: op tijd, niet op aantal metingen (het meettempo wisselt met low impact)
+    private var pingAt = Date.distantPast, programsAt = Date.distantPast, minuteAt = Date()
     private var streak: [Alert: Int] = [:], lastAlert: [Alert: Date] = [:]
     /// Wordt waar bij afsluiten (dan geen instellingen meer terugzetten vanuit het stappenplan).
     private(set) var quitting = false
@@ -87,10 +89,11 @@ final class Meter: ObservableObject {
         Self.work.async { [self] in _ = sampler.sample() } // eerste meting = nulpunt voor de deltas
         // Eerste echte waarden snel tonen (de getallen flippen dan binnen), daarna elke 2 s
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.tick() }
-        let t = Timer(timeInterval: 2, repeats: true) { [weak self] _ in self?.tick() }
-        t.tolerance = 0.5 // laat macOS wake-ups bundelen
-        RunLoop.main.add(t, forMode: .common)
-        timer = t
+        lowImpactCheck()
+        // Low impact "Automatic" volgt de energiebesparingsmodus van macOS; een andere keuze in Instellingen werkt meteen
+        for name in [Notification.Name.NSProcessInfoPowerStateDidChange, UserDefaults.didChangeNotification] {
+            NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.lowImpactCheck() }
+        }
         NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { [weak self] _ in self?.quitting = true; self?.flush() }
         // Scherm uit (slaapstand van het beeld, vergrendeld): vensters tellen dan nog als "te zien", maar niemand kijkt
         let ws = NSWorkspace.shared.notificationCenter
@@ -101,24 +104,43 @@ final class Meter: ObservableObject {
         }
     }
 
-    /// Elke 2 s (hoofdthread): meten op `work`, het resultaat in één keer terug op de hoofdthread verwerken.
+    /// Low impact opnieuw bepalen; bij een wissel (en bij de start) de meetklok op het tempo van nu zetten.
+    private func lowImpactCheck() {
+        let was = LowImpact.on
+        LowImpact.update(latest)
+        guard LowImpact.on != was || timer == nil else { return }
+        timer?.invalidate()
+        let t = Timer(timeInterval: LowImpact.interval, repeats: true) { [weak self] _ in self?.tick() }
+        t.tolerance = 0.5 // laat macOS wake-ups bundelen
+        RunLoop.main.add(t, forMode: .common)
+        timer = t
+        refresh()
+    }
+
+    /// Elke 2 s, in low impact elke 5 s (hoofdthread): meten op `work`, het resultaat in één keer terug op de hoofdthread verwerken.
     func tick() {
         ticks += 1
-        let n = ticks, watched = looking, programs = programsVisible && watched   // niemand kijkt: ook de programmalijst niet meten
+        let now = Date(), watched = looking
+        // Programmalijst: elke meting, in low impact om de 10 s; niemand kijkt: niet meten
+        let programs = programsVisible && watched && (!LowImpact.on || now.timeIntervalSince(programsAt) >= 9.5)
+        if programs { programsAt = now }
+        let minute = now.timeIntervalSince(minuteAt) >= 59   // één keer per minuut, bij elk meettempo
+        if minute { minuteAt = now }
         Self.work.async { [self] in
             let s = sampler.sample()
             let list = programs ? ui.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
-            let minuteList = n % 30 == 0 ? minuteApps.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
-            DispatchQueue.main.async { self.publish(s, tick: n, programs: list, minuteList: minuteList, watched: watched) }
+            let minuteList = minute ? minuteApps.measure(totalCPU: s.cpu, totalMemGB: s.ramUsedGB) : nil
+            DispatchQueue.main.async { self.publish(s, programs: list, minuteList: minuteList, watched: watched) }
         }
     }
 
-    private func publish(_ sample: Sample, tick n: Int, programs: [AppUsage]?, minuteList: [AppUsage]?, watched: Bool) {
+    private func publish(_ sample: Sample, programs: [AppUsage]?, minuteList: [AppUsage]?, watched: Bool) {
         var s = sample
         if watched { objectWillChange.send() }
-        if n % 5 == 1 { pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? "" }
-        // Elke 10 s als er iemand kijkt, anders elke 30 s (genoeg voor log en meldingen). "" = uit: geen netwerk
-        if n % (watched ? 5 : 15) == 1 && !pingHost.isEmpty { pinger.ping(host: pingHost) }
+        pingHost = UserDefaults.standard.string(forKey: "pingHost") ?? ""
+        // Elke 10 s als er iemand kijkt, anders elke 30 s (genoeg voor log en meldingen), low impact elke 60 s. "" = uit: geen netwerk
+        let pingEvery: TimeInterval = LowImpact.on ? 60 : watched ? 10 : 30
+        if !pingHost.isEmpty && s.time.timeIntervalSince(pingAt) >= pingEvery - 0.5 { pingAt = s.time; pinger.ping(host: pingHost) }
         s.pingMs = pingHost.isEmpty ? nil : pinger.lastMs
         s.pingPending = !pingHost.isEmpty && !pinger.answered
         if let programs, programsVisible { ui.apps = programs }
@@ -132,14 +154,27 @@ final class Meter: ObservableObject {
         }
         minute.append(s)
         recent.append(s)
+        // Het laatste uur bewaren: op tijd (het meettempo wisselt), met een harde grens voor als de klok verzet wordt
+        if let i = recent.firstIndex(where: { s.time.timeIntervalSince($0.time) <= 3600 }), i > 0 { recent.removeFirst(i) }
         if recent.count > 1800 { recent.removeFirst(recent.count - 1800) }
         buffer += s.csv
         if s.time.timeIntervalSince(lastFlush) >= 60 { flush() }
+        lowImpactCheck()   // accu onder de 20% gezakt of weer aan de lader
+    }
+
+    /// De metingen van de laatste `seconds`. Op tijd, niet op aantal: het meettempo is 2 s, of 5 s in low impact.
+    /// Een halve stap marge, zodat het aantal punten niet wisselt als een meting een fractie te vroeg of te laat komt
+    /// (dan zou de grafiek verspringen in plaats van glijden).
+    func since(_ seconds: TimeInterval) -> [Sample] {
+        guard let end = recent.last?.time else { return [] }
+        let limit = seconds - LowImpact.interval / 2
+        let from = recent.lastIndex { end.timeIntervalSince($0.time) > limit }.map { $0 + 1 } ?? 0
+        return Array(recent[from...])
     }
 
     func samples(_ r: TimeRange) -> [Sample] {
         switch r {
-        case .fiveMin: Array(recent.suffix(TimeRange.shortMinutes * 30))   // 30 metingen per minuut
+        case .fiveMin: since(Double(TimeRange.shortMinutes) * 60)
         case .hour: recent
         case .today: minute.isEmpty ? today : today + [Sample.average(minute)]
         }
@@ -177,8 +212,8 @@ final class Meter: ObservableObject {
     /// Eén keer per minuut: per soort melding tellen hoeveel minuten op rij de grens overschreden is.
     private func checkAlerts(_ s: Sample, top: AppUsage?) {
         let d = UserDefaults.standard
-        let last = Array(recent.suffix(30))
-        guard d.bool(forKey: "notify"), last.count >= 20 else { streak = [:]; return }
+        let last = since(60)
+        guard d.bool(forKey: "notify"), Double(last.count) * LowImpact.interval >= 40 else { streak = [:]; return }
         let pingOn = !(d.string(forKey: "pingHost") ?? "").isEmpty
         for a in Alert.allCases {
             let need = max(1, d.integer(forKey: a.key("min")))
@@ -277,7 +312,7 @@ final class Meter: ObservableObject {
     /// Eén zin over hoe het gaat, met een kleur.
     var status: (text: String, color: Color) {
         let s = latest
-        let last = recent.suffix(15) // ~30 s
+        let last = since(30)
         let cpu = last.isEmpty ? 0 : last.reduce(0) { $0 + $1.cpu } / Double(last.count)
         let temp = s.temp ?? 0
         let d = UserDefaults.standard, warnTemp = d.double(forKey: "warnTemp")
@@ -290,6 +325,41 @@ final class Meter: ObservableObject {
     }
 }
 
+// MARK: - Low impact: minder vaak meten, niets animeren, geen glas (instelling "lowImpact": off | on | auto)
+
+enum LowImpact {
+    /// Staat hij nu aan? Gezet op de hoofdthread, gelezen vanaf overal (één Bool).
+    nonisolated(unsafe) private(set) static var on = false
+    /// Gepost bij elke wissel (het venster tekent dan opnieuw: effen kleuren, geen animaties).
+    static let changed = Notification.Name("fusebox.lowImpact")
+    /// Seconden tussen twee metingen.
+    static var interval: TimeInterval { on ? 5 : 2 }
+
+    /// "auto": aan in de energiebesparingsmodus van macOS, of op de accu onder 20%.
+    static func decide(_ setting: String?, lowPower: Bool, battery: Double?, charging: Bool) -> Bool {
+        switch setting {
+        case "on": true
+        case "off": false
+        default: lowPower || (!charging && (battery ?? 100) < 20)
+        }
+    }
+
+    static func update(_ s: Sample) {
+        let now = decide(UserDefaults.standard.string(forKey: "lowImpact"), lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled,
+                         battery: s.battery, charging: s.charging)
+        guard now != on else { return }
+        on = now
+        NotificationCenter.default.post(name: changed, object: nil)
+    }
+
+    static func selfTest() {
+        precondition(decide("on", lowPower: false, battery: 100, charging: true) && !decide("off", lowPower: true, battery: 5, charging: false), "vaste keuze")
+        precondition(decide("auto", lowPower: true, battery: nil, charging: false) && decide("auto", lowPower: false, battery: 19, charging: false), "auto aan")
+        precondition(!decide("auto", lowPower: false, battery: 19, charging: true) && !decide("auto", lowPower: false, battery: 20, charging: false)
+                     && !decide(nil, lowPower: false, battery: nil, charging: false), "auto uit")   // aan de lader, 20% of meer, geen accu
+        print("low impact: ok")
+    }
+}
 
 // MARK: - Meldingen per soort (sleutels alert.<id>.on/.limit/.min)
 

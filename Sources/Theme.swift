@@ -12,13 +12,13 @@ import UserNotifications
 struct Theme: Identifiable, Equatable {
     enum RowStyle { case lines, plain, cards, blocks, glass }
     let id: String, name: String
-    let bg: Color?                 // nil = venster-glas (Liquid Glass)
+    var bg: Color?                 // nil = venster-glas (Liquid Glass)
     let text: Color, secondary: Color
     var accent: Color
     let warn: Color, danger: Color, good: Color
     let line: Color                // scheidingslijnen / kaartrand
-    let card: Color                // kaartachtergrond
-    let rowStyle: RowStyle
+    var card: Color                // kaartachtergrond
+    var rowStyle: RowStyle
     let design: Font.Design
     let weight: Font.Weight
     let blocks: [Color]            // alleen voor .blocks
@@ -33,7 +33,7 @@ struct Theme: Identifiable, Equatable {
         rowStyle == .blocks ? .white.opacity(secondaryText ? 0.8 : 1) : (secondaryText ? secondary : text)
     }
     var background: AnyShapeStyle { bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.clear) }
-    static func == (a: Theme, b: Theme) -> Bool { a.id == b.id && a.accent == b.accent && a.scale == b.scale && a.font == b.font }
+    static func == (a: Theme, b: Theme) -> Bool { a.id == b.id && a.accent == b.accent && a.scale == b.scale && a.font == b.font && a.rowStyle == b.rowStyle }
     /// Verticale ruimte per rij bovenop de inhoud (padding + tussenruimte), per rijstijl; voor layout-berekeningen.
     var rowPad: CGFloat {
         switch rowStyle { case .lines: 15; case .plain: 10; case .cards, .blocks, .glass: 22 }
@@ -154,12 +154,24 @@ extension Theme {
     }
 }
 
+extension Theme {
+    /// Low impact: dezelfde stijl zonder glas of vervaging (effen venster, effen kaarten). Alleen Liquid Glass verandert;
+    /// de andere stijlen zijn al effen.
+    var solid: Theme {
+        guard rowStyle == .glass else { return self }
+        var t = self
+        t.bg = Color(nsColor: .windowBackgroundColor); t.card = .primary.opacity(0.05); t.rowStyle = .cards
+        return t
+    }
+}
+
 private struct ThemeKey: EnvironmentKey { static let defaultValue = Theme.instrument }
 private struct OnScreenKey: EnvironmentKey { static let defaultValue = true }
 extension EnvironmentValues {
     var theme: Theme { get { self[ThemeKey.self] } set { self[ThemeKey.self] = newValue } }
-    /// false = het venster is niet te zien (dicht, geminimaliseerd, helemaal bedekt): dan niets animeren,
-    /// want SwiftUI rekent animaties ook voor een onzichtbaar venster elke frame door.
+    /// false = het venster is niet te zien (dicht, geminimaliseerd, helemaal bedekt) of low impact staat aan: dan niets
+    /// animeren (getallen wisselen direct, grafieken verspringen). SwiftUI rekent animaties ook voor een onzichtbaar
+    /// venster elke frame door.
     var onScreen: Bool { get { self[OnScreenKey.self] } set { self[OnScreenKey.self] = newValue } }
 }
 

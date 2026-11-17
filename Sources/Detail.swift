@@ -121,7 +121,6 @@ struct MetricDetail: View {
     // MARK: Per meting
 
     @ViewBuilder private func extras(_ s: Sample, _ h: [Sample]) -> some View {
-        let step = range == .today ? 60.0 : 2.0   // seconden per punt (vandaag = minuutgemiddelden)
         let period = range.title.lowercased()
         switch metric {
         case .cpu:
@@ -160,10 +159,10 @@ struct MetricDetail: View {
         case .net:
             facts([("Download now", rate(s.down)), ("Upload now", rate(s.up)),
                    ("Response time", s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "–"),
-                   ("Downloaded (\(period))", bytes(h.reduce(0) { $0 + $1.down } * step)),
-                   ("Uploaded (\(period))", bytes(h.reduce(0) { $0 + $1.up } * step)),
+                   ("Downloaded (\(period))", bytes(total(h, \.down))),
+                   ("Uploaded (\(period))", bytes(total(h, \.up))),
                    ("Fastest download", rate(h.map(\.down).max() ?? 0)),
-                   ("Fastest upload", rate(h.map(\.up).max() ?? 0))])
+                   ("Fastest upload", rate(h.map(\.up).max() ?? 0))] + (LinkRate.fact.map { [$0] } ?? []))
         case .ssd:
             let used = max(s.diskTotalGB - s.diskFreeGB, 0), frac = s.diskTotalGB > 0 ? used / s.diskTotalGB : 0
             card {
@@ -179,8 +178,8 @@ struct MetricDetail: View {
                    ("Swap", "\(one(s.swapGB)) GB")])
         case .io:
             facts([("Reading now", rate(s.diskRead)), ("Writing now", rate(s.diskWrite)),
-                   ("Read (\(period))", bytes(h.reduce(0) { $0 + $1.diskRead } * step)),
-                   ("Written (\(period))", bytes(h.reduce(0) { $0 + $1.diskWrite } * step)),
+                   ("Read (\(period))", bytes(total(h, \.diskRead))),
+                   ("Written (\(period))", bytes(total(h, \.diskWrite))),
                    ("Fastest read", rate(h.map(\.diskRead).max() ?? 0)),
                    ("Fastest write", rate(h.map(\.diskWrite).max() ?? 0))])
             topApps("Busiest on the SSD (last minute)", sort: { $0.diskRead + $0.diskWrite > $1.diskRead + $1.diskWrite }) { rate($0.diskRead + $0.diskWrite) }

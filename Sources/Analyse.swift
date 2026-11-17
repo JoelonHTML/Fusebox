@@ -824,7 +824,7 @@ private struct AnalysisPage: View, Equatable {
                 Text("Why is my Mac slow?").font(theme.label(14)).foregroundStyle(theme.onRow())
                 Spacer()
                 Button(diagnosis == nil ? "Check now" : "Check again") {
-                    let last = meter.recent.suffix(15)
+                    let last = meter.since(30)
                     let cpu = last.isEmpty ? meter.latest.cpu : last.reduce(0) { $0 + $1.cpu } / Double(last.count)
                     let s = meter.latest, apps = meter.minuteApps.apps, r = report
                     let light = apps.map { (name: $0.name, cpu: $0.cpu) }

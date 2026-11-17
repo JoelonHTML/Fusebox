@@ -145,7 +145,8 @@ final class AppMonitor: ObservableObject {
     /// Start om de ~4 s één nettop-meting op de achtergrond; de snelheden komen in de volgende meting mee.
     /// Kost per run ~10 ms processor (gemeten op M-serie), dus ~0,3% van één kern.
     private func pollNet() {
-        guard UserDefaults.standard.bool(forKey: "netPerApp") else { netBytes = [:]; netRate = [:]; return }
+        // Low impact: geen nettop (elke paar seconden een los proces starten is het duurste van deze pagina)
+        guard UserDefaults.standard.bool(forKey: "netPerApp"), !LowImpact.on else { netBytes = [:]; netRate = [:]; return }
         let age = Double(DispatchTime.now().uptimeNanoseconds - netTime.uptimeNanoseconds) / 1e9
         if age > 10 { netRate = [:] }   // pagina was dicht: oude snelheden niet meer tonen
         guard !netBusy, age >= 3 || netBytes.isEmpty else { return }

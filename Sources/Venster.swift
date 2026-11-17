@@ -71,12 +71,13 @@ struct RootView: View {
     @Environment(\.openWindow) private var openWindow
     @State private var baseBehavior: NSWindow.CollectionBehavior?
     @State private var onScreen = true       // venster te zien? Anders animeert er niets (kost processor voor niets)
+    @State private var low = LowImpact.on    // low impact: effen kleuren, geen animaties
 
     var body: some View {
         let _ = (accent, textScale, font) // afhankelijkheid: kleur/tekstgrootte/lettertype wijzigen → opnieuw tekenen
         // Licht/donker: vast gekozen, of zoals macOS (dan bepaalt het systeem de variant van de stijl)
         let target: ColorScheme = mode == .light ? .light : mode == .dark ? .dark : systemScheme
-        let theme = Theme.resolved(themeID).adapted(to: target)
+        let styled = Theme.resolved(themeID).adapted(to: target), theme = low ? styled.solid : styled
         let pages = Page.allCases   // altijd alle pagina's
         VStack(spacing: 0) {
             Group {
@@ -94,6 +95,8 @@ struct RootView: View {
             .transition(.opacity.combined(with: .offset(y: 10)))
         }
         .animation(.easeOut(duration: 0.22), value: page)
+        // Low impact: geen enkele animatie in het venster (tabwissel, detail openen, inloop)
+        .transaction { if low { $0.disablesAnimations = true; $0.animation = nil } }
         // Alleen bij het passeren van een grens iets wijzigen (de werkbalk wordt dan opnieuw opgebouwd)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { w in
             let next = wide ? w >= Self.iconsWidth : w >= Self.namesWidth
@@ -109,7 +112,8 @@ struct RootView: View {
         .foregroundStyle(theme.text)
         .tint(theme.accent)
         .environment(\.theme, theme)
-        .environment(\.onScreen, onScreen)
+        .environment(\.onScreen, onScreen && !low)
+        .onReceive(NotificationCenter.default.publisher(for: LowImpact.changed)) { _ in low = LowImpact.on }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didChangeOcclusionStateNotification)) { n in
             guard let w = window, n.object as? NSWindow === w else { return }
             let now = w.occlusionState.contains(.visible)
@@ -193,8 +197,12 @@ struct RootView: View {
             }
             SettingsLink {
                 tabLabel("Settings", "gearshape").foregroundStyle(theme.secondary).contentShape(.rect)
+                    // Low impact aan: klein blaadje bij het tandwiel (geen extra knop: de werkbalk is precies breed genoeg)
+                    .overlay(alignment: .topTrailing) {
+                        if low { Image(systemName: "leaf.fill").font(.system(size: 8)).foregroundStyle(theme.good).padding(3) }
+                    }
             }
-            .buttonStyle(.plain).help("Settings  ⌘,").accessibilityLabel("Settings")
+            .buttonStyle(.plain).help(low ? "Settings  ⌘,  ·  Low impact is on" : "Settings  ⌘,").accessibilityLabel("Settings")
         }
         .padding(.horizontal, 4)
         .accessibilityElement(children: .contain)   // elke knop eigen naam (anders noemt de werkbalk ze allemaal "Live")
@@ -288,7 +296,7 @@ enum LaunchOnce {
     @MainActor static var done = false, sized = false
     /// Moment van starten of van een tabwissel; de inloop-animaties spelen alleen vlak daarna.
     nonisolated(unsafe) static var launched = Date()
-    static var intro: Bool { Date().timeIntervalSince(launched) < 1.2 }
+    static var intro: Bool { !LowImpact.on && Date().timeIntervalSince(launched) < 1.2 }   // low impact: geen inloop
     /// Na een tabwissel: dezelfde inloop, maar ruim twee keer zo snel (alleen het opstarten krijgt de rustige versie).
     nonisolated(unsafe) static var tabSwitch = false
     static var pace: Double { tabSwitch ? 0.4 : 1 }

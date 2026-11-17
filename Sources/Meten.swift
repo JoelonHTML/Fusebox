@@ -232,8 +232,8 @@ final class Sampler {
             s.up = Double(up) / dt
         }
 
-        // Temperatuur: elke 10 s is genoeg (verandert traag). ponytail: leest alle ~73 SMC-sensoren (~14 ms), alleen Tp/Tg-subset als dat ooit te zwaar is
-        if s.time.timeIntervalSince(tempAt) >= 10 { temp = smc.read(); tempAt = s.time }
+        // Temperatuur: elke 10 s is genoeg (verandert traag), in low impact elke 30 s. ponytail: leest alle ~73 SMC-sensoren (~14 ms), alleen Tp/Tg-subset als dat ooit te zwaar is
+        if s.time.timeIntervalSince(tempAt) >= (LowImpact.on ? 30 : 10) { temp = smc.read(); tempAt = s.time }
         s.temp = temp.cpu
         s.gpuTemp = temp.gpu
 

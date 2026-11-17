@@ -9,7 +9,7 @@ enum Prefs {
     static let defaults: [String: Any] = {
         var d: [String: Any] = [
             // Weergave
-            "theme": "instrument", "appearanceMode": "system", "accent": "", "textScale": 1.0, "font": "style", "numberStyle": "fade",
+            "theme": "instrument", "appearanceMode": "system", "accent": "", "textScale": 1.0, "font": "style", "numberStyle": "fade", "lowImpact": "auto",
             "page": "live", "settingsTab": "profile",
             "dockIcon": true, "keepRunning": true, "autoUpdate": true, "onTop": false,
             "hotkeyCode": 3, "hotkeyMods": 6400, "hotkeyLabel": "⌃⌥⌘F",   // F met ⌃⌥⌘ (Carbon: 4096+2048+256)
