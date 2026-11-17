@@ -71,6 +71,13 @@ struct MetricRowData {
     var cores: [Double] = []            // CPU per kern (staafjes onder de grafiek, M+)
     var top: Double? = 100, bottom = 0.0
     var valueSize: CGFloat = 30
+    var facts: [Fact] = []              // L/XL op de Live-pagina: extra regels, belangrijkste eerst
+}
+
+/// Eén regel extra info in een grote kaart: "Swap   0.8 GB", of een app met icoon.
+struct Fact {
+    var label: String, value: String
+    var icon: NSImage? = nil
 }
 
 
@@ -79,8 +86,65 @@ extension Metric {
     /// Echte waarden (kernen, GB) i.p.v. % — dezelfde keuze voor Live-pagina en menubalk.
     var prefersAbsolute: Bool { (UserDefaults.standard.string(forKey: "absolute") ?? "").split(separator: ",").contains(Substring(rawValue)) }
 
-    /// `abs`: echte waarden (kernen, GB) i.p.v. percentages, waar dat kan.
-    func row(_ s: Sample, _ h: [Sample], abs: Bool) -> MetricRowData {
+    /// `abs`: echte waarden (kernen, GB) i.p.v. percentages, waar dat kan. `apps`: voor de top-apps in grote kaarten.
+    func row(_ s: Sample, _ h: [Sample], abs: Bool, apps: [AppUsage] = []) -> MetricRowData {
+        var r = data(s, h, abs: abs)
+        r.facts = facts(s, h, apps)
+        return r
+    }
+
+    /// Extra regels voor grote kaarten (L/XL), belangrijkste eerst: wat niet past valt onderaan weg.
+    private func facts(_ s: Sample, _ h: [Sample], _ apps: [AppUsage]) -> [Fact] {
+        let d = UserDefaults.standard, bits = d.bool(forKey: "netBits"), host = d.string(forKey: "pingHost") ?? ""
+        let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+        /// Laagste · gemiddelde · hoogste over de periode van de grafiek; eenheid één keer achteraan
+        func spread(_ v: [Double], unit: String = "%", _ f: (Double) -> String = { "\(Int($0.rounded()))" }) -> Fact? {
+            guard v.count > 1, let lo = v.min(), let hi = v.max() else { return nil }
+            return Fact(label: "Low · avg · high", value: "\(f(lo)) · \(f(v.reduce(0, +) / Double(v.count))) · \(f(hi))\(unit)")
+        }
+        func top(_ by: (AppUsage) -> Double, _ f: (AppUsage) -> String) -> [Fact?] {
+            apps.sorted { by($0) > by($1) }.prefix(3).filter { by($0) > 0 }.map { Fact(label: $0.name, value: f($0), icon: $0.icon) }
+        }
+        let gb = { (v: Double) in "\(one(v)) GB" }
+        let rate = { (v: Double) in short(v, bits: bits) }
+        var out: [Fact?]
+        switch self {
+        case .cpu:
+            out = [Fact(label: "In use", value: "\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores"),
+                   s.temp.map { Fact(label: "Hottest core", value: deg($0)) }]
+            out += top(\.cpu) { pct($0.cpu) }
+            out.append(spread(h.map(\.cpu)))
+        case .gpu:
+            out = [s.gpuTemp.map { Fact(label: "Temperature", value: deg($0)) }, spread(h.map(\.gpu))]
+        case .ram:
+            let total = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
+            out = [Fact(label: "In use", value: "\(one(s.ramUsedGB)) of \(Int(total.rounded())) GB"),
+                   Fact(label: "Pressure", value: s.pressure >= 4 ? "critical" : s.pressure == 2 ? "high" : "normal"),
+                   Fact(label: "Swap", value: gb(s.swapGB))]
+            out += top(\.memGB) { gb($0.memGB) }
+            out.append(spread(h.map(\.ramUsedGB), unit: " GB", one))
+        case .net:
+            out = [Fact(label: "Download", value: rate(s.down)), Fact(label: "Upload", value: rate(s.up)),
+                   host.isEmpty || s.pingPending ? nil : Fact(label: "Response time", value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "no answer")]
+            if let dn = h.map(\.down).max(), let up = h.map(\.up).max() { out.append(Fact(label: "Peak", value: "↓\(rate(dn)) ↑\(rate(up))")) }
+        case .ssd:
+            out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"), Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
+        case .io:
+            out = [Fact(label: "Read", value: rate(s.diskRead)), Fact(label: "Write", value: rate(s.diskWrite))]
+            if let r = h.map(\.diskRead).max(), let w = h.map(\.diskWrite).max() { out.append(Fact(label: "Peak", value: "R \(rate(r)) W \(rate(w))")) }
+        case .battery:
+            guard s.battery != nil else { return [] }
+            out = [Fact(label: s.charging ? "Charging" : "On battery",
+                        value: s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? "–"),
+                   spread(h.compactMap(\.battery))]
+        case .fan:
+            out = s.fans.count > 1 ? s.fans.indices.map { Fact(label: "Fan \($0 + 1)", value: "\(Int(s.fans[$0].rpm.rounded())) rpm") } : []
+            out.append(spread(h.compactMap(\.fanRPM), unit: " rpm"))
+        }
+        return out.compactMap { $0 }
+    }
+
+    private func data(_ s: Sample, _ h: [Sample], abs: Bool) -> MetricRowData {
         let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
         let d = UserDefaults.standard
         let warnCPU = d.double(forKey: "warnCPU"), warnTemp = d.double(forKey: "warnTemp"), bits = d.bool(forKey: "netBits")

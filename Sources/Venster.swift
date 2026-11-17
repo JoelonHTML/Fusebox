@@ -22,13 +22,14 @@ enum Page: String, CaseIterable, Identifiable {
         case .network: "network"
         }
     }
-    /// Standaardgrootte per tabblad: overzicht klein, de rest groter. Zelf aanpassen wordt per tabblad onthouden.
-    var defaultSize: NSSize {
+    /// Eén vensterformaat voor alle tabbladen. Heeft een tabblad meer nodig, dan groeit het venster tot hier
+    /// (alleen groter, nooit kleiner); zelf kleiner slepen mag altijd, elke pagina heeft een smalle indeling.
+    var minSize: NSSize {
         switch self {
-        case .overview: NSSize(width: 300, height: 340)
-        case .programs: NSSize(width: 640, height: 600)
-        case .analysis: NSSize(width: 760, height: 720)   // opent in 2 kolommen
-        case .network: NSSize(width: 850, height: 620)
+        case .overview: .zero
+        case .programs: NSSize(width: 460, height: 420)   // vanaf 460 ook de schijfkolom
+        case .analysis: NSSize(width: 420, height: 460)
+        case .network: NSSize(width: 470, height: 440)
         }
     }
 }
@@ -52,20 +53,19 @@ struct RootView: View {
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage("accent") private var accent = ""
     @AppStorage("textScale") private var textScale = 1.0
-    @AppStorage("metrics") private var metricsRaw = Metric.defaultOrder
-    @AppStorage("showAdvice") private var showAdvice = false
     @AppStorage("onTop") private var onTop = false
     @State private var window: NSWindow?
     @State private var wide = false          // breed venster: tabknoppen met naam
+    @State private var hover: Page?          // tabknop onder de muis
     @Namespace private var dropNS
     @State private var stretch: CGFloat = 1   // >1 tijdens het verschuiven: druppel rekt even uit
     @State private var stretchFrom: UnitPoint = .leading   // kant van het icoon dat je verlaat: daar "trekt" de druppel uit
     /// Vanaf deze breedte passen alle tabknoppen mét naam; smaller → alleen icoontjes (anders verstopt macOS ze achter ">>").
-    static let namesWidth: CGFloat = 660
+    /// Terug naar icoontjes pas onder `iconsWidth`: rond de grens niet heen en weer springen tijdens slepen.
+    /// Met naam is ~580 pt nodig (incl. verkeerslichtjes), dus ook bij 620 nooit afgekapt.
+    static let namesWidth: CGFloat = 660, iconsWidth: CGFloat = 620
     @Environment(\.openWindow) private var openWindow
     @State private var baseBehavior: NSWindow.CollectionBehavior?
-    @State private var lastFit: CGFloat?           // passende vensterhoogte als Live in XS/S staat, anders nil
-    @State private var fitUntil = Date.distantFuture // tot dan volgt het venster de inhoud (start, stijl-/metingwissel)
 
     var body: some View {
         let _ = (accent, textScale) // afhankelijkheid: kleur/tekstgrootte wijzigen → opnieuw tekenen
@@ -88,7 +88,11 @@ struct RootView: View {
             .transition(.opacity.combined(with: .offset(y: 10)))
         }
         .animation(.easeOut(duration: 0.22), value: page)
-        .onGeometryChange(for: Bool.self) { $0.size.width >= RootView.namesWidth } action: { wide = $0 }
+        // Alleen bij het passeren van een grens iets wijzigen (de werkbalk wordt dan opnieuw opgebouwd)
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { w in
+            let next = wide ? w >= Self.iconsWidth : w >= Self.namesWidth
+            if next != wide { wide = next }
+        }
         .frame(minWidth: 260, minHeight: 120)
         // Tabknoppen als echte werkbalk-items: in de titelbalk vangt macOS gewone klikken af (venster slepen).
         // .id(wide): bij wissel smal↔breed de knoppen opnieuw opbouwen, anders houdt de werkbalk de oude breedte (afgekapte namen)
@@ -104,10 +108,10 @@ struct RootView: View {
         .background(WindowGrabber { w in
             window = w
             applyOnTop(w)
-            // Bij het opstarten altijd zo openen: Live, in de onthouden Live-grootte (linksboven blijft staan)
+            // Bij het opstarten altijd zo openen: Live, in de onthouden venstergrootte (linksboven blijft staan)
             if !LaunchOnce.sized {
                 LaunchOnce.sized = true
-                place(w, size: savedSize(.overview), animate: false, topLeft: savedTopLeft())
+                place(w, size: savedSize(), animate: false, topLeft: savedTopLeft())
                 // Opstart-animatie: venster rustig in beeld laten vervagen
                 w.alphaValue = 0
                 NSAnimationContext.runAnimationGroup { ctx in
@@ -116,7 +120,6 @@ struct RootView: View {
                     w.animator().alphaValue = 1
                 }
             }
-            requestFit()
         })
         .onAppear {
             Hotkey.openMain = { [openWindow] in openWindow(id: "main") }
@@ -130,74 +133,66 @@ struct RootView: View {
                 if !d.bool(forKey: "setupDone") { openWindow(id: "setup") }
             }
         }
-        .onPreferenceChange(FitHeightKey.self) { h in
-            // vensterhoogte = inhoud + werkbalk (echte hoogte van titel-/werkbalk uit het venster)
-            let chrome = window.map { $0.frame.height - $0.contentLayoutRect.height } ?? 38
-            lastFit = h > 0 ? h + chrome : nil
-            if let lastFit, Date() < fitUntil { fit(lastFit) }
-        }
-        // Na slepen: XS/S klikt op de inhoud vast (M+ meldt geen hoogte, dus blijft zoals gesleept).
-        // Plek onthouden (linksboven), zodat hij de volgende keer op dezelfde plek opent
+        // Het venster doet precies wat je sleept: niets klikt achteraf terug. Plek (linksboven) en grootte onthouden
+        // voor de volgende start; tijdens slepen niet elke pixel opslaan, pas bij loslaten.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)) { n in
-            guard let w = window, n.object as? NSWindow === w, !fullScreen(w) else { return }
-            UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: w.frame.minX, y: w.frame.maxY)), forKey: "windowTopLeft")
+            guard let w = window, n.object as? NSWindow === w, !w.inLiveResize else { return }
+            saveTopLeft(w)
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEndLiveResizeNotification)) { n in
-            guard let w = window, n.object as? NSWindow === w else { return }
-            if let h = lastFit, abs(w.frame.height - h) > 8 { fit(h) }
-            // Grootte van deze pagina onthouden (ook voor het openen bij de volgende start)
-            let key = "size.\(page.rawValue)"
-            DispatchQueue.main.async { UserDefaults.standard.set(NSStringFromSize(w.frame.size), forKey: key) }
+            guard let w = window, n.object as? NSWindow === w, !fullScreen(w) else { return }
+            saveTopLeft(w)
+            UserDefaults.standard.set(NSStringFromSize(w.frame.size), forKey: "windowSize")
         }
-        .onChange(of: themeID) { requestFit() }
-        .onChange(of: textScale) { requestFit() }
-        .onChange(of: metricsRaw) { requestFit() }
-        .onChange(of: showAdvice) { requestFit() }
         .onChange(of: onTop) { if let window { applyOnTop(window) } }
-        .onChange(of: page) { old, new in
+        .onChange(of: page) { _, new in
             LaunchOnce.launched = Date()   // inloop-animatie (rijen, lijnen) opnieuw afspelen op de nieuwe pagina
             meter.programsVisible = new == .programs
-            resize(from: old, to: new)
+            grow(for: new)
         }
     }
 
     /// Tabknoppen in de werkbalk, rechts van de verkeerslichtjes; verborgen bij maar één tabblad.
     private func header(_ theme: Theme, _ pages: [Page]) -> some View {
-        HStack(spacing: 2) {
+        let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        return HStack(spacing: 2) {
             if pages.count > 1 {
-                ForEach(pages) { p in
+                ForEach(Array(pages.enumerated()), id: \.element) { i, p in
                     Button { switchTo(p) } label: {
-                        Label(p.title, systemImage: p.icon)
-                            .labelStyle(wide ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
-                            .font(.system(size: wide ? 13 : 13, weight: .medium))
-                            .foregroundStyle(page == p ? theme.accent : theme.secondary)
-                            .frame(minWidth: 28, minHeight: wide ? 26 : 22)
-                            .padding(.horizontal, wide ? 8 : 0)
+                        tabLabel(p.title, p.icon)
+                            .foregroundStyle(page == p ? theme.accent : hover == p ? theme.text : theme.secondary)
                             .background {
                                 if page == p {   // de "druppel": SwiftUI schuift hem zelf naar de actieve knop
-                                    RoundedRectangle(cornerRadius: wide ? 8 : 6, style: .continuous)
-                                        .fill(theme.accent.opacity(0.15))
+                                    shape.fill(theme.accent.opacity(0.15))
                                         .scaleEffect(x: stretch, y: 2 - stretch, anchor: stretchFrom)
                                         .matchedGeometryEffect(id: "drop", in: dropNS)
+                                } else if hover == p {   // zachte markering onder de muis: je ziet dat het een knop is
+                                    shape.fill(theme.secondary.opacity(0.12))
                                 }
                             }
                             .contentShape(.rect)
+                            .onHover { hover = $0 ? p : hover == p ? nil : hover }
                     }
-                    .buttonStyle(.plain).help(p.title).accessibilityLabel(p.title)
+                    .buttonStyle(.plain).help("\(p.title)  ⌘\(i + 1)").accessibilityLabel(p.title)
+                    .keyboardShortcut(KeyEquivalent(Character("\(i + 1)")), modifiers: .command)
                 }
             }
             SettingsLink {
-                Label("Settings", systemImage: "gearshape")
-                    .labelStyle(wide ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
-                    .font(.system(size: 13, weight: .medium)).foregroundStyle(theme.secondary)
-                    .frame(minWidth: 28, minHeight: wide ? 26 : 22)
-                    .padding(.horizontal, wide ? 8 : 0)
-                    .contentShape(.rect)
+                tabLabel("Settings", "gearshape").foregroundStyle(theme.secondary).contentShape(.rect)
             }
-            .buttonStyle(.plain).help("Settings").accessibilityLabel("Settings")
+            .buttonStyle(.plain).help("Settings  ⌘,").accessibilityLabel("Settings")
         }
         .padding(.horizontal, 4)
         .accessibilityElement(children: .contain)   // elke knop eigen naam (anders noemt de werkbalk ze allemaal "Live")
+    }
+
+    /// Vaste maat per knop (groot genoeg om makkelijk te raken); alleen de naam komt erbij als het venster breed is.
+    private func tabLabel(_ title: String, _ icon: String) -> some View {
+        Label(title, systemImage: icon)
+            .labelStyle(wide ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
+            .font(.system(size: 13, weight: .medium))
+            .frame(minWidth: 32, minHeight: 28)
+            .padding(.horizontal, wide ? 8 : 0)
     }
 
     /// Tab wisselen met een "trekkende druppel": verschuiven met een veer, onderweg kort uitrekken en dan bijtrekken.
@@ -225,29 +220,16 @@ struct RootView: View {
 
     private func fullScreen(_ w: NSWindow) -> Bool { w.styleMask.contains(.fullScreen) }
 
-    /// Even de inhoud volgen: layout-passes na een wissel melden soms eerst een tussenhoogte.
-    private func requestFit() {
-        fitUntil = Date().addingTimeInterval(0.6)
-        if let lastFit { fit(lastFit) }
+    /// Tabblad dat meer ruimte nodig heeft: venster alleen groter maken (nooit kleiner), linksboven blijft staan.
+    private func grow(for p: Page) {
+        guard let w = window, !fullScreen(w), !w.inLiveResize else { return }
+        let s = NSSize(width: max(w.frame.width, p.minSize.width), height: max(w.frame.height, p.minSize.height))
+        if s != w.frame.size { place(w, size: s, animate: true) }
     }
 
-    /// Alleen de hoogte aanpassen (linksboven blijft staan). Nooit tijdens slepen of schermvullend.
-    private func fit(_ height: CGFloat) {
-        guard let w = window, !w.inLiveResize, !fullScreen(w), abs(w.frame.height - height) > 0.5 else { return }
-        var f = w.frame
-        f.origin.y += f.height - height
-        f.size.height = height
-        w.setFrame(f, display: true, animate: false)
-    }
-
-    /// Grootte per tabblad bewaren/terugzetten. Linksboven blijft precies staan (niets schuift opzij);
-    /// is er rechts/onder te weinig ruimte op het scherm, dan wordt het venster kleiner i.p.v. dat het verschuift.
-    private func resize(from old: Page, to new: Page) {
-        guard let w = window, !fullScreen(w) else { return }
-        let d = UserDefaults.standard
-        d.set(NSStringFromSize(w.frame.size), forKey: "size.\(old.rawValue)")
-        place(w, size: savedSize(new), animate: true)
-        if new == .overview { requestFit() }
+    private func saveTopLeft(_ w: NSWindow) {
+        guard !fullScreen(w) else { return }
+        UserDefaults.standard.set(NSStringFromPoint(NSPoint(x: w.frame.minX, y: w.frame.maxY)), forKey: "windowTopLeft")
     }
 
     /// Laatst gebruikte plek (linksboven), alleen als die nog op een aangesloten scherm ligt.
@@ -257,8 +239,12 @@ struct RootView: View {
         return p
     }
 
-    private func savedSize(_ p: Page) -> NSSize {
-        UserDefaults.standard.string(forKey: "size.\(p.rawValue)").map(NSSizeFromString) ?? p.defaultSize
+    /// Onthouden vensterformaat. Eenmalig overgezet van de oude grootte per tabblad (die van Live: daarmee opende hij al).
+    private func savedSize() -> NSSize {
+        let d = UserDefaults.standard
+        if d.string(forKey: "windowSize") == nil, let old = d.string(forKey: "size.live") { d.set(old, forKey: "windowSize") }
+        for p in Page.allCases { d.removeObject(forKey: "size.\(p.rawValue)") }
+        return d.string(forKey: "windowSize").map(NSSizeFromString) ?? NSSize(width: 300, height: 340)
     }
 
     /// Venster naar `size`, linksboven op zijn plek, nooit voorbij de rand van het scherm (dan kleiner i.p.v. verschuiven).
@@ -270,7 +256,7 @@ struct RootView: View {
             size.height = max(160, min(size.height, top - vf.minY))  // niet onder het Dock/de onderrand
         }
         let f = NSRect(x: left, y: top - size.height, width: size.width, height: size.height)
-        wide = f.width >= Self.namesWidth   // meteen de juiste knopstand, niet pas na de volgende meting van de breedte
+        // `wide` niet hier zetten: dan bouwt de werkbalk al met namen op terwijl het venster nog smal is (">>", scheve druppel)
         guard animate else { w.setFrame(f, display: true); return }
         NSAnimationContext.runAnimationGroup { ctx in      // soepel, ~0,2 s
             ctx.duration = 0.2
