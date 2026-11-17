@@ -53,6 +53,7 @@ struct RootView: View {
     @Environment(\.colorScheme) private var systemScheme
     @AppStorage("accent") private var accent = ""
     @AppStorage("textScale") private var textScale = 1.0
+    @AppStorage("font") private var font = "style"   // lettertype gewijzigd → meteen opnieuw tekenen
     @AppStorage("onTop") private var onTop = false
     @State private var window: NSWindow?
     @State private var wide = false          // breed venster: tabknoppen met naam
@@ -68,7 +69,7 @@ struct RootView: View {
     @State private var baseBehavior: NSWindow.CollectionBehavior?
 
     var body: some View {
-        let _ = (accent, textScale) // afhankelijkheid: kleur/tekstgrootte wijzigen → opnieuw tekenen
+        let _ = (accent, textScale, font) // afhankelijkheid: kleur/tekstgrootte/lettertype wijzigen → opnieuw tekenen
         // Licht/donker: vast gekozen, of zoals macOS (dan bepaalt het systeem de variant van de stijl)
         let target: ColorScheme = mode == .light ? .light : mode == .dark ? .dark : systemScheme
         let theme = Theme.resolved(themeID).adapted(to: target)

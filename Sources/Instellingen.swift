@@ -290,11 +290,13 @@ struct LookSettings: View {
 }
 
 struct AccentPicker: View {
+    @AppStorage("font") private var font = "style"   // lettertype gewijzigd → meteen opnieuw tekenen (gelezen in body)
     @AppStorage("theme") private var themeID = "instrument"
     @AppStorage("accent") private var accent = ""
     @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
     @Environment(\.colorScheme) private var system
     var body: some View {
+        let _ = font
         let t = mode.apply(Theme.resolved(themeID), system: system)
         HStack {
             ColorPicker("Accent color", selection: Binding(get: { Color(hex: accent) ?? Theme.named(themeID).accent }, set: { accent = $0.hex }),
@@ -363,6 +365,7 @@ struct LiveSettings: View {
 
 /// Voorbeeld van de Live-pagina met vaste waarden: volgt stijl, metingen, eenheden, grafieken, drempels en adviesregel.
 struct LivePreview: View {
+    @AppStorage("font") private var font = "style"   // lettertype gewijzigd → meteen opnieuw tekenen (gelezen in body)
     @AppStorage("theme") private var themeID = "instrument"
     @AppStorage("accent") private var accent = ""
     @AppStorage("textScale") private var textScale = 1.0
@@ -379,6 +382,7 @@ struct LivePreview: View {
     @Environment(\.colorScheme) private var system
 
     var body: some View {
+        let _ = font
         let t = mode.apply(Theme.resolved(themeID), system: system)
         let ms = Array(Metric.enabled(metricsRaw).prefix(4))
         let absolute = Set(absoluteRaw.split(separator: ",").map(String.init))
@@ -650,11 +654,13 @@ struct UpdateSection: View {
 }
 
 struct NumberStylePicker: View {
+    @AppStorage("font") private var font = "style"   // lettertype gewijzigd → meteen opnieuw tekenen (gelezen in body)
     @AppStorage("numberStyle") private var style: NumberStyle = .fade
     @AppStorage("theme") private var themeID = "instrument"
     @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
     @Environment(\.colorScheme) private var system
     var body: some View {
+        let _ = font
         let t = mode.apply(Theme.resolved(themeID), system: system)
         LabeledContent("Number changes") {
             HStack(spacing: 12) {

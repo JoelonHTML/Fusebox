@@ -147,6 +147,7 @@ extension Theme {
                       card: dark ? Color(white: 0.16) : Color(white: 0.96),
                       rowStyle: rowStyle, design: design, weight: weight, blocks: blocks, scheme: s)
         t.scale = scale
+        t.font = font   // gekozen lettertype ook in de licht/donker-variant
         // Lichte accenten (zoals wit bij Glas) zijn onleesbaar op wit: dan de tekstkleur als accent
         if !dark && (id == "glas") { t.accent = Color(white: 0.08) }
         return t

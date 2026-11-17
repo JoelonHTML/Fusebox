@@ -263,6 +263,7 @@ struct TextSizeCards: View {
                     }
                 }
             }
+            let _ = font
             let t = mode.apply(Theme.resolved(themeID), system: system)
             HStack(alignment: .firstTextBaseline, spacing: 6) {
                 Text("CPU").font(t.label(13)).foregroundStyle(t.id == "instrument" ? t.accent : t.onRow(true))
