@@ -28,10 +28,9 @@ enum Hotkey {
         RegisterEventHotKey(UInt32(code), UInt32(mods), EventHotKeyID(signature: 0x4642_4F58, id: 1), GetApplicationEventTarget(), 0, &ref)
     }
 
-    /// Vooraan en zichtbaar → wegzetten (verbergen, blijft meten). Anders → venster tonen en vooraan halen.
+    /// Fusebox vooraan → wegzetten (verbergen, blijft meten). Anders → venster tonen en vooraan halen.
     @MainActor static func toggle() {
-        let main = NSApp.windows.first { $0.identifier?.rawValue.hasPrefix("main") == true && $0.isVisible }
-        if NSApp.isActive, let main, main.isKeyWindow || main.isMainWindow {
+        if NSApp.isActive, NSApp.windows.contains(where: { $0.isVisible && $0.canBecomeKey }) {
             NSApp.hide(nil)
         } else {
             NSApp.unhide(nil)
