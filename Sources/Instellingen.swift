@@ -340,17 +340,22 @@ struct LiveSettings: View {
         Section("Small window") {
             Toggle(isOn: $perCore) {
                 Text("Per-core CPU")
-                Text("A thin bar per processor core on the CPU card. Large windows always show them.")
+                Text("A thin bar per processor core next to the CPU temperature. Large windows always show them.")
+            }
+            OptionPreview(label: "CPU", side: "57°", value: "23%") {
+                if perCore { CoreBars(values: [70, 55, 40, 30, 20, 15, 60, 45, 35, 25], split: 6, barWidth: 4).frame(height: 14).fixedSize() }
             }
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)
             Toggle(isOn: $netSpeed) {
                 Text("Internet speed next to NET")
-                Text("Your download speed from the last speed test (Network tab), e.g. 17 ms · 412 Mbit")
+                Text("Your download speed from the last speed test (Network tab). Until you run one: your Wi-Fi link speed.")
             }
+            OptionPreview(label: "NET", side: netSpeed ? "17 ms · 412 Mbit" : "17 ms", value: "↓8 ↑2", unit: "KB/s")
             Toggle(isOn: $batteryTime) {
                 Text("Battery time left")
-                Text("Next to BAT on battery power: how long until empty, e.g. 2:35")
+                Text("Next to BAT on battery power: how long until empty. While charging: a battery with a bolt.")
             }
+            OptionPreview(label: "BAT", icon: "battery.75percent", side: batteryTime ? "2:35" : "", value: "81%")
         }
         Section("Units") {
             ForEach([Metric.cpu, .ram, .ssd]) { m in UnitPicker(metric: m) }
@@ -724,5 +729,42 @@ struct UnitPicker: View {
             Text(metric.title)
             Text("% shows \(pctEx) · \(unit) shows \(realEx)")
         }
+    }
+}
+
+/// Klein voorbeeld van één Live-rij onder een schakelaar: zo ziet de optie eruit (aan of uit).
+struct OptionPreview<Extra: View>: View {
+    let label: String
+    var icon: String? = nil
+    var side = "", value: String, unit = ""
+    @ViewBuilder var extra: Extra
+    @AppStorage("theme") private var themeID = "instrument"
+    @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
+    @AppStorage("font") private var font = "style"
+    @Environment(\.colorScheme) private var system
+
+    var body: some View {
+        let _ = font
+        let t = mode.apply(Theme.resolved(themeID), system: system)
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(label).font(t.label(13)).foregroundStyle(t.id == "instrument" ? t.accent : t.onRow(true))
+            if let icon { Image(systemName: icon).font(.system(size: 13, weight: .medium)).foregroundStyle(t.onRow(true)) }
+            if !side.isEmpty { Text(side).font(t.number(13)).foregroundStyle(t.onRow(true)) }
+            extra.alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+            Spacer()
+            Text(value).font(t.number(22)).foregroundStyle(t.onRow())
+            if !unit.isEmpty { Text(unit).font(t.number(13)).foregroundStyle(t.onRow(true)) }
+        }
+        .themedRow(t)
+        .padding(8)
+        .background(t.bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.thinMaterial), in: .rect(cornerRadius: 10))
+        .environment(\.theme, t)
+        .animation(.snappy, value: side)
+    }
+}
+
+extension OptionPreview where Extra == EmptyView {
+    init(label: String, icon: String? = nil, side: String = "", value: String, unit: String = "") {
+        self.init(label: label, icon: icon, side: side, value: value, unit: unit) { EmptyView() }
     }
 }

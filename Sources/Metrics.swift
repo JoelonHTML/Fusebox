@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreWLAN
 
 // MARK: - Metingen: elke meting is een `Metric`; welke en in welke volgorde kies je in Instellingen.
 //
@@ -176,7 +177,10 @@ extension Metric {
             let (dn, upv, unit) = ratePair(s.down, s.up, bits: bits)
             let ping = host.isEmpty || s.pingPending ? nil : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms"
             // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms
-            let speed = d.bool(forKey: "netSpeed") ? InternetStats.loadHistory().last.map { "· \(Int($0.down.rounded())) Mbit" } : nil
+            // Nog geen snelheidstest gedaan? Dan de Wi-Fi-verbindingssnelheid (wat de router je Mac geeft)
+            let speed = d.bool(forKey: "netSpeed")
+                ? (InternetStats.loadHistory().last.map { "· \(Int($0.down.rounded())) Mbit" } ?? LinkRate.wifiMbit().map { "· Wi-Fi \(Int($0.rounded())) Mbit" })
+                : nil
             return MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
                                  side: [ping, speed].compactMap { $0 }.joined(separator: " "),
                                  template: "↓888 ↑888",
@@ -215,6 +219,18 @@ extension Metric {
         }
     }
 
+}
+
+/// Wi-Fi-verbindingssnelheid (Mbit/s), hooguit eens per 30 s opgevraagd. nil op kabel of zonder Wi-Fi.
+enum LinkRate {
+    nonisolated(unsafe) private static var cached: (at: Date, mbit: Double?) = (.distantPast, nil)
+    static func wifiMbit() -> Double? {
+        if Date().timeIntervalSince(cached.at) > 30 {
+            let r = CWWiFiClient.shared().interface()?.transmitRate() ?? 0
+            cached = (Date(), r > 0 ? r : nil)
+        }
+        return cached.mbit
+    }
 }
 
 /// Twee snelheden in één eenheid; de grootste bepaalt welke: ("8", "120", "KB/s"). Onder 10 één decimaal.
