@@ -179,14 +179,16 @@ extension Metric {
             // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms
             // Nog geen snelheidstest gedaan? Dan de Wi-Fi-verbindingssnelheid (wat de router je Mac geeft)
             let speed = d.bool(forKey: "netSpeed")
-                ? (InternetStats.loadHistory().last.map { "· \(Int($0.down.rounded())) Mbit" } ?? LinkRate.wifiMbit().map { "· Wi-Fi \(Int($0.rounded())) Mbit" })
+                ? (InternetStats.loadHistory().last.map { "· \(Int($0.down.rounded())) Mbit" } ?? LinkRate.wifiMbit().map { "· \(Int($0.rounded())) Mbit" })
                 : nil
-            return MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
+            var row = MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
                                  side: [ping, speed].compactMap { $0 }.joined(separator: " "),
                                  template: "↓888 ↑888",
                                  sideLevel: host.isEmpty || s.pingPending ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
                                  detail: host.isEmpty ? "response time check is off" : "internet response time",
-                                 values: h.map(\.down), second: h.map(\.up), top: nil, valueSize: 16)
+                                 values: h.map(\.down), second: h.map(\.up), top: nil, valueSize: 24)
+            row.sideIcon = LinkRate.wifiMbit() != nil ? "wifi" : "cable.connector.horizontal"   // draadloos of bedraad
+            return row
         case .ssd:
             let usedPct = s.diskTotalGB > 0 ? (1 - s.diskFreeGB / s.diskTotalGB) * 100 : 0
             return MetricRowData(label: abbr, value: abs ? "\(Int(s.diskFreeGB))" : pct(usedPct), unit: abs ? "GB" : "", template: abs ? "8888" : "100%",
@@ -196,7 +198,7 @@ extension Metric {
         case .io:
             let (rd, wr, ioUnit) = ratePair(s.diskRead, s.diskWrite, bits: bits)
             return MetricRowData(label: abbr, value: "R \(rd) W \(wr)", unit: ioUnit, template: "R 888 W 888", detail: "reading and writing to the SSD",
-                                 values: h.map(\.diskRead), second: h.map(\.diskWrite), top: nil, valueSize: 16)
+                                 values: h.map(\.diskRead), second: h.map(\.diskWrite), top: nil, valueSize: 24)
         case .battery:
             guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: "no battery", valueSize: 24) }
             let time = s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? (s.charging ? "charging" : "")
