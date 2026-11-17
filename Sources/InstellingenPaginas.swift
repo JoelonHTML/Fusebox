@@ -124,9 +124,10 @@ struct CheckupSettings: View {
     @AppStorage("checkupHide") private var hide = ""
     @AppStorage("restartDays") private var restartDays = 14
 
-    /// Zelfde ids als ReportSections.Part in Analyse.swift.
+    /// Zelfde ids als ReportSections.Part in Analyse.swift (+ startup/disk uit Opstart.swift).
     private static let parts = [("score", "Health score"), ("tops", "Top apps"), ("runtime", "Running time"), ("battery", "Battery"),
-                                ("busy", "Busy moments"), ("peaks", "Peaks"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log")]
+                                ("busy", "Busy moments"), ("peaks", "Peaks"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log"),
+                                ("startup", "Startup items"), ("disk", "Disk space")]
 
     var body: some View {
         Section("When you open Checkup") {
