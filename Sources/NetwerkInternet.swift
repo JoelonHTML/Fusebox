@@ -558,7 +558,7 @@ struct InternetPanel: View {
         let n = max(main.count, 2)
         return VStack(alignment: .trailing, spacing: 2) {
             SparkView(values: main, second: main == router ? [] : router, top: max((main + router).max() ?? 1, 5) * 1.2,
-                      fill: Double(n - 1) / Double(InternetStats.graphPoints - 1))
+                      fill: Double(n - 1) / Double(InternetStats.graphPoints - 1), glides: false)
             Text(main == router ? "router · live" : "internet — router ┄ · live").font(theme.label(9)).foregroundStyle(theme.onRow(true))
         }
         .help("Reply times over the last two minutes (max \(msText((main + router).max())) ms)")

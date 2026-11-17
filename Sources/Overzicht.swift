@@ -242,7 +242,7 @@ struct MetricView: View {
 
     @ViewBuilder private var graph: some View {
         if graphs && !data.values.isEmpty {
-            SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
+            SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index, glides: tier < .l)
                 .padding(.top, peaks != nil ? PeakHover.band : 0)   // vaste strook boven de grafiek voor het label
                 .overlay { if let peaks { PeakHover(ctx: peaks, values: data.values, second: data.second, full: tier >= .l, temp: data.graphIsTemp, color: theme.rowStyle == .blocks ? .white : theme.accent) } }
                 .frame(minHeight: 16, maxHeight: .infinity)
@@ -282,6 +282,9 @@ struct SparkView: View {
     let fill: Double
     var axis: String?           // nil = geen aslabels
     var order = 0               // volgorde bij het inschuiven: grafiekjes komen één voor één, net als de rijen
+    /// Glijden alleen in kleine grafiekjes. Een grote grafiek (detail, groot venster) die 15× per seconde verschuift,
+    /// laat macOS het hele (glazen) venster steeds opnieuw opbouwen: veel GPU voor niets. Die springt elke meting.
+    var glides = true
     @State private var drawn: CGFloat = 1        // 0…1: hoeveel van de lijn getekend is (opstart-animatie)
     @State private var waiting = false           // opgestart zonder lijn: inschuiven zodra de 2e meting er is
 
@@ -289,7 +292,7 @@ struct SparkView: View {
         // Uitdunnen en glijden gebeuren in SparkLayers, op basis van de getekende breedte.
         let scale = top ?? max(values.max() ?? 1, second.max() ?? 1, 1)
         SparkLayers(values: values, second: second, top: scale, bottom: bottom, fill: fill,
-                    color: theme.rowStyle == .blocks ? Color.white : theme.accent)
+                    color: theme.rowStyle == .blocks ? Color.white : theme.accent, glides: glides)
         // Grafiek verschijnt (opstarten, tabwissel): vanaf rechts in beeld schuiven, één voor één
         .clipShape(Reveal(drawn: drawn))
         // Alleen bij opstarten/tabwissel; bij venster slepen (andere indeling → nieuwe views) gewoon meteen tonen.
@@ -313,12 +316,12 @@ struct SparkView: View {
 /// De lijnen zelf, als Core Animation-lagen buiten SwiftUI om. (Als SwiftUI-animatie rekende de app elke frame het hele
 /// venster door: ~40% processor.) Glijden na een nieuwe meting gaat in kleine stappen, zie `SparkNSView.glide`.
 private struct SparkLayers: NSViewRepresentable {
-    let values: [Double], second: [Double], top: Double, bottom: Double, fill: Double, color: Color
+    let values: [Double], second: [Double], top: Double, bottom: Double, fill: Double, color: Color, glides: Bool
     func makeNSView(context: Context) -> SparkNSView { SparkNSView() }
     func updateNSView(_ v: SparkNSView, context: Context) {
         v.set(values, second, top: top, bottom: bottom, fill: fill, color: color.resolve(in: context.environment).cgColor,
               // "Verminder beweging" of venster niet te zien: lijn verspringt gewoon
-              glide: !context.environment.accessibilityReduceMotion && context.environment.onScreen)
+              glide: glides && !context.environment.accessibilityReduceMotion && context.environment.onScreen)
     }
 }
 

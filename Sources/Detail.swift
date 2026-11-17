@@ -33,7 +33,7 @@ struct MetricDetail: View {
                 .pickerStyle(.segmented).labelsHidden()
                 card {
                     if r.values.count > 1 {
-                        SparkView(values: r.values, second: r.second, top: r.top, bottom: r.bottom, fill: 1, axis: nil)
+                        SparkView(values: r.values, second: r.second, top: r.top, bottom: r.bottom, fill: 1, axis: nil, glides: false)
                             .id(range)   // andere periode: niet laten glijden maar meteen tekenen
                             .overlay { highlight(h) }
                             .padding(.top, PeakHover.band)   // vaste strook boven de grafiek voor het label

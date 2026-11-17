@@ -269,7 +269,7 @@ struct AppPage: View {
                     Spacer()
                     Text(now).font(theme.number(11)).foregroundStyle(theme.onRow())
                 }
-                if v.count > 1 { SparkView(values: v, top: top, fill: 1, axis: nil) }
+                if v.count > 1 { SparkView(values: v, top: top, fill: 1, axis: nil, glides: false) }
                 else { Text("Collecting…").font(theme.label(11)).foregroundStyle(theme.secondary).frame(maxWidth: .infinity, maxHeight: .infinity) }
             }
         }
