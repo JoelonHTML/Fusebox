@@ -20,12 +20,17 @@ struct NetworkView: View {
     @State private var filter = NetFilter.all
     @State private var renaming: NetDevice?
     @State private var newName = ""
+    @State private var search = ""
+    @State private var rangeText: String?          // nil = dit netwerk (auto); geldt zolang de pagina open is
+    @State private var rangeOpen = false
+    @State private var draft = ""
+    @AppStorage("netRecentRanges") private var recentRaw = ""   // laatste 5, één per regel
 
     static let ipW: CGFloat = 104, macW: CGFloat = 124, vendorW: CGFloat = 118, kindW: CGFloat = 104, msW: CGFloat = 42
 
     var body: some View {
         let all = scanner.devices
-        let rows = sorted(all.filter(filter.matches))
+        let rows = sorted(all.filter { filter.matches($0) && $0.matches(search) })
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
         VStack(spacing: 8) {
             InternetPanel(wide: width >= .kind)
@@ -44,8 +49,9 @@ struct NetworkView: View {
                         }
                     }
                     if rows.isEmpty {
-                        Text(scanner.info == nil ? "Not connected to a network" : scanner.scanStart != nil ? "Looking for devices…"
-                             : filter == .all ? "No devices found" : "No \(filter.title.lowercased()) devices")
+                        Text(scanner.info == nil ? "Not connected to a network" : !search.trimmingCharacters(in: .whitespaces).isEmpty ? "Nothing matches “\(search)”"
+                             : scanner.scanStart != nil ? "Looking for devices…"
+                             : filter != .all ? "No \(filter.title.lowercased()) devices" : rangeText.map { "Nothing answered in \($0)" } ?? "No devices found")
                             .font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
                     }
                 }
@@ -71,14 +77,22 @@ struct NetworkView: View {
                 ForEach(NetFilter.allCases) { Text($0.title).tag($0) }
             }
             .pickerStyle(.segmented).labelsHidden().fixedSize()
-            if width >= .vendor { Text(countText(all)).font(theme.label(11)).foregroundStyle(theme.secondary).lineLimit(1) }
+            searchField.frame(minWidth: 70, maxWidth: 170)
+            if width >= .kind { Text(countText(all)).font(theme.label(11)).foregroundStyle(theme.secondary).lineLimit(1) }
             Spacer(minLength: 4)
             if let start = scanner.scanStart {
                 if width >= .kind { Text(scanner.phase).font(theme.label(10)).foregroundStyle(theme.secondary).lineLimit(1) }
-                ProgressView(timerInterval: start...start.addingTimeInterval(NetScanner.expected), countsDown: false,
+                ProgressView(timerInterval: start...start.addingTimeInterval(scanner.expected), countsDown: false,
                              label: { EmptyView() }, currentValueLabel: { EmptyView() })
                     .progressViewStyle(.linear).frame(width: 70)
             }
+            Button { draft = rangeText ?? ""; rangeOpen.toggle() } label: {
+                if width >= .kind { NetPill(title: rangeText ?? "This network", icon: "scope") }
+                else { NetPill(title: "Range", icon: "scope").labelStyle(.iconOnly) }
+            }
+            .buttonStyle(.plain)
+            .help("Scan range: \(rangeText ?? "this network (found automatically)"). Click to type a range.")
+            .popover(isPresented: $rangeOpen, arrowEdge: .bottom) { rangeEditor }
             Button {
                 notifyNew.toggle()
                 if notifyNew { Notify.ask() }
@@ -89,11 +103,97 @@ struct NetworkView: View {
             .buttonStyle(.plain)
             .help(notifyNew ? "Notifying you when a new device shows up (while Fusebox scans). Click to turn off."
                   : "Get a notification when a new device shows up on your network (while this page scans)")
-            Button { scanner.scan() } label: {
-                NetPill(title: scanner.scanStart == nil ? "Scan" : "Scanning…", icon: "arrow.clockwise")
+            Button { if scanner.scanStart == nil { scanner.scan() } else { scanner.stop() } } label: {
+                NetPill(title: scanner.scanStart == nil ? "Scan" : "Stop", icon: scanner.scanStart == nil ? "arrow.clockwise" : "stop.fill")
             }
-            .buttonStyle(.plain).disabled(scanner.scanStart != nil).help("Look for devices on this network")
+            .buttonStyle(.plain).help(scanner.scanStart == nil ? "Look for devices in the scan range" : "Stop scanning (keeps what was found so far)")
         }
+    }
+
+    private var searchField: some View {
+        HStack(spacing: 4) {
+            Image(systemName: "magnifyingglass").foregroundStyle(theme.secondary)
+            TextField("Search", text: $search).textFieldStyle(.plain).foregroundStyle(theme.text)
+            if !search.isEmpty {
+                Button { search = "" } label: { Image(systemName: "xmark.circle.fill").foregroundStyle(theme.secondary) }
+                    .buttonStyle(.plain).help("Clear search")
+            }
+        }
+        .font(theme.label(12))
+        .padding(.horizontal, 7).padding(.vertical, 3)
+        .background(theme.line.opacity(0.5), in: .rect(cornerRadius: 6))
+        .help("Filter on name, IP, MAC address or maker")
+    }
+
+    // MARK: Scanbereik
+
+    private var recent: [String] { recentRaw.split(separator: "\n").map(String.init) }
+
+    private var rangeEditor: some View {
+        let typed = !draft.trimmingCharacters(in: .whitespaces).isEmpty
+        let parsed = NetScanner.parseRange(draft)
+        let ok = typed && (try? parsed.get()) != nil
+        return VStack(alignment: .leading, spacing: 8) {
+            Text("Scan range").font(theme.label(13))
+            Button { apply(nil) } label: {
+                Label {
+                    VStack(alignment: .leading, spacing: 1) {
+                        Text("This network (auto)")
+                        if let h = scanner.info?.hosts, let a = h.first, let b = h.last {
+                            Text("\(ipString(a)) – \(ipString(b))").font(theme.label(10)).foregroundStyle(.secondary)
+                        }
+                    }
+                } icon: { Image(systemName: rangeText == nil ? "checkmark.circle.fill" : "circle") }
+                .contentShape(.rect)
+            }
+            .buttonStyle(.plain)
+            HStack(spacing: 6) {
+                TextField("192.168.1.0/24 or 192.168.1.10-80", text: $draft)
+                    .textFieldStyle(.roundedBorder)
+                    .onSubmit { if ok { apply(draft) } }
+                Button("Scan") { apply(draft) }.disabled(!ok)
+            }
+            Group {
+                switch parsed {
+                case _ where !typed:
+                    Text("A block (192.168.1.0/24), a range (192.168.1.10-192.168.1.80 or 192.168.1.10-80) or one address. Up to \(NetScanner.maxRange) addresses.")
+                        .foregroundStyle(.secondary)
+                case .failure(let e): Text(e.message).foregroundStyle(theme.danger)
+                case .success(let r): Text(rangeNote(r)).foregroundStyle(.secondary)
+                }
+            }
+            .font(theme.label(10)).fixedSize(horizontal: false, vertical: true)
+            if !recent.isEmpty {
+                Text("Recent").font(theme.label(10)).foregroundStyle(.secondary).padding(.top, 2)
+                ForEach(recent, id: \.self) { r in
+                    Button { apply(r) } label: {
+                        Label(r, systemImage: rangeText == r ? "checkmark.circle.fill" : "clock.arrow.circlepath").contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+        }
+        .font(theme.label(12))
+        .padding(12).frame(width: 320)
+    }
+
+    private func rangeNote(_ r: ClosedRange<UInt32>) -> String {
+        let n = r.count == 1 ? "1 address" : "\(r.count) addresses"
+        guard let info = scanner.info, !(info.isLocal(r.lowerBound) && info.isLocal(r.upperBound)) else { return n }
+        return n + ". Outside your own network: Fusebox can find devices and their names, but not hardware addresses or makers (routers don't pass those on)."
+    }
+
+    /// nil = terug naar dit netwerk. Geldig bereik bovenaan de recente lijst; daarna meteen scannen.
+    private func apply(_ text: String?) {
+        rangeOpen = false
+        let t = text?.trimmingCharacters(in: .whitespaces) ?? ""
+        if case .success(let r) = NetScanner.parseRange(t), !t.isEmpty {
+            rangeText = t; scanner.range = r
+            recentRaw = ([t] + recent.filter { $0 != t }).prefix(5).joined(separator: "\n")
+        } else {
+            rangeText = nil; scanner.range = nil
+        }
+        scanner.scan()
     }
 
     private func countText(_ all: [NetDevice]) -> String {
@@ -263,8 +363,12 @@ private struct NetRow: View {
             if width >= .mac {
                 Text(device.mac.map(macString) ?? "–").font(.system(size: 11 * theme.scale, design: .monospaced))
                     .lineLimit(1).frame(width: NetworkView.macW, alignment: .leading)
+                    .help(device.remote && device.mac == nil ? NetDevice.remoteHelp : "")
             }
-            if width >= .vendor { Text(device.vendor).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.vendorW, alignment: .leading) }
+            if width >= .vendor {
+                Text(device.vendor).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.vendorW, alignment: .leading)
+                    .help(device.remote && device.mac == nil ? NetDevice.remoteHelp : "")
+            }
             if width >= .kind { Text(device.kind.title).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.kindW, alignment: .leading) }
             Text(device.online ? msText(device.ms) : "off")
                 .foregroundStyle((device.loss ?? 0) > 0 && theme.rowStyle != .blocks ? theme.warn : theme.onRow())
@@ -282,11 +386,15 @@ private struct NetRow: View {
                 line("tag", "No name found; this is a guess from the maker")
             }
             if device.ip != 0 { line("network", (device.online ? "IP address " : "Last IP address ") + ipString(device.ip)) }
-            line("barcode", device.mac.map { "Hardware address \(macString($0))" } ?? "Hardware address unknown")
-            if let mac = device.mac, NetScanner.isPrivate(mac) {
-                line("lock", "Private address: a phone or laptop that hides its real address (Wi-Fi privacy). The maker can't be seen.")
+            if device.remote, device.mac == nil {
+                line("barcode", "No hardware address or maker: this address is outside your own network, and routers don't pass those on")
             } else {
-                line("building.2", "Made by \(device.vendor == "–" ? "an unknown maker" : device.vendor)")
+                line("barcode", device.mac.map { "Hardware address \(macString($0))" } ?? "Hardware address unknown")
+                if let mac = device.mac, NetScanner.isPrivate(mac) {
+                    line("lock", "Private address: a phone or laptop that hides its real address (Wi-Fi privacy). The maker can't be seen.")
+                } else {
+                    line("building.2", "Made by \(device.vendor == "–" ? "an unknown maker" : device.vendor)")
+                }
             }
             if let m = device.model { line("info.circle", "Model: \(m)") }
             line(device.kind.icon, "Looks like: \(device.kind.title.lowercased())")
@@ -431,12 +539,25 @@ struct NetDevice: Identifiable {
     var ports: [UInt16]?, checkingPorts = false
     var firstSeen: Date?, lastSeen: Date?
     var isNew = false
+    var remote = false                   // buiten het eigen subnet: geen ARP, dus geen MAC/maker
+
+    static let remoteHelp = "Outside your own network: routers don't pass on hardware addresses, so the MAC address and maker can't be seen"
+
+    /// Zoekveld: deel van naam (ook andere gevonden namen), IP, MAC, maker of model; hoofdletters maakt niet uit.
+    func matches(_ query: String) -> Bool {
+        let q = query.trimmingCharacters(in: .whitespaces)
+        guard !q.isEmpty else { return true }
+        let fields = names.map(\.name) + [name, ip == 0 ? "" : ipString(ip), mac.map(macString) ?? "", vendor, model ?? ""]
+        return fields.contains { $0.localizedCaseInsensitiveContains(q) }
+    }
 }
 
 /// Deze Mac op het netwerk: interface, adres, masker, router en (bij Wi-Fi) signaal.
 struct NetInfo {
     let iface: String, ip: UInt32, mask: UInt32, mac: [UInt8]?, router: UInt32?
     var hosts: [UInt32] { NetScanner.hosts(ip: ip, mask: mask).filter { $0 != ip } }
+    /// Zelfde subnet als deze Mac (alleen daar werken ARP, Bonjour, mDNS en SSDP).
+    func isLocal(_ a: UInt32) -> Bool { a & mask == ip & mask }
     /// Herkent "hetzelfde netwerk" voor offline apparaten (thuis vs. kantoor).
     var networkKey: String { "\(ipString(ip & mask))/\(mask.nonzeroBitCount) via \(router.map(ipString) ?? "-")" }
 
@@ -486,8 +607,11 @@ func parseMAC(_ s: String) -> [UInt8]? {
 
 @MainActor
 final class NetScanner: ObservableObject {
-    /// Verwachte duur van een scan (voor de voortgangsbalk).
-    static let expected: TimeInterval = 8
+    /// Verwachte duur van de lopende scan (voor de voortgangsbalk).
+    private(set) var expected: TimeInterval = 8
+    /// Eigen bereik (uit `parseRange`); nil = het eigen subnet.
+    var range: ClosedRange<UInt32>?
+    private var targets: Set<UInt32> = []
     @Published private(set) var info: NetInfo?
     @Published private(set) var scanStart: Date?
     @Published private(set) var phase = ""
@@ -513,14 +637,14 @@ final class NetScanner: ObservableObject {
     var devices: [NetDevice] {
         guard let info else { return [] }
         _ = ouiReady   // opnieuw tekenen zodra de IEEE-lijst er is
-        let subnet = Set(info.hosts), net = info.networkKey
+        let subnet = targets, net = info.networkKey
         var ips = Set(found.keys)
         ips.formUnion(bonjour.keys.filter(subnet.contains))
         ips.formUnion(upnp.keys.filter(subnet.contains))
-        if !ips.isEmpty || scanStart == nil { ips.insert(info.ip) }
+        if range?.contains(info.ip) ?? true, !ips.isEmpty || scanStart == nil { ips.insert(info.ip) }
         var out = ips.map { device($0, info) }
         // Onthouden apparaten die nu niet te zien zijn (alleen van dit netwerk, en alleen als we de ARP-tabel echt konden lezen)
-        if arpDone, !localBlocked {
+        if range == nil, arpDone, !localBlocked {
             let seen = Set(out.compactMap { $0.mac.map(macString) })
             for (key, k) in store.devices where !seen.contains(key) && (k.net == nil || k.net == net) {
                 var d = NetDevice(id: "off " + key, ip: k.ip.flatMap(parseIP) ?? 0)
@@ -544,6 +668,7 @@ final class NetScanner: ObservableObject {
         var d = NetDevice(id: ipString(ip), ip: ip)
         d.isMe = ip == info.ip
         d.isRouter = ip == info.router
+        d.remote = !info.isLocal(ip)
         let f = found[ip], bj = bonjour[ip], up = upnp[ip]
         d.mac = d.isMe ? info.mac : f?.mac
         if !d.isMe { d.ms = f?.ms; d.loss = f?.loss; d.viaTCP = f?.viaTCP ?? false }
@@ -594,33 +719,47 @@ final class NetScanner: ObservableObject {
         found = [:]; bonjour = [:]; names = [:]; upnp = [:]; ports = [:]; checking = []
         arpDone = false; localBlocked = false
         guard let info else { return }
-        let start = Date()
+        let start = Date(), me = info.ip
+        // Eigen bereik of het eigen subnet; ARP, Bonjour, mDNS en SSDP alleen voor het deel binnen het eigen subnet
+        let hosts = range.map { Array($0).filter { $0 != me } } ?? info.hosts
+        let subnet = Set(hosts), local = Set(hosts.filter(info.isLocal)), remote = hosts.count - local.count
+        targets = subnet
+        // Ping-tussenruimte (3 ms per adres) + TCP-zoektocht buiten het subnet (2 poorten, 64 tegelijk, ≤ 0,4 s)
+        expected = range == nil ? 8 : max(8, 4 + Double(hosts.count) * 0.003 + Double(remote) / 32 * 0.4)
         scanStart = start
         phase = "Pinging…"
-        browse()
-        let hosts = info.hosts, me = info.ip, subnet = Set(hosts)
+        if !local.isEmpty { browse() }
         let ifindex = UInt16(truncatingIfNeeded: if_nametoindex(info.iface))
         work = Task { [weak self] in
             async let oui: Void = Self.offMain { NetProbe.loadOUI() }
-            async let ssdp = Self.offMain { NetProbe.ssdp(iface: me, wait: 3) }
+            async let ssdp = Self.offMain { local.isEmpty ? [:] : NetProbe.ssdp(iface: me, wait: 3) }
             // 1. Iedereen pingen (vult ook de ARP-tabel), daarna ARP lezen
             let sweep = await Self.offMain { NetProbe.ping(hosts, rounds: 2, every: 1.0, linger: 0.85) }
             await oui
             guard !Task.isCancelled, let self else { return }
             self.ouiReady = true
-            let arp = await Self.offMain { Self.arpTable() }.filter { $0.ifindex == ifindex && subnet.contains($0.ip) }
+            let arp = await Self.offMain { Self.arpTable() }.filter { $0.ifindex == ifindex && local.contains($0.ip) }
             var f: [UInt32: Found] = [:]
             for e in arp { f[e.ip] = Found(mac: e.mac) }
             for (ip, r) in sweep.rtt { f[ip, default: Found()].ms = r.min() }
             for ip in self.bonjour.keys where subnet.contains(ip) && f[ip] == nil { f[ip] = Found() }
             self.found = f
             self.arpDone = true
-            // Antwoorden maar lege ARP-tabel: macOS verbergt die zonder Lokaal netwerk-toestemming
-            self.localBlocked = self.localBlocked || sweep.blocked || (arp.isEmpty && !sweep.rtt.isEmpty)
-            // 2. Namen (mDNS, NetBIOS, DNS) en reactietijd (3 pings per apparaat) tegelijk
+            // Lokale antwoorden maar lege ARP-tabel: macOS verbergt die zonder Lokaal netwerk-toestemming
+            self.localBlocked = self.localBlocked || sweep.blocked || (arp.isEmpty && sweep.rtt.keys.contains(where: local.contains))
+            // 1b. Buiten het subnet geen ARP: wie niet op ping antwoordt, zoeken met een TCP-verbinding (SYN-ACK of RST = er is iemand)
+            let quiet = hosts.filter { !local.contains($0) && f[$0] == nil }
+            if !quiet.isEmpty {
+                self.phase = "Trying quiet addresses…"
+                let knock = quiet.flatMap { ip in NetProbe.discoveryPorts.map { (ip: ip, port: $0) } }
+                let r = await Self.offMain { NetProbe.tcpProbe(knock, timeout: 0.4, batch: 64) }
+                guard !Task.isCancelled else { return }
+                for (i, a) in r where a.ms < self.found[knock[i].ip]?.ms ?? .infinity { self.found[knock[i].ip] = Found(ms: a.ms, viaTCP: true) }
+            }
+            // 2. Namen (mDNS, NetBIOS, DNS) en reactietijd (3 pings per apparaat) tegelijk; mDNS alleen binnen het subnet
             self.phase = "Looking up names…"
-            let alive = Array(f.keys).filter { $0 != me }
-            async let mdns = Self.offMain { NetProbe.mdnsReverse(alive, iface: me, wait: 1.5) }
+            let alive = Array(self.found.keys).filter { $0 != me }, near = alive.filter(local.contains)
+            async let mdns = Self.offMain { near.isEmpty ? [:] : NetProbe.mdnsReverse(near, iface: me, wait: 1.5) }
             async let nb = Self.offMain { NetProbe.netbios(alive, wait: 1.5) }
             async let dns = Self.reverseNames(alive, timeout: 1.5)
             let lat = await Self.offMain { NetProbe.ping(alive, rounds: 3, every: 0.3, linger: 1.0) }
@@ -630,7 +769,7 @@ final class NetScanner: ObservableObject {
                 self.found[ip]?.loss = Double(3 - min(r.count, 3)) / 3
             }
             // Geen ping-antwoord: reactietijd via een TCP-verbinding (SYN-ACK of RST telt allebei)
-            let silent = alive.filter { lat.rtt[$0] == nil }
+            let silent = alive.filter { lat.rtt[$0] == nil && self.found[$0]?.viaTCP != true }
             let targets = silent.flatMap { ip in NetProbe.latencyPorts.map { (ip: ip, port: $0) } }
             let tcp = await Self.offMain { NetProbe.tcpProbe(targets, timeout: 0.5, batch: 64) }
             guard !Task.isCancelled else { return }
@@ -650,7 +789,7 @@ final class NetScanner: ObservableObject {
             self.upnp = up
             // 4. Bonjour nog even laten lopen (namen komen druppelsgewijs binnen), dan klaar
             let left = 7.5 - Date().timeIntervalSince(start)
-            if left > 0 { try? await Task.sleep(for: .seconds(left)) }
+            if !local.isEmpty, left > 0 { try? await Task.sleep(for: .seconds(left)) }
             guard !Task.isCancelled else { return }
             self.stopBrowsing()
             self.remember()
@@ -937,6 +1076,43 @@ final class NetScanner: ObservableObject {
         return Array(net + 1..<broadcast)
     }
 
+    enum RangeError: Error, Equatable {
+        case invalid, reversed, tooLarge(Int)
+        var message: String {
+            switch self {
+            case .invalid: "Not a range. Try 192.168.1.0/24, 192.168.1.10-80 or a single address."
+            case .reversed: "The first address is higher than the last one."
+            case .tooLarge(let n): "That's \(n) addresses; Fusebox scans at most \(NetScanner.maxRange) at a time (a /20). Use a smaller block."
+            }
+        }
+    }
+    nonisolated static let maxRange = 4096
+
+    /// Getypt bereik → aaneengesloten adressen: "192.168.1.0/24" (zonder netwerk- en broadcastadres tot /30),
+    /// "192.168.1.10-192.168.1.80", kort "192.168.1.10-80" (alleen het laatste getal), of één adres. Spaties mogen.
+    nonisolated static func parseRange(_ text: String) -> Result<ClosedRange<UInt32>, RangeError> {
+        let s = text.filter { !$0.isWhitespace }
+        let r: ClosedRange<UInt32>
+        if let slash = s.firstIndex(of: "/") {
+            guard let ip = parseIP(String(s[..<slash])), let bits = Int(s[s.index(after: slash)...]), (0...32).contains(bits) else { return .failure(.invalid) }
+            let mask: UInt32 = bits == 0 ? 0 : .max << (32 - bits)
+            let net = ip & mask, last = net | ~mask
+            r = bits >= 31 ? net...last : net + 1...last - 1
+        } else {
+            let parts = s.split(separator: "-", omittingEmptySubsequences: false).map(String.init)
+            guard parts.count <= 2, let a = parseIP(parts[0]) else { return .failure(.invalid) }
+            var b = a
+            if parts.count == 2 {
+                if let ip = parseIP(parts[1]) { b = ip }
+                else if let last = UInt32(parts[1]), last < 256, parts[1].allSatisfy(\.isNumber) { b = a & 0xFFFF_FF00 | last }
+                else { return .failure(.invalid) }
+            }
+            guard a <= b else { return .failure(.reversed) }
+            r = a...b
+        }
+        return r.count > maxRange ? .failure(.tooLarge(r.count)) : .success(r)
+    }
+
     /// Lokaal beheerd adres (bit 2 van de eerste byte): willekeurig MAC-adres van iPhone/Android/Mac met Wi-Fi-privacy.
     nonisolated static func isPrivate(_ mac: [UInt8]) -> Bool { (mac.first ?? 0) & 0x02 != 0 }
 
@@ -1047,6 +1223,23 @@ final class NetScanner: ObservableObject {
         let h16 = hosts(ip: parseIP("10.0.5.9")!, mask: 0xFFFF_0000)
         precondition(h16.count == 254 && h16.first == parseIP("10.0.5.1"), "/16 → /24 rond eigen adres")
         precondition(hosts(ip: ip, mask: 0xFFFF_FFF0).count == 14 && hosts(ip: ip, mask: 0xFFFF_FFFF).isEmpty, "/28, /32")
+        // Scanbereik typen
+        func range(_ t: String) -> ClosedRange<UInt32>? { if case .success(let r) = parseRange(t) { r } else { nil } }
+        func fails(_ t: String) -> RangeError? { if case .failure(let e) = parseRange(t) { e } else { nil } }
+        precondition(range("192.168.1.0/24") == parseIP("192.168.1.1")!...parseIP("192.168.1.254")!, "cidr /24")
+        precondition(range("10.0.0.0/22") == parseIP("10.0.0.1")!...parseIP("10.0.3.254")! && range("10.0.1.77/22")?.count == 1022, "cidr /22, niet uitgelijnd")
+        precondition(range("192.168.1.6/31")?.count == 2 && range("192.168.1.7/32") == parseIP("192.168.1.7")!...parseIP("192.168.1.7")!, "/31, /32")
+        precondition(range("192.168.1.10-192.168.1.80") == parseIP("192.168.1.10")!...parseIP("192.168.1.80")!
+                     && range(" 192.168.1.10 - 80 ") == parseIP("192.168.1.10")!...parseIP("192.168.1.80")!, "streepje, kort")
+        precondition(range("192.168.1.7")?.count == 1 && range("10.0.0.0/20")?.count == 4094, "één adres, /20")
+        precondition(["", "abc", "192.168.1", "192.168.1.300", "192.168.1.10-300", "192.168.1.10-", "192.168.1.1-2-3", "192.168.1.0/33", "192.168.1.0/", "192.168.1.10-+80"]
+                        .allSatisfy { fails($0) == .invalid }, "ongeldig")
+        precondition(fails("192.168.1.80-10") == .reversed && fails("192.168.1.80-192.168.1.10") == .reversed, "omgekeerd")
+        precondition(fails("10.0.0.0/16") == .tooLarge(65_534) && fails("10.0.0.0-10.0.16.0") == .tooLarge(4097) && range("10.0.0.0-10.0.15.255")?.count == 4096, "te groot")
+        // Zoeken in apparaten
+        var d = NetDevice(id: "x", ip: parseIP("192.168.1.42")!)
+        d.name = "Living Room"; d.names = [("Bonjour", "Living Room"), ("DNS", "alex-tv")]; d.mac = [0xB8, 0x27, 0xEB, 1, 2, 3]; d.vendor = "Raspberry Pi"
+        precondition(["", "  ", "living", "ALEX-TV", "168.1.42", "b8:27:eb", "raspberry"].allSatisfy(d.matches) && !d.matches("sonos") && !d.matches("10.0.0"), "zoeken")
         precondition(NetProbe.isLAN(ip) && NetProbe.isLAN(parseIP("10.1.2.3")!) && NetProbe.isLAN(parseIP("172.20.0.1")!)
                      && !NetProbe.isLAN(parseIP("172.32.0.1")!) && !NetProbe.isLAN(parseIP("8.8.8.8")!), "lan")
         // ICMP
