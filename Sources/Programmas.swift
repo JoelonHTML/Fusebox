@@ -8,8 +8,8 @@ struct ProgramsView: View {
 }
 
 private enum Filter: String, CaseIterable { case all = "All", apps = "Apps", background = "Background", macos = "macOS" }
-private enum Column { case name, cpu, ram, disk, energy, threads, running }
-/// Breedte-banden: < 460 Naam/CPU/RAM, + Disk, + Energie, + Threads/Proc. (bredere CPU-balk), + Running, ≥ 1100 lijst + detailpaneel.
+private enum Column { case name, cpu, ram, disk, net, energy, threads, running }
+/// Breedte-banden: < 460 Naam/CPU/RAM, + Disk, + Energie (en Network als die instelling aan staat), + Threads/Proc. (bredere CPU-balk), + Running, ≥ 1100 lijst + detailpaneel.
 private enum Width: Int, Comparable {
     case narrow, disk, energy, procs, running, split
     init(_ w: CGFloat) { self = w >= 1100 ? .split : w >= 820 ? .running : w >= 700 ? .procs : w >= 560 ? .energy : w >= 460 ? .disk : .narrow }
@@ -30,9 +30,10 @@ private struct ProgramsList: View {
     @State private var confirm: AppUsage?
     @State private var failed: String?
     @State private var open: String?          // id van de uitgeklapte regel (maximaal één); in split-modus de geselecteerde
+    @AppStorage("netPerApp") private var netPerApp = false
 
     static let ramW: CGFloat = 62, energyW: CGFloat = 50, procW: CGFloat = 40, stopW: CGFloat = 18
-    static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62
+    static let diskW: CGFloat = 70, threadsW: CGFloat = 54, runW: CGFloat = 62, netW: CGFloat = 74
 
     var body: some View {
         let (rows, hidden) = visible()
@@ -52,7 +53,7 @@ private struct ProgramsList: View {
                 ScrollView {
                     LazyVStack(spacing: tight ? 0 : 6) {
                         ForEach(Array(rows.enumerated()), id: \.element.id) { i, app in
-                            ProgramRow(app: app, width: width, index: i, isOpen: !split && open == app.id, isSelected: selected?.id == app.id,
+                            ProgramRow(app: app, width: width, net: showNet, index: i, isOpen: !split && open == app.id, isSelected: selected?.id == app.id,
                                        onTap: {
                                            if split { open = app.id } else { withAnimation(.snappy(duration: 0.25)) { open = open == app.id ? nil : app.id } }
                                        },
@@ -109,6 +110,7 @@ private struct ProgramsList: View {
                 case .ram: a.memGB < b.memGB
                 case .energy: a.energyW < b.energyW
                 case .disk: a.diskRead + a.diskWrite < b.diskRead + b.diskWrite
+                case .net: a.netIn + a.netOut < b.netIn + b.netOut
                 case .threads: a.threads < b.threads
                 case .running: (a.started ?? .distantFuture) > (b.started ?? .distantFuture)   // langer actief = "meer"
                 }
@@ -165,12 +167,15 @@ private struct ProgramsList: View {
         .scrollIndicators(.never)
     }
 
+    private var showNet: Bool { netPerApp && width >= .energy }
+
     private var columnHeader: some View {
         HStack(spacing: 8) {
             head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("CPU", .cpu).frame(width: width.cpuW, alignment: .trailing)
             head("RAM", .ram).frame(width: Self.ramW, alignment: .trailing)
             if width >= .disk { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
+            if showNet { head("Network", .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
             if width >= .energy { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
             if width >= .procs { head("Threads", .threads).frame(width: Self.threadsW, alignment: .trailing) }
             if width >= .procs { Text("Proc.").font(theme.label(10)).foregroundStyle(theme.secondary).frame(width: Self.procW, alignment: .trailing) }
@@ -196,7 +201,7 @@ private struct ProgramsList: View {
 }
 
 private struct ProgramRow: View {
-    let app: AppUsage, width: Width, index: Int, isOpen: Bool, isSelected: Bool, onTap: () -> Void, onStop: () -> Void
+    let app: AppUsage, width: Width, net: Bool, index: Int, isOpen: Bool, isSelected: Bool, onTap: () -> Void, onStop: () -> Void
     @Environment(\.theme) private var theme
     @State private var hover = false
 
@@ -238,6 +243,12 @@ private struct ProgramRow: View {
             if width >= .disk {
                 let io = app.diskRead + app.diskWrite
                 Text(io >= 1000 ? rate(io) : "–").lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.diskW, alignment: .trailing)
+            }
+            if net {
+                VStack(alignment: .trailing, spacing: 0) {
+                    if app.netIn + app.netOut >= 1000 { Text("↓ \(rate(app.netIn))"); Text("↑ \(rate(app.netOut))") } else { Text("–") }
+                }
+                .font(theme.number(10)).lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.netW, alignment: .trailing)
             }
             if width >= .energy { Text(app.energyW >= 0.05 ? "\(one(app.energyW)) W" : "–").frame(width: ProgramsList.energyW, alignment: .trailing) }
             if width >= .procs { Text(app.threads > 0 ? "\(app.threads)" : "–").frame(width: ProgramsList.threadsW, alignment: .trailing) }
@@ -284,6 +295,9 @@ private struct ProgramDetails: View {
             if app.energyW >= 0.05 { line("bolt", "Uses about \(one(app.energyW)) W — \(energyWord).") }
             if app.diskRead + app.diskWrite >= 1000 {
                 line("internaldrive", "Reading \(rate(app.diskRead)) and writing \(rate(app.diskWrite)) on the SSD.")
+            }
+            if app.netIn + app.netOut >= 1000 {
+                line("network", "Downloading \(rate(app.netIn)) and uploading \(rate(app.netOut)) over the network.")
             }
             if app.threads > 0 { line("arrow.triangle.branch", "Runs \(app.threads) threads (tasks at the same time).") }
             if let s = app.started { line("clock", "Running for \(duration(max(Int(Date().timeIntervalSince(s) / 60), 1))).") }

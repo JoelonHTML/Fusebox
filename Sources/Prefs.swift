@@ -22,7 +22,7 @@ enum Prefs {
             // Meldingen
             "notify": true, "alertCooldown": 30,
             // Gegevens en privacy
-            "keepDays": 30, "pingHost": "1.1.1.1",
+            "keepDays": 30, "pingHost": "1.1.1.1", "netPerApp": false,
             // Ventilatoren (alleen Macs met ventilator): "auto" | "curve" | "max", curve = "°C:%,…"
             "fanMode": "auto", "fanCurve": FanCurve.balanced,
             "setupDone": false,

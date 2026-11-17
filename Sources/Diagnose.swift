@@ -158,13 +158,15 @@ enum Diag {
         }
     }
 
-    static func run(_ path: String, _ args: [String]) -> String {
+    /// `timeout` > 0: daarna afbreken (dan geeft het wat er tot dan toe kwam).
+    static func run(_ path: String, _ args: [String], timeout: Double = 0) -> String {
         let p = Process()
         p.executableURL = URL(fileURLWithPath: path); p.arguments = args
         p.environment = ["LC_ALL": "C"]
         let pipe = Pipe()
         p.standardOutput = pipe; p.standardError = FileHandle.nullDevice
         guard (try? p.run()) != nil else { return "" }
+        if timeout > 0 { DispatchQueue.global().asyncAfter(deadline: .now() + timeout) { if p.isRunning { p.terminate() } } }
         let data = pipe.fileHandleForReading.readDataToEndOfFile()
         p.waitUntilExit()
         return String(decoding: data, as: UTF8.self)
