@@ -11,6 +11,7 @@ enum Tier: Int, Comparable {
 /// alleen als tier/kolommen/rijen echt veranderen (Equatable).
 struct LiveLayout: Equatable {
     var tier = Tier.s, cols = 1, rows = 1
+    var side = false   // L/XL: kaart breed genoeg voor feitenkolom naast de grafiek (anders erboven)
 
     /// `size`: ruimte onder de tabknoppen; `pad`: theme.rowPad; `advice`: adviesregel aan.
     init(_ size: CGSize, n: Int, pad: CGFloat, advice: Bool) {
@@ -25,7 +26,10 @@ struct LiveLayout: Equatable {
             let chrome: CGFloat = 10 + (advice && t > .xs ? 24 : 0)   // geen periodeknoppen en geen voettekst meer
             return (size.height - chrome) / r - pad
         }
-        tier = xl ? .xl : c(.l) >= 150 ? .l : c(.m) >= 70 ? .m : c(.s) >= 28 ? .s : .xs
+        // S pas als een S-rij (36 + pad, + kernstaafjes) echt past: het venster klikt niet meer op de inhoud vast,
+        // dus de rijen moeten in de ruimte passen die je sleept (geen afgesneden onderste rij).
+        tier = xl ? .xl : c(.l) >= 150 ? .l : c(.m) >= 70 ? .m : c(.s) >= 38 ? .s : .xs
+        side = tier >= .l && (grid - 10 * CGFloat(cols - 1)) / CGFloat(cols) >= 440
     }
 
     /// Zelftest (Meterkast --selftest): de banden kloppen met de echte rijhoogtes.
@@ -36,9 +40,13 @@ struct LiveLayout: Equatable {
             precondition(tier(6 * (19 + pad / 2) + 10) == .xs, "XS \(pad)")       // passend gemaakte XS blijft XS
             precondition(tier(6 * (100 + pad) + 58) == .m, "M \(pad)")
             precondition(tier(6 * (160 + pad) + 58) == .l, "L \(pad)")
+            precondition(tier(6 * (38 + pad) + 10) == .s && tier(6 * (38 + pad) + 9) == .xs, "S past precies \(pad)")
         }
         let xl = LiveLayout(CGSize(width: 1000, height: 700), n: 6, pad: 15, advice: false)
-        precondition(xl.tier == .xl && xl.cols == 3 && xl.rows == 2, "XL")   // zonder zijpaneel: hele breedte voor grafieken
+        precondition(xl.tier == .xl && xl.cols == 3 && xl.rows == 2 && !xl.side, "XL")   // zonder zijpaneel: hele breedte voor grafieken
+        precondition(LiveLayout(CGSize(width: 1630, height: 730), n: 5, pad: 22, advice: false).side, "XL breed: feiten naast grafiek")
+        precondition(FitRows.count([16, 16, 16], in: 40, spacing: 3) == 2 && FitRows.count([16], in: 15, spacing: 3) == 0
+                     && FitRows.count([16, 16], in: 35, spacing: 3) == 2, "regels die passen")
         let five = LiveLayout(CGSize(width: 774, height: 400), n: 5, pad: 15, advice: false)
         precondition(five.cols == 3 && five.rows == 2, "kolommen")
         print("layout ok")
@@ -60,7 +68,6 @@ struct OverviewView: View {
     @AppStorage("page") private var page: Page = .overview
     @State private var box = SizeBox()
     @State private var layout: LiveLayout?
-    @State private var contentHeight: CGFloat = 0
 
     private var metrics: [Metric] { Metric.enabled(metricsRaw) }
 
@@ -86,6 +93,7 @@ struct OverviewView: View {
         let h = t >= .m ? meter.samples(range) : [], fill = meter.fill(range)
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
         let gap: CGFloat = tight ? 0 : t == .xs ? 3 : 6
+        let apps = t >= .l ? meter.minuteApps.apps : []   // top-apps in grote kaarten (per minuut gemeten)
         return HStack(alignment: .top, spacing: 12) {
             VStack(spacing: 0) {
                 if showAdvice && t > .xs { advice.frame(minHeight: 20).padding(.bottom, 4) }
@@ -96,27 +104,24 @@ struct OverviewView: View {
                                 let i = r * l.cols + c
                                 if i < metrics.count {
                                     let m = metrics[i]
-                                    MetricView(data: m.row(meter.latest, h, abs: absolute.contains(m.rawValue)), tier: t, fill: fill, index: i,
-                                               stats: "", axis: nil, graphs: graphs != .never, ready: !meter.recent.isEmpty)
+                                    MetricView(data: m.row(meter.latest, h, abs: absolute.contains(m.rawValue), apps: apps), tier: t, fill: fill, index: i,
+                                               side: l.side, graphs: graphs != .never, ready: !meter.recent.isEmpty)
                                         .modifier(IntroIn(index: i))
                                         .contentShape(.rect)
                                         .onTapGesture { toggleAbsolute(m) }
                                         .help("Click to switch between % and real values")
-                                } else {
+                                } else if t < .m {   // klein: lege cel houdt de getallen in kolommen
                                     Color.clear.frame(height: 1)
-                                }
+                                }   // M+: geen lege cel, de laatste kaart(en) worden breder
                             }
                         }
-                        .frame(maxHeight: t >= .m ? .infinity : nil)
+                        .frame(maxHeight: .infinity)   // rijen verdelen de hoogte: nooit lege ruimte onderin
                     }
                 }
                 .frame(minHeight: t >= .m ? 0 : nil, alignment: .top)
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 10)
-        // Natuurlijke hoogte (alleen XS/S) → RootView maakt het venster passend. In M+ niet bijhouden: dat zou elke pixel verversen.
-        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { if t <= .s { contentHeight = $0 } }
-        .preference(key: FitHeightKey.self, value: t <= .s ? contentHeight : 0)
         .frame(minHeight: CGFloat(l.rows) * (17 + theme.rowPad / 2) + 10, alignment: .top) // ≈ XS-hoogte
     }
 
@@ -143,6 +148,7 @@ struct MetricView: View {
     let fill: Double, index: Int
     var stats = ""              // L+: min/gem/max over de periode
     var axis: String?           // L+: aslabel links onder ("−5 min")
+    var side = false            // L+: feiten naast de grafiek i.p.v. erboven (brede kaart)
     var graphs = true
     var ready = true            // false tot de eerste echte meting binnen is
     @AppStorage("perCore") private var perCore = false   // per kern ook in kleine vensters
@@ -189,15 +195,45 @@ struct MetricView: View {
                 if !data.cores.isEmpty && (tier >= .l || perCore) {
                     CoreBars(values: data.cores, split: Sampler.efficiencyCores, wide: tier >= .l).frame(height: tier >= .l ? 28 : 12)
                 }
-                if graphs && !data.values.isEmpty {
-                    SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
-                        .frame(minHeight: 16, maxHeight: tier >= .l ? 320 : .infinity)
+                // L/XL: wat er meer te weten valt (feiten, top-apps, min/gem/max); zoveel regels als er passen
+                if tier >= .l && !data.facts.isEmpty {
+                    if side {
+                        HStack(alignment: .top, spacing: 16) { facts.frame(width: 230); graph }
+                    } else {
+                        VStack(alignment: .leading, spacing: 6) { facts; graph }
+                    }
+                } else {
+                    graph
                 }
             }
         }
         .padding(.vertical, xs ? -inner / 4 : 0)
-        .frame(maxHeight: tier >= .m ? .infinity : nil, alignment: .top)
+        // Klein (XS/S): rij rekt mee met het venster, inhoud in het midden; groter: van boven af
+        .frame(maxHeight: .infinity, alignment: tier >= .m ? .top : .center)
         .themedRow(theme, index: index)
+    }
+
+    @ViewBuilder private var graph: some View {
+        if graphs && !data.values.isEmpty {
+            SparkView(values: data.values, second: data.second, top: data.top, bottom: data.bottom, fill: fill, axis: nil, order: index)
+                .frame(minHeight: 16, maxHeight: tier >= .l ? 320 : .infinity)
+        }
+    }
+
+    /// Rustige lijst: label links, waarde rechts; regels die niet passen vallen weg (nooit een halve regel).
+    private var facts: some View {
+        FitRows(spacing: 4) {
+            ForEach(data.facts.indices, id: \.self) { i in
+                let f = data.facts[i]
+                HStack(spacing: 6) {
+                    if let icon = f.icon { Image(nsImage: icon).resizable().frame(width: 14, height: 14) }
+                    Text(f.label).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                    Spacer(minLength: 6)
+                    Text(f.value).font(theme.number(11)).foregroundStyle(theme.onRow()).lineLimit(1).fixedSize()
+                }
+            }
+        }
+        .clipped()
     }
 
     private var labelColor: Color { theme.id == "instrument" ? theme.accent : theme.onRow(true) }
@@ -234,9 +270,8 @@ struct SparkView: View {
                     .stroke(color.opacity(0.5), lineWidth: 1)
             }
         }
-        .clipped()
-        // Grafiek verschijnt (opstarten, tabwissel, venster groter): vanaf rechts in beeld schuiven, één voor één
-        .mask(alignment: .trailing) { Rectangle().scaleEffect(x: drawn, anchor: .trailing) }
+        // Grafiek verschijnt (opstarten, tabwissel): vanaf rechts in beeld schuiven, één voor één
+        .clipShape(Reveal(drawn: drawn))
         // Alleen bij opstarten/tabwissel; bij venster slepen (andere indeling → nieuwe views) gewoon meteen tonen.
         // Bij het opstarten is er nog geen lijn (minstens 2 metingen nodig): dan pas inschuiven als hij er is.
         .onAppear {
@@ -303,10 +338,51 @@ extension SparkView {
     }
 }
 
-/// Hoogte die de Live-pagina in XS/S nodig heeft (0 = M of groter, niet passend maken).
-struct FitHeightKey: PreferenceKey {
-    static let defaultValue: CGFloat = 0
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) { value = max(value, nextValue()) }
+/// Regels onder elkaar; wat niet meer in de hoogte past valt weg (hele regels, van onderen). Zo groeit de
+/// hoeveelheid info vanzelf mee met het venster, zonder afgesneden tekst.
+struct FitRows: Layout {
+    var spacing: CGFloat = 4
+
+    /// Hoeveel regels (van boven af) passen in `h`.
+    static func count(_ heights: [CGFloat], in h: CGFloat, spacing: CGFloat) -> Int {
+        var y: CGFloat = 0, n = 0
+        for r in heights {
+            if y + r > h + 0.5 { break }
+            y += r + spacing; n += 1
+        }
+        return n
+    }
+
+    private func heights(_ subviews: Subviews, _ width: CGFloat?) -> [CGFloat] {
+        subviews.map { $0.sizeThatFits(ProposedViewSize(width: width, height: nil)).height }
+    }
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let hs = heights(subviews, proposal.width)
+        let n = Self.count(hs, in: proposal.height ?? .infinity, spacing: spacing)
+        let used = hs.prefix(n).reduce(0, +) + spacing * CGFloat(max(n - 1, 0))
+        return CGSize(width: proposal.width ?? 200, height: used)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let hs = heights(subviews, bounds.width)
+        let n = Self.count(hs, in: bounds.height, spacing: spacing)
+        var y = bounds.minY
+        for (i, v) in subviews.enumerated() {
+            // Past niet: ver buiten beeld zetten (de lijst knipt af), dan blijft de rest van de layout stabiel
+            let at = i < n ? CGPoint(x: bounds.minX, y: y) : CGPoint(x: bounds.minX, y: bounds.maxY + 10_000)
+            v.place(at: at, proposal: ProposedViewSize(width: bounds.width, height: hs[i]))
+            if i < n { y += hs[i] + spacing }
+        }
+    }
+}
+
+/// Inschuiven vanaf rechts: alleen het rechterdeel (`drawn` 0…1) is zichtbaar.
+/// Knippen i.p.v. maskeren: geen extra tekenlaag per grafiek bij elke frame van het slepen.
+private struct Reveal: Shape {
+    var drawn: CGFloat
+    var animatableData: CGFloat { get { drawn } set { drawn = newValue } }
+    func path(in r: CGRect) -> Path { Path(CGRect(x: r.maxX - r.width * drawn, y: r.minY, width: r.width * drawn, height: r.height)) }
 }
 
 /// Hoe een getal verandert: rollen (van boven naar beneden), kort vervagen, of direct.
