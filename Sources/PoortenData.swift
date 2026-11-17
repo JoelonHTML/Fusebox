@@ -572,6 +572,7 @@ enum Ports {
         precondition(chargerText(mag.charger!) == "Charger up to 94 W · agreed on 20 V × 4.7 A (94 W)", "lader")
         precondition(rawValue(true as NSNumber) == "Yes" && rawValue(Data([0xAB, 1])) == "<ab01>" && rawValue(["b": 1, "a": "x"] as [String: Any]) == "{a=x, b=1}", "ruw")
         Displays.selfTest()
+        Wireless.selfTest()
         print("poorten ok")
     }
 }
