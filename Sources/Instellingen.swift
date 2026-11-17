@@ -322,6 +322,7 @@ struct LiveSettings: View {
     @AppStorage("netBits") private var netBits = false
     @AppStorage("perCore") private var perCore = false
     @AppStorage("batteryTime") private var batteryTime = true
+    @AppStorage("netSpeed") private var netSpeed = false
     @AppStorage("warnCPU") private var warnCPU = 85.0
     @AppStorage("warnTemp") private var warnTemp = 95.0
     @AppStorage("warnPing") private var warnPing = 100.0
@@ -342,6 +343,10 @@ struct LiveSettings: View {
                 Text("A thin bar per processor core on the CPU card. Large windows always show them.")
             }
             Toggle("Show advice line (\"Your Mac is busy\", \"Memory is filling up\" …)", isOn: $showAdvice)
+            Toggle(isOn: $netSpeed) {
+                Text("Internet speed next to NET")
+                Text("Your download speed from the last speed test (Network tab), e.g. 17 ms · 412 Mbit")
+            }
             Toggle(isOn: $batteryTime) {
                 Text("Battery time left")
                 Text("Next to BAT on battery power: how long until empty, e.g. 2:35")

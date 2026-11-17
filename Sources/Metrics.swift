@@ -172,9 +172,14 @@ extension Metric {
                                  detail: "pressure \(druk) · swap \(one(s.swapGB)) GB · " + (abs ? pct(s.ram) : "\(one(s.ramUsedGB)) of \(Int(total.rounded())) GB"),
                                  values: h.map(\.ramUsedGB), top: total)
         case .net:
-            return MetricRowData(label: abbr, value: "↓\(short(s.down, bits: bits)) ↑\(short(s.up, bits: bits))",
-                                 side: host.isEmpty || s.pingPending ? "" : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms",
-                                 template: "↓888 KB/s ↑888 KB/s",
+            // Eenheid één keer (in de eenheidskolom): "↓8 ↑120  KB/s" i.p.v. "↓8 KB/s ↑120 KB/s"
+            let (dn, upv, unit) = ratePair(s.down, s.up, bits: bits)
+            let ping = host.isEmpty || s.pingPending ? nil : s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "– ms"
+            // Optie "netSpeed": je internetsnelheid (laatste snelheidstest op het Network-tabblad) naast de ms
+            let speed = d.bool(forKey: "netSpeed") ? InternetStats.loadHistory().last.map { "· \(Int($0.down.rounded())) Mbit" } : nil
+            return MetricRowData(label: abbr, value: "↓\(dn) ↑\(upv)", unit: unit,
+                                 side: [ping, speed].compactMap { $0 }.joined(separator: " "),
+                                 template: "↓888 ↑888",
                                  sideLevel: host.isEmpty || s.pingPending ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
                                  detail: host.isEmpty ? "response time check is off" : "internet response time",
                                  values: h.map(\.down), second: h.map(\.up), top: nil, valueSize: 16)
@@ -185,7 +190,8 @@ extension Metric {
                                  detail: abs ? "\(pct(usedPct)) full of \(Int(s.diskTotalGB)) GB" : "\(Int(s.diskFreeGB)) GB free of \(Int(s.diskTotalGB)) GB", values: h.map { $0.diskTotalGB - $0.diskFreeGB },
                                  top: s.diskTotalGB > 0 ? s.diskTotalGB : nil, valueSize: 24)
         case .io:
-            return MetricRowData(label: abbr, value: "R \(short(s.diskRead, bits: bits)) W \(short(s.diskWrite, bits: bits))", template: "R 888 MB/s W 888 MB/s", detail: "reading and writing to the SSD",
+            let (rd, wr, ioUnit) = ratePair(s.diskRead, s.diskWrite, bits: bits)
+            return MetricRowData(label: abbr, value: "R \(rd) W \(wr)", unit: ioUnit, template: "R 888 W 888", detail: "reading and writing to the SSD",
                                  values: h.map(\.diskRead), second: h.map(\.diskWrite), top: nil, valueSize: 16)
         case .battery:
             guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: "no battery", valueSize: 24) }
@@ -209,6 +215,14 @@ extension Metric {
         }
     }
 
+}
+
+/// Twee snelheden in één eenheid; de grootste bepaalt welke: ("8", "120", "KB/s"). Onder 10 één decimaal.
+func ratePair(_ a: Double, _ b: Double, bits: Bool) -> (String, String, String) {
+    let k = bits ? 8.0 : 1, m = max(a, b, 0) * k
+    let (div, unit): (Double, String) = m < 1e6 ? (1e3, bits ? "kbit/s" : "KB/s") : m < 1e9 ? (1e6, bits ? "Mbit/s" : "MB/s") : (1e9, bits ? "Gbit/s" : "GB/s")
+    func f(_ v: Double) -> String { let x = max(v, 0) * k / div; return div > 1e3 && x < 10 ? one(x) : "\(Int(x.rounded()))" }
+    return (f(a), f(b), unit)
 }
 
 func deg(_ t: Double?) -> String { t.map { "\(Int($0.rounded()))°" } ?? "" }

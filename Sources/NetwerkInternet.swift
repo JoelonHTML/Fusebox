@@ -204,7 +204,7 @@ final class InternetStats: ObservableObject {
         speedPhase = nil
     }
 
-    static func loadHistory() -> [SpeedResult] {
+    nonisolated static func loadHistory() -> [SpeedResult] {
         (UserDefaults.standard.data(forKey: "speedHistory")).flatMap { try? JSONDecoder().decode([SpeedResult].self, from: $0) } ?? []
     }
 
