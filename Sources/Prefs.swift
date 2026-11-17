@@ -14,7 +14,7 @@ enum Prefs {
             "dockIcon": true, "keepRunning": true, "autoUpdate": true, "onTop": false,
             // Live-pagina
             "metrics": Metric.defaultOrder, "metricsHidden": "",
-            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false,
+            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false,
             "warnCPU": 85.0, "warnTemp": 95.0, "warnPing": 100.0,
             // Menubalk
             "menubarMetrics": "cpu", "menubarMetricsHidden": "", "menubarStyle": "text", "menubarSplit": false,

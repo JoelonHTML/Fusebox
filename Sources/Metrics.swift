@@ -68,6 +68,7 @@ struct MetricRowData {
     var level = 0, sideLevel = 0        // 0 normaal, 1 let op, 2 hoog
     var detail = ""                     // (niet meer op de Live-pagina; voor andere plekken)
     var values: [Double] = [], second: [Double] = []
+    var cores: [Double] = []            // CPU per kern (staafjes onder de grafiek, M+)
     var top: Double? = 100, bottom = 0.0
     var valueSize: CGFloat = 30
 }
@@ -90,7 +91,7 @@ extension Metric {
                                  side: deg(s.temp), template: abs ? "88.8" : "100%",
                                  level: lvl(s.cpu, warnCPU, warnCPU + 10), sideLevel: lvl(s.temp ?? 0, warnTemp, warnTemp + 10),
                                  detail: abs ? "\(pct(s.cpu)) · hottest core \(deg(s.temp))" : "\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores · hottest core \(deg(s.temp))",
-                                 values: h.map(\.cpu))
+                                 values: h.map(\.cpu), cores: d.bool(forKey: "perCore") ? s.cores : [])
         case .gpu:
             return MetricRowData(label: abbr, value: pct(s.gpu), side: deg(s.gpuTemp), level: lvl(s.gpu, 90, 98), sideLevel: lvl(s.gpuTemp ?? 0, warnTemp, warnTemp + 10),
                                  detail: s.gpuTemp.map { "temperature \(deg($0))" } ?? "", values: h.map(\.gpu))

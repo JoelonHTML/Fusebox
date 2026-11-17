@@ -23,6 +23,7 @@ struct Sample {
     var charging = false
     var fans: [FanReading] = []                // per ventilator; leeg op Macs zonder ventilator
     var fanRPM: Double?                        // gemiddelde toeren van alle ventilatoren
+    var cores: [Double] = []                   // procent per kern (instelling "perCore"; leeg als die uit staat)
 
     static let stamp: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f }()
     static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb\n"
@@ -150,6 +151,7 @@ final class Sampler {
     private let host = mach_host_self()
     private let smc = SMC()
     private var lastTicks: (UInt32, UInt32, UInt32, UInt32)?
+    private var lastCores: [UInt32]?
     private var lastNet: [String: (i: UInt32, o: UInt32)] = [:]
     private var lastTime = Date()
     private var diskFreeGB = 0.0, diskTotalGB = 0.0, diskAt = Date.distantPast
@@ -172,6 +174,17 @@ final class Sampler {
             s.cpu = total > 0 ? busy / total * 100 : 0
         }
         lastTicks = t
+
+        // Per kern (alleen als de instelling aan staat): zelfde delta, maar per processor
+        if UserDefaults.standard.bool(forKey: "perCore") {
+            var info: processor_info_array_t?, count = mach_msg_type_number_t(0), ncpu = natural_t(0)
+            if host_processor_info(host, PROCESSOR_CPU_LOAD_INFO, &ncpu, &info, &count) == KERN_SUCCESS, let info {
+                let now = (0..<Int(count)).map { UInt32(bitPattern: info[$0]) }
+                vm_deallocate(mach_task_self_, vm_address_t(bitPattern: info), vm_size_t(Int(count) * MemoryLayout<integer_t>.stride))
+                if let l = lastCores { s.cores = Self.coreLoad(now, l) }
+                lastCores = now
+            }
+        } else { lastCores = nil }
 
         // Geheugen: zelfde formule als "Gebruikt geheugen" in Activiteitenweergave
         var vm = vm_statistics64()
@@ -239,6 +252,23 @@ final class Sampler {
         Self.battery(into: &s)
         return s
     }
+
+    /// Tick-tellers (user, system, idle, nice per kern, plat achter elkaar) → procent bezet per kern.
+    static func coreLoad(_ now: [UInt32], _ last: [UInt32]) -> [Double] {
+        guard now.count == last.count else { return [] }
+        let st = Int(CPU_STATE_MAX)
+        return stride(from: 0, to: now.count - st + 1, by: st).map { i in
+            let d = (0..<st).map { Double(now[i + $0] &- last[i + $0]) }
+            let total = d.reduce(0, +)
+            return total > 0 ? (total - d[Int(CPU_STATE_IDLE)]) / total * 100 : 0
+        }
+    }
+
+    /// Aantal zuinige kernen; die staan vooraan in de processorlijst (gecontroleerd via ioreg cluster-type). 0 = geen P/E-indeling.
+    static let efficiencyCores: Int = {
+        var n: Int32 = 0, size = MemoryLayout<Int32>.size
+        return sysctlbyname("hw.perflevel1.logicalcpu", &n, &size, nil, 0) == 0 ? Int(n) : 0
+    }()
 
     static func diskBytes() -> (r: UInt64, w: UInt64) {
         var it: io_iterator_t = 0
