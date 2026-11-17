@@ -31,7 +31,8 @@ struct NetworkView: View {
             InternetPanel(wide: width >= .kind)
             toolbar(all)
             if scanner.localBlocked { blockedHint }
-            columnHeader.padding(.horizontal, tight ? 0 : 10)
+            // Rechts 14 pt extra (ook in de kop, zodat de kolommen gelijk blijven): ruimte voor de scrollbalk
+            columnHeader.padding(.horizontal, tight ? 0 : 10).padding(.trailing, 14)
             ScrollView {
                 LazyVStack(spacing: tight ? 0 : 6) {
                     ForEach(Array(rows.enumerated()), id: \.element.id) { i, d in
@@ -48,6 +49,7 @@ struct NetworkView: View {
                             .font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
                     }
                 }
+                .padding(.trailing, 14)
             }
         }
         .padding(.horizontal, 12).padding(.bottom, 10)

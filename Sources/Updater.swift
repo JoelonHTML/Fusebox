@@ -24,6 +24,34 @@ import AppKit
     }
     private var auto: Bool { UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true }
 
+    // MARK: Changelog (release-notes van GitHub, zo hoef je ze maar op één plek te schrijven)
+
+    struct Release: Identifiable, Equatable { let id: String; let title: String; let date: Date?; let notes: String }
+    /// nil = laden, [] = mislukt (wordt bij de volgende keer openen opnieuw geprobeerd)
+    @Published private(set) var changelog: [Release]?
+
+    func loadChangelog() {
+        guard changelog?.isEmpty != false, let repo = Self.repo else { return }
+        changelog = nil
+        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=15")!, timeoutInterval: 20)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("Fusebox-Updater", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            let list = Self.parseReleases(data)
+            Task { @MainActor in self.changelog = list }
+        }.resume()
+    }
+
+    nonisolated static func parseReleases(_ data: Data?) -> [Release] {
+        guard let data, let a = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
+        return a.compactMap { j in
+            guard let tag = j["tag_name"] as? String, j["draft"] as? Bool != true else { return nil }
+            let title = (j["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Fusebox \(pretty(tag))"
+            let date = (j["published_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
+            return Release(id: tag, title: title, date: date, notes: (j["body"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
+        }
+    }
+
     /// Eén keer bij het opstarten aanroepen.
     func start() {
         guard Self.repo != nil, timer == nil else { return }
@@ -151,6 +179,8 @@ import AppKit
     nonisolated static func selfTest() {
         precondition(buildNumber(in: "v0.1-beta-202611162309") == 202611162309, "tag")
         precondition(buildNumber(in: "v0.1-beta") == nil, "kort")
+        let rels = parseReleases(Data(#"[{"tag_name":"v0.2-beta-202611162352","name":"Fusebox 0.2 beta","published_at":"2026-11-16T22:52:00Z","body":"New stuff."},{"tag_name":"v0.3-beta-202612010000","draft":true}]"#.utf8))
+        precondition(rels.count == 1 && rels[0].title == "Fusebox 0.2 beta" && rels[0].date != nil && rels[0].notes == "New stuff.", "changelog")
         precondition(pretty("v0.1-beta-202611162337") == "0.1 beta" && pretty("v1.0-202701010000") == "1.0", "mooie naam")
         let json = #"{"tag_name":"v1.2-202611200101","assets":[{"name":"Fusebox.zip","browser_download_url":"https://github.com/x/y/releases/download/v1.2-202611200101/Fusebox.zip"}]}"#
         precondition(parseRelease(Data(json.utf8))?.build == 202611200101, "release")

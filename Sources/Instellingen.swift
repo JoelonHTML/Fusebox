@@ -275,6 +275,7 @@ struct LookSettings: View {
         Section {
             Toggle("Always on top", isOn: $onTop)
             KeepRunningToggle()
+            HotkeyRecorder()
             DockToggle()
             LoginToggle()
         } header: {
@@ -551,12 +552,44 @@ struct AboutSettings: View {
                 Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 56, height: 56)
                 VStack(alignment: .leading, spacing: 2) {
                     Text("Fusebox").font(.title3.weight(.semibold))
-                    Text("Version \(Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–")").foregroundStyle(.secondary)
+                    Text("Version \(Updater.currentVersion)").foregroundStyle(.secondary)
                 }
             }
             Text("A lightweight activity monitor for your Mac: live measurements, apps and advice.").foregroundStyle(.secondary)
         }
         UpdateSection()
+        ChangelogSection()
+    }
+}
+
+/// Wat er nieuw is per versie: de release-notes van GitHub.
+struct ChangelogSection: View {
+    @ObservedObject private var updater = Updater.shared
+
+    var body: some View {
+        Section("What's new") {
+            switch updater.changelog {
+            case nil: Text("Loading…").foregroundStyle(.secondary)
+            case let list? where list.isEmpty: Text("Couldn't load the changelog. Check your internet connection.").foregroundStyle(.secondary)
+            case let list?:
+                ForEach(list) { r in
+                    VStack(alignment: .leading, spacing: 4) {
+                        HStack(spacing: 6) {
+                            Text(r.title).font(.headline)
+                            if Updater.buildNumber(in: r.id) == Updater.currentBuild {
+                                Text("Installed").font(.caption.weight(.medium)).padding(.horizontal, 6).padding(.vertical, 1)
+                                    .background(.tint.opacity(0.15), in: .capsule)
+                            }
+                            Spacer()
+                            if let d = r.date { Text(d, format: .dateTime.day().month().year()).font(.caption).foregroundStyle(.secondary) }
+                        }
+                        if !r.notes.isEmpty { Text(.init(r.notes)).foregroundStyle(.secondary).textSelection(.enabled) }
+                    }
+                    .padding(.vertical, 2)
+                }
+            }
+        }
+        .task { updater.loadChangelog() }
     }
 }
 

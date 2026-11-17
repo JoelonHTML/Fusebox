@@ -19,6 +19,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        Hotkey.apply()   // sneltoets om Fusebox te tonen/verbergen
         MainActor.assumeIsolated { Updater.shared.start() }   // automatisch bijwerken via GitHub Releases
         let d = UserDefaults.standard
         guard !d.bool(forKey: "loginRefreshedFusebox") else { return }
@@ -109,6 +110,7 @@ struct MeterkastApp: App {
         NetScanner.selfTest()
         Installer.selfTest()
         Updater.selfTest()
+        Hotkey.selfTest()
         let s = Sampler()
         _ = s.sample()
         let m = AppMonitor()

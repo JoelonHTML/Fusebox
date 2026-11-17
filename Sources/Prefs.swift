@@ -12,6 +12,7 @@ enum Prefs {
             "theme": "instrument", "appearanceMode": "system", "accent": "", "textScale": 1.0, "numberStyle": "fade",
             "page": "live", "settingsTab": "profile",
             "dockIcon": true, "keepRunning": true, "autoUpdate": true, "onTop": false,
+            "hotkeyCode": 3, "hotkeyMods": 6400, "hotkeyLabel": "⌃⌥⌘F",   // F met ⌃⌥⌘ (Carbon: 4096+2048+256)
             // Live-pagina
             "metrics": Metric.defaultOrder, "metricsHidden": "",
             "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false,

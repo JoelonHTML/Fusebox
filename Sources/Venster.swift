@@ -28,7 +28,7 @@ enum Page: String, CaseIterable, Identifiable {
         case .overview: NSSize(width: 300, height: 340)
         case .programs: NSSize(width: 640, height: 600)
         case .analysis: NSSize(width: 760, height: 720)   // opent in 2 kolommen
-        case .network: NSSize(width: 820, height: 780)
+        case .network: NSSize(width: 850, height: 620)
         }
     }
 }
@@ -119,6 +119,7 @@ struct RootView: View {
             requestFit()
         })
         .onAppear {
+            Hotkey.openMain = { [openWindow] in openWindow(id: "main") }
             if !pages.contains(page) { page = pages[0] }
             meter.programsVisible = page == .programs
             // Bij herstelde vensters negeert macOS `defaultLaunchBehavior`; daarom hier expliciet (eenmalig per start).
