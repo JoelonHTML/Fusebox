@@ -61,6 +61,8 @@ struct SettingsView: View {
                 .navigationTitle(tab.title)
         }
         .frame(width: 740, height: 560)
+        // Elke keer dat Settings opent: naast het Fusebox-venster, niet waar macOS hem toevallig neerzet
+        .background(WindowGrabber { SettingsPlacement.place($0) })
         .preferredColorScheme(mode.scheme)   // Settings volgt Licht/Donker van Fusebox, niet alleen van macOS
     }
 
@@ -743,6 +745,33 @@ struct LowImpactPicker: View {
         }
         .pickerStyle(.segmented)
         .onReceive(NotificationCenter.default.publisher(for: LowImpact.changed)) { _ in on = LowImpact.on }
+    }
+}
+
+/// Settings naast het hoofdvenster: rechts als het past, anders links, anders eroverheen (gecentreerd). Bovenkanten gelijk.
+enum SettingsPlacement {
+    @MainActor static func place(_ set: NSWindow) {
+        guard let main = NSApp.windows.first(where: { $0.identifier?.rawValue.hasPrefix("main") == true && $0.isVisible }),
+              let screen = main.screen?.visibleFrame else { return }
+        set.setFrameOrigin(origin(main: main.frame, size: set.frame.size, screen: screen))
+    }
+
+    static func origin(main m: NSRect, size s: NSSize, screen v: NSRect) -> NSPoint {
+        let gap: CGFloat = 12
+        let x: CGFloat
+        if m.maxX + gap + s.width <= v.maxX { x = m.maxX + gap }
+        else if m.minX - gap - s.width >= v.minX { x = m.minX - gap - s.width }
+        else { x = min(max(m.midX - s.width / 2, v.minX), v.maxX - s.width) }
+        let top = min(m.maxY, v.maxY)
+        return NSPoint(x: x, y: max(top - s.height, v.minY))
+    }
+
+    static func selfTest() {
+        let v = NSRect(x: 0, y: 0, width: 1710, height: 1070), s = NSSize(width: 740, height: 600)
+        precondition(origin(main: NSRect(x: 35, y: 400, width: 316, height: 670), size: s, screen: v) == NSPoint(x: 363, y: 470), "rechts")
+        precondition(origin(main: NSRect(x: 1300, y: 400, width: 400, height: 670), size: s, screen: v).x == 548, "links")
+        precondition(origin(main: NSRect(x: 0, y: 0, width: 1710, height: 1070), size: s, screen: v) == NSPoint(x: 485, y: 470), "eroverheen")
+        print("settings plek: ok")
     }
 }
 

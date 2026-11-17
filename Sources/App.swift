@@ -118,6 +118,7 @@ struct MeterkastApp: App {
         Prefs.selfTest()
         Alert.selfTest()
         LowImpact.selfTest()
+        SettingsPlacement.selfTest()
         LiveLayout.selfTest()
         Analysis.selfTest()
         Diag.selfTest()
