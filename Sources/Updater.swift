@@ -55,6 +55,7 @@ import AppKit
     /// Eén keer bij het opstarten aanroepen.
     func start() {
         guard Self.repo != nil, timer == nil else { return }
+        announceIfUpdated()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in self?.check(userInitiated: false) }
         let t = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in Task { @MainActor in self?.check(userInitiated: false) } }
         t.tolerance = 60   // 4 vragen per uur; GitHub staat er 60 per uur toe zonder inloggen
@@ -96,6 +97,38 @@ import AppKit
         d.set(tag, forKey: "notifiedUpdate")
         Notify.send(title: "Fusebox \(Self.pretty(tag)) is available",
                     body: auto ? "Installing now. Fusebox restarts in a moment." : "Open Settings › About to install it.")
+    }
+
+    /// Eerste start na een update: één melding met in een paar woorden wat er nieuw is, knop naar de changelog.
+    private func announceIfUpdated() {
+        let d = UserDefaults.standard, seen = d.integer(forKey: "lastSeenBuild"), now = Self.currentBuild
+        d.set(now, forKey: "lastSeenBuild")
+        // Verse installatie (setup nog niet gedaan): niets melden. Oudere versies onthielden de build nog niet (seen = 0).
+        guard now > seen, seen > 0 || d.bool(forKey: "setupDone"), d.bool(forKey: "notify"), let repo = Self.repo else { return }
+        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=10")!, timeoutInterval: 20)
+        req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
+        req.setValue("Fusebox-Updater", forHTTPHeaderField: "User-Agent")
+        URLSession.shared.dataTask(with: req) { data, _, _ in
+            let list = Self.parseReleases(data)
+            let mine = list.first { Self.buildNumber(in: $0.id) == now } ?? list.first
+            let version = mine.map { Self.pretty($0.id) } ?? ""
+            Notify.send(title: "Fusebox updated\(version.isEmpty ? "" : " to \(version)")",
+                        body: mine.map { Self.summary($0.notes) }.flatMap { $0.isEmpty ? nil : $0 } ?? "See what's new in Settings › About.",
+                        category: Notify.whatsNew)
+        }.resume()
+    }
+
+    /// Release-notes → een paar woorden: de eerste drie punten, elk tot de eerste ":" of "—", met " · " ertussen.
+    nonisolated static func summary(_ notes: String) -> String {
+        let lines = notes.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
+        let bullets = lines.filter { $0.hasPrefix("- ") || $0.hasPrefix("* ") }.map { String($0.dropFirst(2)) }
+        guard !bullets.isEmpty else { return String((lines.first ?? "").prefix(110)) }
+        let short = bullets.prefix(3).map { b -> String in
+            let cut = b.firstRange(of: ":")?.lowerBound ?? b.firstRange(of: " — ")?.lowerBound ?? b.endIndex
+            return String(b[..<cut]).trimmingCharacters(in: .whitespaces)
+        }
+        let s = short.joined(separator: " · ")
+        return s.count > 110 ? String(s.prefix(107)) + "…" : s
     }
 
     /// "v0.1-beta-202611162337" → "0.1 beta"
@@ -193,6 +226,7 @@ import AppKit
     nonisolated static func selfTest() {
         precondition(buildNumber(in: "v0.1-beta-202611162309") == 202611162309, "tag")
         precondition(buildNumber(in: "v0.1-beta") == nil, "kort")
+        precondition(summary("- Docked: see what's plugged in\n- Much lighter — 5% CPU\n- Fonts: six choices\n- More") == "Docked · Much lighter · Fonts", "samenvatting")
         let rels = parseReleases(Data(#"[{"tag_name":"v0.2-beta-202611162352","name":"Fusebox 0.2 beta","published_at":"2026-11-16T22:52:00Z","body":"New stuff."},{"tag_name":"v0.3-beta-202612010000","draft":true}]"#.utf8))
         precondition(rels.count == 1 && rels[0].title == "Fusebox 0.2 beta" && rels[0].date != nil && rels[0].notes == "New stuff.", "changelog")
         precondition(pretty("v0.1-beta-202611162337") == "0.1 beta" && pretty("v1.0-202701010000") == "1.0", "mooie naam")

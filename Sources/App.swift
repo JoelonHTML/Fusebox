@@ -7,6 +7,16 @@ import UserNotifications
 /// Venster dicht ≠ app stoppen: zo blijft Meterkast meten (instelling "keepRunning", standaard aan). Alleen ⌘Q stopt echt.
 final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCenterDelegate {
     /// Meldingen ook tonen als Fusebox vooraan staat (anders laat macOS ze stil weg).
+    /// Klik op "Wat is er nieuw"-melding (of de knop): Settings › About met de changelog openen.
+    func userNotificationCenter(_ center: UNUserNotificationCenter, didReceive response: UNNotificationResponse) async {
+        guard response.notification.request.content.categoryIdentifier == Notify.whatsNew else { return }
+        await MainActor.run {
+            UserDefaults.standard.set("about", forKey: "settingsTab")
+            NSApp.activate()
+            NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+        }
+    }
+
     func userNotificationCenter(_ center: UNUserNotificationCenter, willPresent notification: UNNotification) async -> UNNotificationPresentationOptions {
         [.banner, .sound]
     }
@@ -19,6 +29,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         UNUserNotificationCenter.current().delegate = self
+        Notify.registerCategories()
         Hotkey.apply()   // sneltoets om Fusebox te tonen/verbergen
         // Meldingen aan maar nog nooit toestemming gevraagd? Dan laat macOS ze stil vallen. Vraagt alleen de eerste keer echt.
         if UserDefaults.standard.bool(forKey: "notify") { Notify.ask() }

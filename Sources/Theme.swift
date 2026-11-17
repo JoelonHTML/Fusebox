@@ -294,8 +294,14 @@ extension Color {
 /// Meldingen (macOS Berichtgeving).
 enum Notify {
     static func ask() { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in } }
-    static func send(title: String, body: String) {
+    static let whatsNew = "whatsnew"   // categorie met knop "What's new" → changelog in Settings › About
+    static func registerCategories() {
+        let open = UNNotificationAction(identifier: "open", title: "What's new", options: [.foreground])
+        UNUserNotificationCenter.current().setNotificationCategories([UNNotificationCategory(identifier: whatsNew, actions: [open], intentIdentifiers: [])])
+    }
+    static func send(title: String, body: String, category: String? = nil) {
         let c = UNMutableNotificationContent(); c.title = title; c.body = body
+        if let category { c.categoryIdentifier = category }
         UNUserNotificationCenter.current().add(UNNotificationRequest(identifier: UUID().uuidString, content: c, trigger: nil))
     }
 }
