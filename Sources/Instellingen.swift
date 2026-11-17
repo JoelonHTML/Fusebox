@@ -246,7 +246,7 @@ struct ProfileSettings: View {
             }
             if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
         }
-        Section { LowImpactPicker() }
+        Section { LowImpactPicker(); SmoothBigToggle() }
         Section("Share with friends") {
             HStack {
                 Button("Share my settings…") { Prefs.shareDialog() }
@@ -743,6 +743,17 @@ struct LowImpactPicker: View {
         }
         .pickerStyle(.segmented)
         .onReceive(NotificationCenter.default.publisher(for: LowImpact.changed)) { _ in on = LowImpact.on }
+    }
+}
+
+/// Grote grafieken (detail, groot venster) laten glijden in plaats van per meting verspringen.
+struct SmoothBigToggle: View {
+    @AppStorage("smoothBig") private var on = false
+    var body: some View {
+        Toggle(isOn: $on) {
+            Text("Smooth large graphs")
+            Text("Large graphs glide instead of stepping with each measurement. Uses a bit more GPU, more so in a big window.")
+        }
     }
 }
 
