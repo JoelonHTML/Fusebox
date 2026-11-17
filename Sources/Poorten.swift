@@ -19,25 +19,26 @@ struct PortsView: View {
 
 struct PortsContent: View {
     let snap: PortsSnapshot, loaded: Bool
-    @State private var internals = false
+    @AppStorage("dockedInternals") private var internals = false   // keuze onthouden
     @Environment(\.theme) private var theme
 
     var body: some View {
         let sums = PortSum.all(snap)
         VStack(alignment: .leading, spacing: 14) {
             IntoMac(snap: snap, sums: sums).padding(.top, 2)
+            // Bovenaan (onder de kop): hubs en interne onderdelen van een dock tonen/verbergen
+            HStack(spacing: 14) {
+                Spacer(minLength: 0)
+                Button { withAnimation(.snappy(duration: 0.25)) { internals.toggle() } } label: {
+                    Label(internals ? "Hide hubs & internals" : "Show hubs & internals", systemImage: "point.3.filled.connected.trianglepath.dotted")
+                        .font(theme.label(11)).foregroundStyle(theme.onRow(true)).contentShape(.rect)
+                }
+                .buttonStyle(.plain)
+            }
             if loaded && snap.ports.isEmpty {
                 Text("No USB-C or MagSafe ports found on this Mac.").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
             }
             DockedList(groups: PortTree.build(sums, internals: internals), empty: sums.filter { !$0.port.connected }, sums: sums)
-            HStack(spacing: 14) {
-                Button { withAnimation(.snappy(duration: 0.25)) { internals.toggle() } } label: {
-                    Label(internals ? "Hide hubs & internals" : "Show hubs & internals", systemImage: "point.3.filled.connected.trianglepath.dotted")
-                        .font(theme.label(10)).foregroundStyle(theme.onRow(true)).contentShape(.rect)
-                }
-                .buttonStyle(.plain)
-                Spacer(minLength: 0)
-            }
             otherDevices
         }
     }
