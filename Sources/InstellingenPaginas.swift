@@ -126,7 +126,7 @@ struct CheckupSettings: View {
 
     /// Zelfde ids als ReportSections.Part in Analyse.swift.
     private static let parts = [("score", "Health score"), ("tops", "Top apps"), ("runtime", "Running time"), ("battery", "Battery"),
-                                ("busy", "Busy moments"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log")]
+                                ("busy", "Busy moments"), ("peaks", "Peaks"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log")]
 
     var body: some View {
         Section("When you open Checkup") {
@@ -212,6 +212,7 @@ struct DockedSettings: View {
     @AppStorage("dockedEmpty") private var showEmpty = true
     @AppStorage("dockedBytes") private var bytes = false
     @AppStorage("dockedDisplays") private var displays = true
+    @AppStorage("dockedWireless") private var wireless = true
 
     var body: some View {
         Section("Ports") {
@@ -226,6 +227,12 @@ struct DockedSettings: View {
             Toggle(isOn: $displays) {
                 Text("Show displays")
                 Text("External monitors under the port or DisplayLink dock that drives them, with resolution and refresh rate.")
+            }
+        }
+        Section("Wireless") {
+            Toggle(isOn: $wireless) {
+                Text("Show wireless")
+                Text("Bluetooth devices with battery, and a row when your internet runs through a phone hotspot or mobile modem.")
             }
         }
         Section("Speed") {

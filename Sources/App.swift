@@ -131,7 +131,9 @@ struct MeterkastApp: App {
         var weird = Sample(); weird.diskRead = 9.2e18; weird.down = .infinity
         precondition(weird.csv.contains(",1000000000000000,"), "csv begrensd")
         Ports.selfTest()
+        SelfLog.selfTest()
         Spark.selfTest()
+        Peaks.selfTest()
         Installed.selfTest()
         let s = Sampler()
         _ = s.sample()

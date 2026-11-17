@@ -31,6 +31,8 @@ final class Meter: ObservableObject {
     func refresh() { objectWillChange.send() }
     /// Programma's: `ui` ververst elke 2 s zolang die pagina open is; `minuteApps` meet per minuut voor de log/analyse.
     let ui = AppMonitor(network: true), minuteApps = AppMonitor()
+    /// Pieken en wat ze veroorzaakte (Pieken.swift).
+    lazy var peaks = PeakWatch { [unowned self] in self.file(for: $0, prefix: "peaks") }
     /// Bij openen van de Programs-pagina meteen meten, zodat de lijst niet 2 s leeg is.
     var programsVisible = false {
         didSet {
@@ -157,6 +159,7 @@ final class Meter: ObservableObject {
         // Het laatste uur bewaren: op tijd (het meettempo wisselt), met een harde grens voor als de klok verzet wordt
         if let i = recent.firstIndex(where: { s.time.timeIntervalSince($0.time) <= 3600 }), i > 0 { recent.removeFirst(i) }
         if recent.count > 1800 { recent.removeFirst(recent.count - 1800) }
+        peaks.feed(s, recent: recent)
         buffer += s.csv
         if s.time.timeIntervalSince(lastFlush) >= 60 { flush() }
         lowImpactCheck()   // accu onder de 20% gezakt of weer aan de lader
@@ -190,7 +193,10 @@ final class Meter: ObservableObject {
 
     /// Elke minuut (programma's zijn net gemeten): top naar apps-CSV schrijven, en zo nodig een melding geven.
     private func minuteTasks(_ s: Sample) {
+        let selfFile = file(for: s.time, prefix: "self")
+        Task { @MainActor in SelfLog.record(s, to: selfFile) }   // beta: eigen verbruik per minuut (EigenVerbruik.swift)
         let apps = minuteApps.apps
+        peaks.minute(apps, at: s.time)
         do {   // loggen staat altijd aan
             // Top 10 processor + top 10 geheugen, plus elke open app (dan klopt "hoe lang open" op de app-pagina)
             let top = Set(apps.sorted { $0.cpu > $1.cpu }.prefix(10).map(\.id) + apps.sorted { $0.memGB > $1.memGB }.prefix(10).map(\.id))
@@ -236,7 +242,7 @@ final class Meter: ObservableObject {
         let cutoff = days.flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: Calendar.current.startOfDay(for: Date())) }
         for u in files where u.pathExtension == "csv" {
             let name = u.deletingPathExtension().lastPathComponent
-            guard name.hasPrefix("meterkast-") || name.hasPrefix("apps-"), let day = f.date(from: String(name.suffix(10))) else { continue }
+            guard name.hasPrefix("meterkast-") || name.hasPrefix("apps-") || name.hasPrefix("peaks-") || name.hasPrefix("self-"), let day = f.date(from: String(name.suffix(10))) else { continue }
             if cutoff.map({ day < $0 }) ?? true { try? fm.removeItem(at: u) }
         }
     }

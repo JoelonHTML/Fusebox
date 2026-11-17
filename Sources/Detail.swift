@@ -9,8 +9,10 @@ struct MetricDetail: View {
     @EnvironmentObject var meter: Meter
     @Environment(\.theme) private var theme
     let metric: Metric
+    var focus: Peak? = nil                             // geopend via een piek: die aanwijzen
     let close: () -> Void
     @State private var range = TimeRange.fiveMin
+    @State private var selected: String?               // aangeklikte piek in de lijst → oplichten in de grafiek
     @State private var height: CGFloat = 400
     @State private var battery: Diag.Battery?          // gezondheid: één keer ophalen bij openen
     @AppStorage("shortMinutes") private var shortMinutes = 5   // zodat "5 min" meteen klopt na wijzigen
@@ -33,12 +35,17 @@ struct MetricDetail: View {
                     if r.values.count > 1 {
                         SparkView(values: r.values, second: r.second, top: r.top, bottom: r.bottom, fill: 1, axis: nil)
                             .id(range)   // andere periode: niet laten glijden maar meteen tekenen
+                            .overlay { highlight(h) }
+                            .padding(.top, PeakHover.band)   // vaste strook boven de grafiek voor het label
+                            .overlay { PeakHover(ctx: PeakContext(metric: metric, watch: meter.peaks, times: h.map(\.time)), values: r.values, second: r.second,
+                                                 full: true, temp: r.graphIsTemp, color: theme.rowStyle == .blocks ? .white : theme.accent) }
                     } else {
                         Text("Collecting data…").font(theme.label(12)).foregroundStyle(theme.secondary).frame(maxWidth: .infinity, maxHeight: .infinity)
                     }
                 }
                 .frame(height: max(110, height * 0.34))
                 stats(r)
+                if !metric.peakKinds.isEmpty { peakList(h) }
                 extras(s, h)
             }
             .padding(.horizontal, 14).padding(.bottom, 14)
@@ -47,6 +54,12 @@ struct MetricDetail: View {
         .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height = $0 }
         .background { Button("", action: close).keyboardShortcut(.cancelAction).hidden() }   // Esc = terug
         .task { if metric == .battery { battery = await Task.detached { Diag.battery() }.value } }
+        .onAppear {
+            guard let f = focus else { return }
+            let ago = Date().timeIntervalSince(f.start)
+            range = ago < Double(TimeRange.shortMinutes * 60) - 10 ? .fiveMin : ago < 3590 ? .hour : .today
+            selected = f.id
+        }
     }
 
     // MARK: Kop en hoofdwaarde
@@ -115,6 +128,49 @@ struct MetricDetail: View {
                 Text(value).font(theme.number(16)).foregroundStyle(theme.onRow()).lineLimit(1).minimumScaleFactor(0.6)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    // MARK: Pieken
+
+    /// Pieken in de gekozen periode, nieuwste eerst; klik = oplichten in de grafiek.
+    private func peakList(_ h: [Sample]) -> some View {
+        let list = Array(meter.peaks.peaks(metric, since: h.first?.time).reversed())
+        return card {
+            VStack(alignment: .leading, spacing: 6) {
+                Text("Peaks").font(theme.label(11)).foregroundStyle(theme.onRow(true))
+                if list.isEmpty { Text("No peaks in this period").font(theme.label(12)).foregroundStyle(theme.secondary) }
+                ForEach(list.prefix(12)) { p in
+                    Button { selected = selected == p.id ? nil : p.id } label: {
+                        HStack(spacing: 8) {
+                            Text(Peaks.clock.string(from: p.at)).font(theme.number(12)).foregroundStyle(theme.onRow())
+                            Text(Peaks.length(p.seconds)).font(theme.number(12)).foregroundStyle(theme.onRow(true))
+                            Text((metric == .cpu ? p.kind.title + " " : "") + p.kind.format(p.top)).font(theme.number(12)).foregroundStyle(theme.onRow())
+                            Spacer(minLength: 6)
+                            Text(p.cause ?? "–").font(theme.label(12)).foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.middle)
+                        }
+                        .padding(.vertical, 2).padding(.horizontal, 4)
+                        .background(selected == p.id ? theme.accent.opacity(0.18) : .clear, in: .rect(cornerRadius: 4))
+                        .contentShape(.rect)
+                    }
+                    .buttonStyle(.plain)
+                    .help("Show in the graph")
+                }
+            }
+        }
+    }
+
+    /// De aangeklikte piek als band in de grafiek (punten liggen op gelijke afstand, net als in de grafiek zelf).
+    @ViewBuilder private func highlight(_ h: [Sample]) -> some View {
+        let times = h.map(\.time)
+        if let id = selected, times.count > 1, let p = meter.peaks.peaks(metric, since: times.first).first(where: { $0.id == id }),
+           let a = Peaks.index(of: p.start, in: times), let b = Peaks.index(of: p.end, in: times) {
+            GeometryReader { g in
+                let step = g.size.width / CGFloat(times.count - 1)
+                let x = CGFloat(a) * step, w = max(CGFloat(b - a) * step, 4)
+                Rectangle().fill(theme.accent.opacity(0.22)).frame(width: w).offset(x: min(x - 2, g.size.width - w))
+            }
+            .allowsHitTesting(false)
         }
     }
 
@@ -242,15 +298,7 @@ struct MetricDetail: View {
 
     private func card(@ViewBuilder _ c: @escaping () -> some View) -> some View { DetailCard(content: c) }
 
-    private func fmt(_ v: Double) -> String {
-        if graphTemp { return deg(v) }
-        return switch metric {
-        case .cpu, .gpu, .battery: pct(v)
-        case .ram, .ssd: "\(one(v)) GB"
-        case .net, .io: rate(v)
-        case .fan: "\(Int(v.rounded())) rpm"
-        }
-    }
+    private func fmt(_ v: Double) -> String { metric.format(v, temp: graphTemp) }
 }
 
 extension String {

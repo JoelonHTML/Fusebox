@@ -79,6 +79,7 @@ fileprivate struct Report: Sendable {
     var apps: [AppStat] = []
     var topCPU: [AppStat] = [], topRAM: [AppStat] = [], topSeen: [AppStat] = [], topEnergy: [AppStat] = []
     var busy: [Busy] = []
+    var peaks: [Peak] = [], peakFrom: Date?, peakDays = 1   // uit peaks-*.csv; tijdlijn vanaf `peakFrom`
     var events: [Event] = []
     var files: [LogFile] = []
     var leaks: [Diag.Leak] = [], runaways: [Diag.Run] = []
@@ -260,7 +261,10 @@ enum Analysis {
         let current = dates(p.offsets, now: now)
         var r = report(merge(current.map { day($0, dir: dir) }))
         r.prevScore = score(merge(dates(p.previous, now: now).map { day($0, dir: dir) }).minutes).score
-        r.files = current.flatMap { d in ["meterkast", "apps"].compactMap { prefix -> LogFile? in
+        r.peaks = current.flatMap { Peaks.parse((try? String(contentsOf: dir.appendingPathComponent("peaks-\(dayName($0)).csv"), encoding: .utf8)) ?? "") }
+        r.peakFrom = current.first.map { Calendar.current.startOfDay(for: $0) }
+        r.peakDays = current.count
+        r.files = current.flatMap { d in ["meterkast", "apps", "peaks"].compactMap { prefix -> LogFile? in
             let name = "\(prefix)-\(dayName(d)).csv"
             let size = (try? dir.appendingPathComponent(name).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? nil
             return size.map { LogFile(name: name, bytes: $0) }
@@ -758,13 +762,13 @@ private struct AnalysisPage: View, Equatable {
                 if columns == 3 {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops]) }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.runtime, .battery, .busy, .crashes]) }
+                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.runtime, .battery, .busy, .peaks, .crashes]) }
                         VStack(alignment: .leading, spacing: 10) { sections(tips, [.tips, .log]) }
                     }
                 } else if columns == 2 {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops, .runtime, .battery]) }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.busy, .crashes, .tips, .log]) }
+                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.busy, .peaks, .crashes, .tips, .log]) }
                     }
                 } else {
                     why
@@ -938,7 +942,7 @@ private struct AnalysisPage: View, Equatable {
 // MARK: - Score, toplijsten, looptijd, drukte, tips, logboek (ook gebruikt voor de PDF)
 
 fileprivate struct ReportSections: View {
-    enum Part: String, CaseIterable { case score, tops, runtime, battery, busy, crashes, tips, log }
+    enum Part: String, CaseIterable { case score, tops, runtime, battery, busy, peaks, crashes, tips, log }
     @Environment(\.theme) private var theme
     let report: Report, tips: [Tip], previousName: String, parts: [Part]
     let logDir: URL?                                   // nil = geen "Open logmap"-knop (PDF)
@@ -957,6 +961,7 @@ fileprivate struct ReportSections: View {
                 case .runtime: runtime
                 case .battery: if let b = report.battery { battery(b) }
                 case .busy: busy
+                case .peaks: peakSection
                 case .crashes: if let c = report.crashes, !c.isEmpty { crashes(c) }
                 case .tips: tipList
                 case .log: log
@@ -1072,6 +1077,26 @@ fileprivate struct ReportSections: View {
             Text("Busy moments").font(theme.label(12)).foregroundStyle(theme.onRow())
             if report.busy.isEmpty { Text("No long busy periods (≥ 5 min above 85% CPU)").foregroundStyle(theme.onRow(true)) }
             ForEach(report.busy) { Text(Analysis.busyLabel($0)).foregroundStyle(theme.onRow()) }
+        }
+        .font(theme.label(11)).frame(maxWidth: .infinity, alignment: .leading)
+        .themedRow(theme, index: 4)
+    }
+
+    /// Pieken van de periode: tijdlijn, wie ze veroorzaakte, en de laatste paar met oorzaak.
+    private var peakSection: some View {
+        let p = report.peaks
+        return VStack(alignment: .leading, spacing: 5) {
+            Text("Peaks").font(theme.label(12)).foregroundStyle(theme.onRow())
+            if p.isEmpty {
+                Text("No peaks recorded \(report.when) (CPU or GPU ≥ 80%, hot, memory pressure or heavy disk use)").foregroundStyle(theme.onRow(true))
+            } else {
+                if let from = report.peakFrom { PeakTimeline(peaks: p, from: from, days: report.peakDays).padding(.vertical, 2) }
+                ForEach(Peaks.summary(p, when: report.when), id: \.self) { Text($0).foregroundStyle(theme.onRow()) }
+                ForEach(p.suffix(6).reversed()) { x in
+                    Text("\(Analysis.span(x.start, x.end)) · \(x.kind.title) \(x.kind.format(x.top))" + (x.cause.map { " · \($0)" } ?? ""))
+                        .foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.middle)
+                }
+            }
         }
         .font(theme.label(11)).frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: 4)

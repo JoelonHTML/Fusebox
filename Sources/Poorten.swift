@@ -8,18 +8,25 @@ import SwiftUI
 
 struct PortsView: View {
     @StateObject private var watcher = PortWatcher()
+    @StateObject private var wireless = WirelessWatcher()
+    @AppStorage("dockedWireless") private var showWireless = true
     var body: some View {
+        let wl = showWireless ? WirelessTree.build(bt: wireless.bt, uplink: wireless.uplink, down: wireless.down, up: wireless.up) : ([], [])
         ScrollView {
-            PortsContent(snap: watcher.snap, loaded: watcher.loaded).padding(.horizontal, 12).padding(.bottom, 12)
+            PortsContent(snap: watcher.snap, loaded: watcher.loaded, wireless: wl, btCount: showWireless ? wireless.bt?.connected.count ?? 0 : 0)
+                .padding(.horizontal, 12).padding(.bottom, 12)
         }
         .clipped()   // niet onder de doorzichtige werkbalk doorschuiven
-        .onAppear { watcher.start() }
-        .onDisappear { watcher.stop() }
+        .onAppear { watcher.start(); if showWireless { wireless.start() } }
+        .onDisappear { watcher.stop(); wireless.stop() }
+        .onChange(of: showWireless) { _, on in if on { wireless.start() } else { wireless.stop() } }
     }
 }
 
 struct PortsContent: View {
     let snap: PortsSnapshot, loaded: Bool
+    var wireless: (groups: [TNode], paired: [TNode]) = ([], [])
+    var btCount = 0
     @AppStorage("dockedInternals") private var internals = false   // keuze onthouden
     @AppStorage("dockedEmpty") private var showEmpty = true         // lege poorten als één regel onderaan
     @AppStorage("dockedDisplays") private var showDisplays = true
@@ -28,7 +35,7 @@ struct PortsContent: View {
     var body: some View {
         let sums = PortSum.all(snap), displays = showDisplays ? snap.displays : []
         VStack(alignment: .leading, spacing: 14) {
-            IntoMac(snap: snap, sums: sums, displays: displays).padding(.top, 2)
+            IntoMac(snap: snap, sums: sums, displays: displays, bt: btCount).padding(.top, 2)
             // Bovenaan (onder de kop): hubs en interne onderdelen van een dock tonen/verbergen
             HStack(spacing: 14) {
                 Spacer(minLength: 0)
@@ -41,7 +48,8 @@ struct PortsContent: View {
             if loaded && snap.ports.isEmpty {
                 Text("No USB-C or MagSafe ports found on this Mac.").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
             }
-            DockedList(groups: PortTree.build(sums, internals: internals, displays: displays), empty: showEmpty ? sums.filter { !$0.port.connected } : [], sums: sums)
+            DockedList(groups: PortTree.build(sums, internals: internals, displays: displays), empty: showEmpty ? sums.filter { !$0.port.connected } : [], sums: sums,
+                       wireless: wireless.groups, paired: wireless.paired)
             otherDevices
         }
     }
@@ -64,6 +72,7 @@ struct PortsContent: View {
 
 private struct IntoMac: View {
     let snap: PortsSnapshot, sums: [PortSum], displays: [DisplayInfo]
+    var bt = 0
     @Environment(\.theme) private var theme
 
     var body: some View {
@@ -91,6 +100,7 @@ private struct IntoMac: View {
                 if let c = charger { stat("bolt.fill", "\(trim(c.maxW)) W", "charger") }
                 if let f = fastest { stat("arrow.left.arrow.right", speedParts(f).0 + " " + speedParts(f).1, "link") }
                 if devices > 0 { stat("point.3.connected.trianglepath.dotted", "\(devices)", devices == 1 ? "device" : "devices") }
+                if bt > 0 { stat("antenna.radiowaves.left.and.right", "\(bt)", "Bluetooth") }
                 if screens > 0 { stat("display.2", "\(screens)", screens == 1 ? "display" : "displays").help(displays.map(Displays.line).joined(separator: "\n")) }
             }
         }
@@ -132,6 +142,8 @@ struct TNode: Identifiable {
     var portID: String? = nil
     var usb: USBDev? = nil
     var display: DisplayInfo? = nil
+    var pairs: [RawLine] = []       // details als "naam  waarde" (draadloos)
+    var raw: [RawLine] = []
 }
 
 enum PortTree {
@@ -320,6 +332,13 @@ private struct NodeDetails: View {
         VStack(alignment: .leading, spacing: 8) {
             if let d = node.display { DisplayCard(d: d, sum: p) }
             else if let d = node.usb { DeviceCard(dev: d) }
+            else if !node.pairs.isEmpty {
+                Label(node.title, systemImage: node.icon).font(theme.label(14).weight(.semibold))
+                if let m = node.main { LoadView(m: m, size: 22) }
+                if let w = node.warn { NoteBox(note: PortNote(text: w, level: .warn)) }
+                VStack(alignment: .leading, spacing: 3) { ForEach(node.pairs, id: \.self) { PortFact($0.key, $0.value) } }
+                if !node.raw.isEmpty { Disclosure(title: "All values") { RawList(lines: node.raw) } }
+            }
             else if let p {
                 Label(node.kind == .cable ? "Cable in \(p.port.title)" : node.title, systemImage: node.icon)
                     .font(theme.label(13).weight(.semibold))
@@ -333,10 +352,11 @@ private struct NodeDetails: View {
 /// Breed: lijst links (niet breder dan nodig), details rechts. Smal: details onder de aangeklikte regel.
 private struct DockedList: View {
     let groups: [TNode], empty: [PortSum], sums: [PortSum]
+    var wireless: [TNode] = [], paired: [TNode] = []
     @State private var sel: String?
     @Environment(\.theme) private var theme
     var body: some View {
-        let picked = sel.flatMap { PortTree.find($0, in: groups) }
+        let picked = sel.flatMap { PortTree.find($0, in: groups + wireless + paired) }
         ViewThatFits(in: .horizontal) {
             HStack(alignment: .top, spacing: 16) {
                 list(inline: false).frame(maxWidth: 560)
@@ -359,6 +379,19 @@ private struct DockedList: View {
             if !empty.isEmpty {
                 Label(empty.map(\.port.title).joined(separator: " · ") + " · empty", systemImage: "circle.dashed")
                     .font(theme.label(11)).foregroundStyle(theme.onRow(true).opacity(0.75)).padding(.leading, 4)
+            }
+            // Draadloos: hotspot/modem en Bluetooth; gekoppelde maar niet verbonden apparaten ingeklapt
+            if !wireless.isEmpty || !paired.isEmpty {
+                Label("WIRELESS", systemImage: "wave.3.right").font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.top, 4)
+                ForEach(Array(wireless.enumerated()), id: \.element.id) { i, g in
+                    PortGroupList(root: g, sums: sums, sel: $sel, inline: inline).themedRow(theme, index: groups.count + i)
+                }
+                if !paired.isEmpty {
+                    Disclosure(title: "Bluetooth · paired, not connected", count: paired.count) {
+                        ForEach(paired) { PortGroupList(root: $0, sums: sums, sel: $sel, inline: inline) }
+                    }
+                    .padding(.leading, 4)
+                }
             }
         }
     }
