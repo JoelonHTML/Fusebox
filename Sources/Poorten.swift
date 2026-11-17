@@ -128,7 +128,7 @@ private struct IntoMac: View {
 // MARK: - Lijst per poort
 
 /// Wat er nu loopt naast wat maximaal kan (data in bit/s, stroom in W). `slow` = loopt duidelijk onder wat kan.
-struct LinkLoad { var now: Double?, max: Double?, power = false, slow = false, unit: String? = nil }
+struct LinkLoad { var now: Double?, max: Double?, power = false, slow = false, unit: String? = nil, icon: String? = nil }   // slow + icon: icoon en getal in waarschuwingskleur
 
 struct TNode: Identifiable {
     enum Kind { case port, cable, source, hub, device, tb, display }
@@ -304,6 +304,7 @@ private struct LoadView: View {
         let f: (Double) -> (String, String) = { x in m.unit.map { (trim(x), $0) } ?? (m.power ? (trim(x), "W") : speedParts(x)) }
         let small = theme.label(max(size * 0.5, 9))
         HStack(alignment: .firstTextBaseline, spacing: 3) {
+            if let i = m.icon { Image(systemName: i).font(.system(size: size * 0.7)).foregroundStyle(m.slow ? theme.level(.warn) : theme.onRow(true)) }
             if let n = m.now {
                 Text(f(n).0).font(theme.number(size)).foregroundStyle(m.slow ? theme.level(.warn) : theme.onRow())
                 if let x = m.max {
@@ -317,7 +318,7 @@ private struct LoadView: View {
                 Text(f(x).0).font(theme.number(size)).foregroundStyle(theme.onRow())
                 Text(f(x).1).font(small).foregroundStyle(theme.onRow(true))
             }
-            if m.slow { Image(systemName: "arrow.down.circle.fill").font(.system(size: size * 0.55)).foregroundStyle(theme.level(.warn)) }
+            if m.slow && m.icon == nil { Image(systemName: "arrow.down.circle.fill").font(.system(size: size * 0.55)).foregroundStyle(theme.level(.warn)) }
         }
         .lineLimit(1)
     }

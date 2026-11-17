@@ -8,7 +8,10 @@ import Darwin
 // Bronnen (geen toestemmingsvraag):
 // - Bluetooth: `system_profiler SPBluetoothDataType -json` (naam, soort, batterij incl. L/R/hoesje, firmware, IDs, signaal).
 //   IORegistry heeft alleen HID-apparaten en meestal geen batterij; IOBluetooth vraagt om toestemming → niet gebruikt.
-//   Alleen zolang de pagina open is, buiten de hoofdthread, hooguit eens per 30 s.
+//   IORegistry (AppleDeviceManagementHIDEventService "BatteryPercent") zou Magic-apparaten goedkoop geven, maar
+//   system_profiler geeft die al als device_batteryLevelMain → niet nodig.
+//   Buiten de hoofdthread, gedeelde cache: zolang de Docked-pagina open is hooguit eens per 2 min,
+//   voor het feit op de grote BAT-kaart hooguit eens per 5 min.
 // - Mobiel internet: NWPathMonitor (duur/beperkt, soort interface) + SystemConfiguration (naam "iPhone USB" e.d.)
 //   + het vaste iPhone-hotspotsubnet 172.20.10.x. Geen SSID (die vraagt locatietoestemming).
 // Adressen en serienummers van apparaten tonen we nergens.
@@ -111,6 +114,12 @@ enum Wireless {
 
     static func signal(_ rssi: Int) -> String { rssi >= -60 ? "strong" : rssi >= -75 ? "fair" : "weak" }
 
+    /// Leegste verbonden apparaat voor de BAT-kaart: ("AirPods", "L 80% · R 75%") of ("Mouse", "64%"). Hoesje telt niet mee.
+    static func lowest(_ s: BTState?) -> (name: String, value: String)? {
+        guard let d = s?.connected.compactMap({ d in d.battery.map { (d, $0) } }).min(by: { $0.1 < $1.1 }) else { return nil }
+        return (d.0.name, batteryText(d.0.batteries.filter { $0.label != "case" }) ?? "\(d.1)%")
+    }
+
     /// "L 81% · R 79% · case 40%" (alleen als er meer dan één is)
     static func batteryText(_ b: [BTBattery]) -> String? {
         b.count > 1 ? b.map { ($0.label.isEmpty ? "" : $0.label + " ") + "\($0.pct)%" }.joined(separator: " · ") : nil
@@ -158,6 +167,8 @@ enum Wireless {
             {"Someone's Watch":{"device_address":"AA:BB:CC:DD:EE:04"}}]}]}
         """
         let s = bluetooth(Data(json.utf8))!
+        let rows = WirelessTree.build(bt: s, uplink: nil, down: 0, up: 0).groups.first?.children ?? []
+        let (wt0, wt1) = (rows[0], rows[1])   // Test Buds (64%), Test Mouse (7%)
         precondition(s.on && s.chip == "TEST_1" && s.connected.map(\.name) == ["Test Buds", "Test Mouse"] && s.paired.count == 2, "bt lijst")
         let buds = s.connected[0], mouse = s.connected[1]
         precondition(buds.kind.name == "Earbuds" && buds.battery == 64 && buds.rssi == -58 && buds.services == ["A2DP", "AVRCP", "HFP"], "bt oordopjes")
@@ -165,6 +176,10 @@ enum Wireless {
         precondition(!buds.raw.contains { $0.value.contains("AA:BB") || $0.value.contains("SERIAL") || $0.key.contains("serial") } && buds.raw.contains { $0.key == "minorType" }, "bt geen adres")
         precondition(mouse.kind == ("Mouse", "computermouse") && mouse.battery == 7 && batteryText(mouse.batteries) == nil && mouse.productID == 0xB000 && mouse.vendor == nil, "bt muis")
         precondition(s.paired[0].kind.name == "Watch" && s.paired[1].kind.name == "Speaker" && signal(-80) == "weak" && signal(-58) == "strong", "bt soort")
+        precondition(lowest(s).map { [$0.name, $0.value] } == ["Test Mouse", "7%"] && lowest(nil) == nil && lowest(BTState()) == nil, "bt leegste")
+        precondition(lowest(BTState(connected: [buds])).map { [$0.name, $0.value] } == ["Test Buds", "L 81% · R 64%"], "bt leegste oordopjes")
+        precondition(wt0.main?.unit == "%" && wt0.main?.slow == false && wt0.main?.icon == "battery.75percent", "bt rij batterij")
+        precondition(wt1.main?.slow == true && wt1.main?.icon == "battery.0percent" && wt1.warn != nil, "bt rij laag")
         precondition(bluetooth(Data("{}".utf8)) == nil && bluetooth(Data("x".utf8)) == nil && services("none") == [], "bt leeg")
         var off = json.replacingOccurrences(of: "attrib_on", with: "attrib_off")
         off = off.replacingOccurrences(of: "\"device_connected\"", with: "\"device_x\"")
@@ -223,7 +238,7 @@ enum WirelessTree {
     }
 
     private static func device(_ d: BTDevice) -> TNode {
-        let k = d.kind, low = d.connected && (d.battery ?? 100) <= 10
+        let k = d.kind, low = d.connected && (d.battery ?? 100) <= 10, lowish = d.connected && (d.battery ?? 100) <= 20
         var pairs = [RawLine(key: "Type", value: k.name)]
         pairs += d.batteries.map { RawLine(key: $0.label.isEmpty ? "Battery" : $0.label == "case" ? "Case" : $0.label == "L" ? "Left" : "Right", value: "\($0.pct)%") }
         if let r = d.rssi { pairs.append(RawLine(key: "Signal", value: "\(r) dBm (\(Wireless.signal(r)))")) }
@@ -235,7 +250,7 @@ enum WirelessTree {
         let facts: [String?] = d.connected ? [k.name, Wireless.batteryText(d.batteries), d.rssi.map { "signal " + Wireless.signal($0) }]
                                            : [k.name, d.rssi != nil ? "in range" : nil]
         return TNode(id: d.id, kind: .device, icon: k.icon, title: d.name,
-                     main: d.battery.map { LinkLoad(now: Double($0), max: nil, unit: "%") },
+                     main: d.battery.map { LinkLoad(now: Double($0), max: nil, slow: lowish, unit: "%", icon: batteryIcon(Double($0))) },
                      facts: facts.compactMap { $0 }, warn: low ? "Battery low. Charge it soon." : nil,
                      pairs: pairs, raw: d.raw)
     }
@@ -296,9 +311,9 @@ final class WirelessWatcher: ObservableObject {
     private var monitor: NWPathMonitor?
     private var timer: Timer?
     private var last: (i: UInt32, o: UInt32, t: Date)?
-    private var reading = false
-    private static var cache: (at: Date, state: BTState?)?   // ook over pagina-wissels heen: hooguit eens per 30 s
-    private let queue = DispatchQueue(label: "fusebox.wireless", qos: .utility)
+    private static var reading = false
+    private static var cache: (at: Date, state: BTState?)?   // gedeeld door pagina en BAT-kaart, ook over pagina-wissels heen
+    private static let queue = DispatchQueue(label: "fusebox.wireless", qos: .utility)
 
     func start() {
         guard monitor == nil else { return }
@@ -321,18 +336,26 @@ final class WirelessWatcher: ObservableObject {
     deinit { monitor?.cancel(); timer?.invalidate() }
 
     private func readBT() {
-        if let c = Self.cache, Date().timeIntervalSince(c.at) < 30 { if bt != c.state { bt = c.state }; return }
+        Self.load(maxAge: 120) { [weak self] s in
+            if let self, self.monitor != nil, self.bt != s { self.bt = s }   // na stop niets meer bijwerken
+        }
+    }
+
+    /// Cache jonger dan `maxAge` → meteen; anders system_profiler op de achtergrond (één tegelijk).
+    private static func load(maxAge: TimeInterval, _ done: @escaping @MainActor (BTState?) -> Void = { _ in }) {
+        if let c = cache, Date().timeIntervalSince(c.at) < maxAge { done(c.state); return }
         guard !reading else { return }
         reading = true
-        queue.async { [weak self] in
+        queue.async {
             let s = WirelessReader.bluetooth()
-            DispatchQueue.main.async {
-                Self.cache = (Date(), s)
-                guard let self else { return }
-                self.reading = false
-                if self.monitor != nil, self.bt != s { self.bt = s }   // na stop niets meer bijwerken
-            }
+            DispatchQueue.main.async { MainActor.assumeIsolated { cache = (Date(), s); reading = false; done(s) } }
         }
+    }
+
+    /// Feit voor de grote BAT-kaart (alleen L/XL op de Live-pagina): het leegste Bluetooth-apparaat, hooguit eens per 5 min gelezen.
+    static func lowestFact() -> Fact? {
+        load(maxAge: 300)
+        return Wireless.lowest(cache?.state).map { Fact(label: $0.name, value: $0.value) }
     }
 
     private func path(_ p: NWPath) {

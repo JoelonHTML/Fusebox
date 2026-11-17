@@ -136,11 +136,14 @@ struct OverviewView: View {
         .frame(minHeight: CGFloat(l.rows) * (17 + theme.rowPad / 2) + 10, alignment: .top) // ≈ XS-hoogte
     }
 
-    /// L/XL: "Last peak  14:32 · Xcode" als tweede feit.
+    /// L/XL: "Last peak  14:32 · Xcode" als tweede feit; op BAT als laatste het leegste Bluetooth-apparaat.
     private func lastPeak(_ r: MetricRowData, _ m: Metric, _ t: Tier) -> MetricRowData {
-        guard t >= .l, let p = meter.peaks.peaks(m, since: Calendar.current.startOfDay(for: Date())).last else { return r }
+        guard t >= .l else { return r }
         var r = r
-        r.facts.insert(Fact(label: "Last peak", value: Peaks.clock.string(from: p.at) + (p.app.map { " · \($0)" } ?? "")), at: min(1, r.facts.count))
+        if let p = meter.peaks.peaks(m, since: Calendar.current.startOfDay(for: Date())).last {
+            r.facts.insert(Fact(label: "Last peak", value: Peaks.clock.string(from: p.at) + (p.app.map { " · \($0)" } ?? "")), at: min(1, r.facts.count))
+        }
+        if m == .battery, let f = WirelessWatcher.lowestFact() { r.facts.append(f) }
         return r
     }
 

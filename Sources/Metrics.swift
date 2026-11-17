@@ -208,10 +208,9 @@ extension Metric {
             // Naast BAT: laden → batterij met bliksem; op de accu → batterij die toont hoe vol, plus (instelling
             // "batteryTime") hoe lang nog tot leeg, bijv. "2:35". Geen "tot vol": dat zegt weinig.
             let left = !s.charging && d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
-            let level = b >= 88 ? "100" : b >= 63 ? "75" : b >= 38 ? "50" : b >= 13 ? "25" : "0"
             var row = MetricRowData(label: abbr, value: pct(b), side: left ?? "", level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
                                  detail: time.isEmpty ? "on power adapter" : time, values: h.compactMap(\.battery), valueSize: 24)
-            row.sideIcon = s.charging ? "battery.100percent.bolt" : "battery.\(level)percent"
+            row.sideIcon = s.charging ? "battery.100percent.bolt" : batteryIcon(b)
             return row
         case .fan:
             guard let rpm = s.fanRPM else { return MetricRowData(label: abbr, value: "–", detail: "no fans", valueSize: 24) }
@@ -238,6 +237,11 @@ enum LinkRate {
     }
     /// Regel voor de NET-feiten: ("Wi-Fi link", "286 Mbit/s"). Wat de router je Mac geeft, niet je internetsnelheid.
     static var fact: (String, String)? { wifiMbit().map { ("Wi-Fi link", "\(Int($0.rounded())) Mbit/s") } }
+}
+
+/// Batterij-icoon dat toont hoe vol: "battery.75percent".
+func batteryIcon(_ b: Double) -> String {
+    "battery.\(b >= 88 ? "100" : b >= 63 ? "75" : b >= 38 ? "50" : b >= 13 ? "25" : "0")percent"
 }
 
 /// Bytes over een reeks metingen: snelheid × de tijd sinds de vorige meting. Het meettempo is 2 s, 5 s (low impact)
