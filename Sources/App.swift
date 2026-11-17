@@ -40,6 +40,7 @@ struct MeterkastApp: App {
     @AppStorage("menubarSplit") private var split = false
     @AppStorage("menuStyle") private var menuStyle: MenuStyle = .menu
     @AppStorage("setupDone") private var setupDone = false
+    @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
 
     var body: some Scene {
         Window("Fusebox", id: "main") {
@@ -54,7 +55,7 @@ struct MeterkastApp: App {
 
         Settings { SettingsView().environmentObject(meter) }
 
-        Window("Set up Fusebox", id: "setup") { SetupView().environmentObject(meter) }
+        Window("Set up Fusebox", id: "setup") { SetupView().environmentObject(meter).preferredColorScheme(mode.scheme) }
             .windowResizability(.contentSize)
             .defaultLaunchBehavior(setupDone ? .suppressed : .presented)
             .restorationBehavior(.disabled)

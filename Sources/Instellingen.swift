@@ -38,6 +38,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
 
 struct SettingsView: View {
     @AppStorage("settingsTab") private var tab: SettingsTab = .profile
+    @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
 
     var body: some View {
         NavigationSplitView {
@@ -52,6 +53,7 @@ struct SettingsView: View {
                 .navigationTitle(tab.title)
         }
         .frame(width: 740, height: 560)
+        .preferredColorScheme(mode.scheme)   // Settings volgt Licht/Donker van Fusebox, niet alleen van macOS
     }
 
     @ViewBuilder private var page: some View {
@@ -613,7 +615,7 @@ struct UpdateSection: View {
             LabeledContent("Installed", value: Updater.currentVersion)
             Toggle(isOn: $auto) {
                 Text("Update automatically")
-                Text("Fusebox checks GitHub every 6 hours, installs a newer version and restarts. Your settings stay.")
+                Text("Fusebox checks GitHub every 15 minutes, tells you when there is a new version, installs it and restarts. Your settings stay.")
             }
             HStack {
                 Button("Check for updates") { updater.check(userInitiated: true) }

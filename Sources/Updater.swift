@@ -2,7 +2,7 @@ import AppKit
 
 // MARK: - Automatisch bijwerken via GitHub Releases
 //
-// Kijkt bij het starten en daarna elke 6 uur naar de nieuwste release van de GitHub-repo (Info.plist "FuseboxUpdateRepo").
+// Kijkt bij het starten en daarna elke 15 minuten naar de nieuwste release van de GitHub-repo (Info.plist "FuseboxUpdateRepo").
 // Nieuwer bouwnummer → Fusebox.zip downloaden, controleren (zelfde bundle-id, geldige handtekening, hoger bouwnummer),
 // de app vervangen en opnieuw starten. Downloads via URLSession krijgen geen quarantaine-vlag, dus geen "Open Anyway".
 
@@ -56,8 +56,8 @@ import AppKit
     func start() {
         guard Self.repo != nil, timer == nil else { return }
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in self?.check(userInitiated: false) }
-        let t = Timer(timeInterval: 6 * 3600, repeats: true) { [weak self] _ in Task { @MainActor in self?.check(userInitiated: false) } }
-        t.tolerance = 600
+        let t = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in Task { @MainActor in self?.check(userInitiated: false) } }
+        t.tolerance = 60   // 4 vragen per uur; GitHub staat er 60 per uur toe zonder inloggen
         RunLoop.main.add(t, forMode: .common)
         timer = t
     }
@@ -87,7 +87,7 @@ import AppKit
         }.resume()
     }
 
-    /// Eén melding per nieuwe versie (niet elke 6 uur opnieuw); volgt de meldingen-schakelaar.
+    /// Eén melding per nieuwe versie (niet bij elke controle opnieuw); volgt de meldingen-schakelaar.
     private func notify(_ tag: String) {
         let d = UserDefaults.standard
         guard d.bool(forKey: "notify"), d.string(forKey: "notifiedUpdate") != tag else { return }

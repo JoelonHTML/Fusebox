@@ -91,6 +91,8 @@ struct Theme: Identifiable, Equatable {
 enum AppearanceMode: String, CaseIterable, Identifiable {
     case system, light, dark
     var id: String { rawValue }
+    /// Voor .preferredColorScheme: nil = zoals macOS
+    var scheme: ColorScheme? { self == .light ? .light : self == .dark ? .dark : nil }
     var title: String {
         switch self {
         case .system: "System"

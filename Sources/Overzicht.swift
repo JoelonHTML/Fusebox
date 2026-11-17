@@ -219,6 +219,7 @@ struct SparkView: View {
     @State private var shift: CGFloat = 0
     @State private var count: CGFloat = 0
     @State private var drawn: CGFloat = 1        // 0…1: hoeveel van de lijn getekend is (opstart-animatie)
+    @State private var waiting = false           // opgestart zonder lijn: inschuiven zodra de 2e meting er is
 
     var body: some View {
         // Uitdunnen gebeurt in Spark.path(in:), op basis van de getekende breedte.
@@ -236,14 +237,21 @@ struct SparkView: View {
         .clipped()
         // Grafiek verschijnt (opstarten, tabwissel, venster groter): vanaf rechts in beeld schuiven, één voor één
         .mask(alignment: .trailing) { Rectangle().scaleEffect(x: drawn, anchor: .trailing) }
-        // Bij het opstarten is er nog geen lijn (minstens 2 metingen nodig): dan pas inschuiven als hij er is
-        .onAppear { drawn = 0; if values.count > 1 { reveal() } }
-        .onChange(of: values.count > 1) { _, has in if has { reveal() } }
+        // Alleen bij opstarten/tabwissel; bij venster slepen (andere indeling → nieuwe views) gewoon meteen tonen.
+        // Bij het opstarten is er nog geen lijn (minstens 2 metingen nodig): dan pas inschuiven als hij er is.
+        .onAppear {
+            guard LaunchOnce.intro else { drawn = 1; return }
+            drawn = 0
+            if values.count > 1 { reveal() } else { waiting = true }
+        }
+        .onChange(of: values.count > 1) { _, has in if has && waiting { waiting = false; reveal() } }
         // Glijden: na een nieuwe meting begint de lijn precies waar hij stond (nieuw punt nog rechts buiten beeld)
         // en schuift/rekt hij in ~2 s rustig naar de nieuwe stand. Werkt zowel bij een vol als bij een groeiend venster.
         .onAppear { count = CGFloat(values.count) }
         .onChange(of: values) { old, new in
             guard new.count > 1, old != new else { return }
+            // Eerste lijn: geen glijden, het inschuiven is dan de enige beweging (anders komen ze allemaal tegelijk)
+            guard old.count > 1 else { count = CGFloat(new.count); return }
             let grew = new.count == old.count + 1, slid = new.count == old.count
             var t = Transaction(); t.disablesAnimations = true
             guard grew || slid else { withTransaction(t) { shift = 0; count = CGFloat(new.count) }; return }
@@ -291,7 +299,7 @@ struct CoreBars: View {
 extension SparkView {
     /// Zachte curve: snel in, rustig uitlopen; grafiekjes één voor één
     fileprivate func reveal() {
-        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.9).delay(0.1 + Double(order) * 0.12)) { drawn = 1 }
+        withAnimation(.timingCurve(0.22, 1, 0.36, 1, duration: 0.8).delay(0.05 + Double(order) * 0.25)) { drawn = 1 }
     }
 }
 

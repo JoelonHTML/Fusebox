@@ -1,6 +1,6 @@
 #!/bin/zsh
 # Nieuwe versie publiceren op GitHub: bouwen, zippen, taggen en een release met Fusebox.zip.
-# De Fusebox van iedereen ziet die release vanzelf (binnen 6 uur) en werkt zichzelf bij.
+# De Fusebox van iedereen ziet die release vanzelf (binnen 15 minuten) en werkt zichzelf bij.
 # Gebruik: ./release.sh "Wat is er nieuw"   (commit je wijzigingen eerst)
 set -e
 cd "$(dirname "$0")"
