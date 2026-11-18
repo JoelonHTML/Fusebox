@@ -107,6 +107,7 @@ enum Diag {
         Job(doing: "Photos is analysing your library", procs: ["photoanalysisd", "mediaanalysisd"], names: ["Photo analysis", "Media analysis"]),
         Job(doing: "Time Machine is making a backup", procs: ["backupd"], names: ["Time Machine"]),
         Job(doing: "Software Update is checking or installing updates", procs: ["softwareupdated"], names: ["Software update"]),
+        Job(doing: coolingDown, procs: ["kernel_task"], names: []),   // kernel_task is niet te meten; zie thermalState hieronder
     ]
     static let jobCore = 25.0   // % van één kern: daarboven telt het als "bezig"
     static func job(name: String) -> Job? { jobs.first { $0.names.contains(name) } }
@@ -147,6 +148,7 @@ enum Diag {
             }
         }
         if run("/usr/bin/tmutil", ["status"]).contains("Running = 1") { busy.insert(jobs[3].doing) }
+        if isCooling(ProcessInfo.processInfo.thermalState) { busy.insert(coolingDown) }
         return jobs.map(\.doing).filter(busy.contains)
     }
 
@@ -180,13 +182,15 @@ enum Diag {
     struct Crashes: Sendable {
         var crashes: [String: Int] = [:], hangs: [String: Int] = [:], resource: [String: Int] = [:]
         var jetsam = 0
+        var times: [String: [Date]] = [:]   // tijdstippen per gecrashte app (voor crashlussen)
         var isEmpty: Bool { crashes.isEmpty && hangs.isEmpty && resource.isEmpty && jetsam == 0 }
         /// Regels voor scherm en rapport, meeste eerst.
         var rows: [(label: String, value: String)] {
             func list(_ d: [String: Int], _ what: String) -> [(label: String, value: String)] {
                 d.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, "\(what) \($0.value)×") }
             }
-            return list(crashes, "crashed") + list(hangs, "stopped responding")
+            let loops = self.loops
+            return list(crashes, "crashed").map { ($0.label, $0.value + (loops[$0.label].map { ", \($0)× in one hour" } ?? "")) } + list(hangs, "stopped responding")
                 + (jetsam > 0 ? [("Out of memory", "macOS closed apps \(jetsam)×")] : [])
                 + list(resource, "flagged by macOS").prefix(5)
         }
@@ -217,20 +221,21 @@ enum Diag {
             default: return (.none, time)
             }
         }
-        var app: String?, event = "", time: Date?
+        var app: String?, proc: String?, event = "", time: Date?
         for line in head.split(separator: "\n").prefix(40) {
             let parts = line.split(separator: ":", maxSplits: 1)
             guard parts.count == 2 else { continue }
             let value = parts[1].trimmingCharacters(in: .whitespaces)
             switch parts[0] {
             case "Command": app = value
+            case "Process": proc = value.components(separatedBy: " [").first   // spindump: "Process: Microsoft Teams [812]"
             case "Event": event = value.lowercased()
             case "Date/Time": time = stamp(value)
             default: break
             }
         }
-        guard let app else { return (.none, time) }
-        if event.contains("hang") { return (.hang(app), time) }
+        guard let app = app ?? proc else { return (.none, time) }
+        if event.contains("hang") || event.contains("spin") { return (.hang(app), time) }
         if event.contains("disk writes") { return (.resource("\(app) (disk writes)"), time) }
         if event.contains("cpu") { return (.resource("\(app) (processor)"), time) }
         if event.contains("wakeups") { return (.resource("\(app) (wakeups)"), time) }
@@ -261,7 +266,7 @@ enum Diag {
             let t = time ?? f.date
             guard t >= from, t < to else { continue }
             switch entry {
-            case .crash(let a): out.crashes[a, default: 0] += 1
+            case .crash(let a): out.crashes[a, default: 0] += 1; out.times[a, default: []].append(t)
             case .hang(let a): out.hangs[a, default: 0] += 1
             case .jetsam: out.jetsam += 1
             case .resource(let a): out.resource[a, default: 0] += 1

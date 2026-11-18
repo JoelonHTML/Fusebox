@@ -393,7 +393,7 @@ enum Analysis {
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
         func canStop(_ name: String) -> Bool { current.first { $0.name == name && $0.canStop }.map { $0.runningApp?.processIdentifier != front } ?? false }
         for l in r.leaks.prefix(2) {
-            out.append(Tip(id: "leak" + l.app, text: "\(l.app) grew from \(one(l.from)) to \(one(l.to)) GB in \(l.hours) h. Quitting and reopening it frees that memory.",
+            out.append(Tip(id: "leak" + l.app, text: "\(l.app) keeps growing: +\(one(l.perHour)) GB per hour for \(l.hours) h (now \(one(l.to)) GB) — restart it to free memory.",
                            action: canStop(l.app) ? .stop(l.app) : nil))
         }
         var seen = Set<String>()
@@ -417,7 +417,11 @@ enum Analysis {
             out.append(Tip(id: "app" + a.name, text: text, action: stoppable ? .stop(a.name) : nil))
         }
         if let c = r.crashes {
-            for (verb, list) in [("crashed", c.crashes), ("stopped responding", c.hangs)] {
+            let loops = c.loops
+            for (app, n) in loops.sorted(by: { $0.value > $1.value }).prefix(2) {
+                out.append(Tip(id: "loop" + app, text: "\(app) keeps crashing and restarting (\(n)× in one hour) — that costs battery. Update or remove it.", action: nil))
+            }
+            for (verb, list) in [("crashed", c.crashes.filter { loops[$0.key] == nil }), ("stopped responding", c.hangs)] {
                 for (app, n) in list.sorted(by: { $0.value > $1.value }).prefix(2) where n >= 2 {
                     out.append(Tip(id: verb + app, text: "\(app) \(verb) \(n) times \(r.when). Update or reinstall it.", action: nil))
                 }
@@ -819,6 +823,7 @@ private struct AnalysisPage: View, Equatable {
         // Pas na het rapport: anders staan ze eerst bovenaan en springt alles weg als het rapport binnenkomt
         if report != nil && !off.contains("startup") { StartupSection(index: 9) }
         if report != nil && !off.contains("disk") { DiskSection(index: 10) }
+        if let report, !off.contains("background") { BackgroundSection(apps: meter.minuteApps.apps.map { ($0.name, $0.cpu) }, seen: report.jobMinutes, when: report.when, index: 11) }
     }
 
     private var picker: some View {
