@@ -30,11 +30,18 @@ struct Sample {
     var cores: [Double] = []                   // procent per kern (leeg bij de eerste meting)
 
     static let stamp: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f }()
-    static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb\n"
+    static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb,ventilator_pct\n"
     var csv: String {
         let f = { (v: Double) in String(format: "%.1f", v.isFinite ? v : 0) }
         let Int = { (v: Double) in v.isFinite ? Swift.Int(min(max(v, 0), 1e15)) : 0 }   // nooit crashen op een rare waarde
-        return "\(Self.stamp.string(from: time)),\(f(cpu)),\(f(ram)),\(f(ramUsedGB)),\(pressure),\(f(gpu)),\(temp.map(f) ?? ""),\(gpuTemp.map(f) ?? ""),\(Int(down)),\(Int(up)),\(pingMs.map(f) ?? ""),\(f(diskFreeGB)),\(battery.map(f) ?? ""),\(f(diskTotalGB)),\(Int(diskRead)),\(Int(diskWrite)),\(String(format: "%.2f", swapGB))\n"
+        return "\(Self.stamp.string(from: time)),\(f(cpu)),\(f(ram)),\(f(ramUsedGB)),\(pressure),\(f(gpu)),\(temp.map(f) ?? ""),\(gpuTemp.map(f) ?? ""),\(Int(down)),\(Int(up)),\(pingMs.map(f) ?? ""),\(f(diskFreeGB)),\(battery.map(f) ?? ""),\(f(diskTotalGB)),\(Int(diskRead)),\(Int(diskWrite)),\(String(format: "%.2f", swapGB)),\(fanPct.map(f) ?? "")\n"
+    }
+
+    /// Ventilatoren in % van hun maximum (gemiddeld); nil zonder ventilator of als de helper ze stuurt (dan zegt het niets over stof).
+    var fanPct: Double? {
+        let ok = fans.filter { $0.max > 0 }
+        guard !ok.isEmpty, !fans.contains(where: \.forced) else { return nil }
+        return ok.reduce(0) { $0 + $1.rpm / $1.max } / Double(ok.count) * 100
     }
 
     /// Gemiddelde van een reeks (voor minuutpunten); niet-gemiddelde velden komen van de laatste.

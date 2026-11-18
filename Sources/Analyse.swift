@@ -85,6 +85,7 @@ fileprivate struct Report: Sendable {
     var leaks: [Diag.Leak] = [], runaways: [Diag.Run] = []
     var jobMinutes: [String: Int] = [:]
     var crashes: Diag.Crashes?, battery: Diag.Battery?, boot: Date?
+    var dusty = false                               // ventilator hard bij weinig werk (FanDust, 7 dagen)
     var when = "today"                              // "today" / "yesterday" / "in the last 7 days"
     var uptimeDays: Int { boot.map { Int(Date().timeIntervalSince($0) / 86_400) } ?? 0 }
 }
@@ -274,6 +275,7 @@ enum Analysis {
         r.crashes = Diag.crashes(from: cal.startOfDay(for: current.first ?? now), to: p == .yesterday ? cal.startOfDay(for: now) : .distantFuture)
         r.battery = Diag.battery()
         r.boot = Diag.bootDate()
+        r.dusty = FanDust.check(dir: dir, now: now)
         r.when = p.when
         return r
     }
@@ -448,6 +450,7 @@ enum Analysis {
         if r.hotMin >= 15 {
             out.append(Tip(id: "hot", text: "Your Mac was hot (≥ 95 °C) for \(duration(r.hotMin)) — put it on a hard, flat surface and keep the vents clear", action: nil))
         }
+        if r.dusty { out.append(Tip(id: "dust", text: FanDust.tip, action: nil)) }
         out.append(Tip(id: "login", text: "Check which apps open automatically at login — you can turn off what you don't need there",
                        action: .open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!, "Open Login Items")))
         return out

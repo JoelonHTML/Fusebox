@@ -136,6 +136,7 @@ struct MeterkastApp: App {
         Diag.selfTest()
         Diag.healthSelfTest()
         FanController.selfTest()
+        FanDust.selfTest()
         NetScanner.selfTest()
         Installer.selfTest()
         Updater.selfTest()
