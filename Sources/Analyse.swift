@@ -930,7 +930,9 @@ private struct AnalysisPage: View, Equatable {
                 if open { s.remove(g.id) } else { s.insert(g.id) }
                 // Kort en goedkoop: alleen doorzichtigheid en een paar punten schuiven (geen vervaging/schaal/schaduw).
                 // Low impact: het venster zet animaties uit via een transaction; dat blijft zo werken.
-                withAnimation(.easeOut(duration: 0.2)) { openRaw = s.sorted().joined(separator: ",") }
+                // Eigen @State animeren (een @AppStorage-wijziging nam de animatie niet betrouwbaar mee); daarna pas opslaan
+                withAnimation(reduceMotion ? .easeOut(duration: 0.2) : .spring(duration: 0.32, bounce: 0.12)) { openState = s }
+                openRaw = s.sorted().joined(separator: ",")
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: g.icon).font(.system(size: 15, weight: .semibold))
@@ -955,7 +957,7 @@ private struct AnalysisPage: View, Equatable {
                 }
                 .padding(.bottom, 12)
                 // Minder beweging: alleen vervagen, niet schuiven
-                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: -6)))
+                .transition(reduceMotion ? .opacity : .asymmetric(insertion: .opacity.combined(with: .offset(y: -14)), removal: .opacity))
             }
         }
         .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
@@ -964,7 +966,8 @@ private struct AnalysisPage: View, Equatable {
     /// Accentkleur buiten de kaarten; bij kleurblokken is die te licht op de pagina, dan de tekstkleur.
     private var link: Color { theme.rowStyle == .blocks ? theme.text : theme.accent }
     @AppStorage("checkupOpen") private var openRaw = "perf"   // open categorieën, komma-gescheiden
-    private var openIDs: Set<String> { Set(openRaw.split(separator: ",").map(String.init)) }
+    @State private var openState: Set<String>?
+    private var openIDs: Set<String> { openState ?? Set(openRaw.split(separator: ",").map(String.init)) }
 
     @ViewBuilder private func content(_ id: String, _ r: Report, _ tips: [Tip]) -> some View {
         switch id {
