@@ -27,18 +27,33 @@ import CryptoKit
 
     // MARK: Changelog (release-notes van GitHub, zo hoef je ze maar op één plek te schrijven)
 
-    struct Release: Identifiable, Equatable { let id: String; let title: String; let date: Date?; let notes: String }
+    struct Release: Identifiable, Equatable {
+        let id: String; let title: String; let date: Date?; var notes: String
+        var builds: [String] = []   // tags van snelle herpublicaties met dezelfde versie (samengevoegd)
+    }
+    /// Zelfde versie meerdere keren gepubliceerd (snelle herstel-release): één regel, nieuwste bovenaan, notities samen.
+    nonisolated static func merged(_ list: [Release]) -> [Release] {
+        var out: [Release] = []
+        // Op buildnummer (in de tag), nieuwste eerst: GitHub geeft de lijst niet altijd op volgorde terug
+        for r in list.sorted(by: { (buildNumber(in: $0.id) ?? 0) > (buildNumber(in: $1.id) ?? 0) }) {
+            if let last = out.last, last.title == r.title {
+                out[out.count - 1].notes = [last.notes, r.notes].filter { !$0.isEmpty }.joined(separator: "\n")
+                out[out.count - 1].builds.append(r.id)
+            } else { out.append(r) }
+        }
+        return out
+    }
     /// nil = laden, [] = mislukt (wordt bij de volgende keer openen opnieuw geprobeerd)
     @Published private(set) var changelog: [Release]?
 
     func loadChangelog() {
         guard changelog?.isEmpty != false, let repo = Self.repo else { return }
         changelog = nil
-        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=15")!, timeoutInterval: 20)
+        var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=60")!, timeoutInterval: 20)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("Fusebox-Updater", forHTTPHeaderField: "User-Agent")
         URLSession.shared.dataTask(with: req) { data, _, _ in
-            let list = Self.parseReleases(data)
+            let list = Self.merged(Self.parseReleases(data))
             Task { @MainActor in self.changelog = list }
         }.resume()
     }
@@ -261,6 +276,9 @@ import CryptoKit
         precondition(Data(base64Encoded: releaseKey)?.count == 32, "publieke sleutel")
         let rels = parseReleases(Data(#"[{"tag_name":"v0.2-beta-202611162352","name":"Fusebox 0.2 beta","published_at":"2026-11-16T22:52:00Z","body":"New stuff."},{"tag_name":"v0.3-beta-202612010000","draft":true}]"#.utf8))
         precondition(rels.count == 1 && rels[0].title == "Fusebox 0.2 beta" && rels[0].date != nil && rels[0].notes == "New stuff.", "changelog")
+        let m = merged([Release(id: "v0.4-beta-202611170900", title: "Fusebox 0.4 beta", date: nil, notes: "- A"), Release(id: "v0.5-beta-202611171200", title: "Fusebox 0.5 beta", date: nil, notes: "- C"),
+                        Release(id: "v0.5-beta-202611171100", title: "Fusebox 0.5 beta", date: nil, notes: "- B")])
+        precondition(m.count == 2 && m[0].notes == "- C\n- B" && m[0].builds == ["v0.5-beta-202611171100"] && m[1].title == "Fusebox 0.4 beta", "changelog samenvoegen")
         precondition(pretty("v0.1-beta-202611162337") == "0.1 beta" && pretty("v1.0-202701010000") == "1.0", "mooie naam")
         let json = #"{"tag_name":"v1.2-202611200101","assets":[{"name":"Fusebox.zip","browser_download_url":"https://github.com/x/y/releases/download/v1.2-202611200101/Fusebox.zip"}]}"#
         precondition(parseRelease(Data(json.utf8))?.build == 202611200101, "release")

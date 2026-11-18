@@ -242,11 +242,11 @@ private struct ProgramsList: View {
         HStack(spacing: 8) {
             head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("CPU", .cpu).frame(width: width.cpuW, alignment: .trailing)
-            head("RAM", .ram).frame(width: Self.ramW, alignment: .trailing)
-            if cols.contains(.disk) { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
-            if showNet { head("Network", .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
-            if cols.contains(.energy) { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
             if cols.contains(.gpu) { head("GPU", .gpu).frame(width: Self.gpuW, alignment: .trailing).help("Share of the graphics chip's time, like Activity Monitor's % GPU") }
+            head("RAM", .ram).frame(width: Self.ramW, alignment: .trailing)
+            if showNet { head("Network", .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
+            if cols.contains(.disk) { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
+            if cols.contains(.energy) { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
             if cols.contains(.threads) { head("Threads", .threads).frame(width: Self.threadsW, alignment: .trailing) }
             if cols.contains(.threads) { Text("Proc.").font(theme.label(10)).foregroundStyle(theme.secondary).frame(width: Self.procW, alignment: .trailing) }
             if cols.contains(.running) { head("Running", .running).frame(width: Self.runW, alignment: .trailing) }
@@ -309,19 +309,19 @@ private struct ProgramRow: View {
                     }
             }
             .frame(width: width.cpuW)
+            if cols.contains(.gpu) { Text(app.gpu >= 0.5 ? pct(min(app.gpu, 100)) : "–").frame(width: ProgramsList.gpuW, alignment: .trailing) }
             Text(mem(app.memGB)).frame(width: ProgramsList.ramW, alignment: .trailing)
-            if cols.contains(.disk) {
-                let io = app.diskRead + app.diskWrite
-                Text(io >= 1000 ? rate(io) : "–").lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.diskW, alignment: .trailing)
-            }
             if cols.contains(.net) {
                 VStack(alignment: .trailing, spacing: 0) {
                     if app.netIn + app.netOut >= 1000 { Text("↓ \(rate(app.netIn))"); Text("↑ \(rate(app.netOut))") } else { Text("–") }
                 }
                 .font(theme.number(10)).lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.netW, alignment: .trailing)
             }
+            if cols.contains(.disk) {
+                let io = app.diskRead + app.diskWrite
+                Text(io >= 1000 ? rate(io) : "–").lineLimit(1).minimumScaleFactor(0.8).frame(width: ProgramsList.diskW, alignment: .trailing)
+            }
             if cols.contains(.energy) { Text(app.energyW >= 0.05 ? "\(one(app.energyW)) W" : "–").frame(width: ProgramsList.energyW, alignment: .trailing) }
-            if cols.contains(.gpu) { Text(app.gpu >= 0.5 ? pct(min(app.gpu, 100)) : "–").frame(width: ProgramsList.gpuW, alignment: .trailing) }
             if cols.contains(.threads) { Text(app.threads > 0 ? "\(app.threads)" : "–").frame(width: ProgramsList.threadsW, alignment: .trailing) }
             if cols.contains(.threads) { Text(app.pids.isEmpty ? "–" : "\(app.pids.count)").frame(width: ProgramsList.procW, alignment: .trailing) }
             if cols.contains(.running) {

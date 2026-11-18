@@ -677,7 +677,7 @@ struct ChangelogSection: View {
                     VStack(alignment: .leading, spacing: 4) {
                         HStack(spacing: 6) {
                             Text(r.title).font(.headline)
-                            if Updater.buildNumber(in: r.id) == Updater.currentBuild {
+                            if ([r.id] + r.builds).contains(where: { Updater.buildNumber(in: $0) == Updater.currentBuild }) {
                                 Text("Installed").font(.caption.weight(.medium)).padding(.horizontal, 6).padding(.vertical, 1)
                                     .background(.tint.opacity(0.15), in: .capsule)
                             }
