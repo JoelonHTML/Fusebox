@@ -19,6 +19,7 @@ struct Sample {
     var diskFreeGB = 0.0, diskTotalGB = 0.0
     var diskRead = 0.0, diskWrite = 0.0        // bytes per seconde (SSD-activiteit)
     var swapGB = 0.0
+    var wifiDbm: Int?                          // Wi-Fi-signaal; 0 = weggevallen, nil = geen Wi-Fi (WifiWatch)
     var battery: Double?                       // procent, nil op desktop
     var batteryMinutes: Int?                   // tot leeg (of vol bij laden)
     var charging = false
@@ -30,11 +31,11 @@ struct Sample {
     var cores: [Double] = []                   // procent per kern (leeg bij de eerste meting)
 
     static let stamp: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm:ss"; return f }()
-    static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb,ventilator_pct\n"
+    static let csvHeader = "tijd,cpu_pct,ram_pct,ram_gb,geheugendruk,gpu_pct,temp_c,gpu_temp_c,down_Bps,up_Bps,ping_ms,schijf_vrij_gb,batterij_pct,schijf_totaal_gb,lezen_Bps,schrijven_Bps,swap_gb,ventilator_pct,wifi_dbm\n"
     var csv: String {
         let f = { (v: Double) in String(format: "%.1f", v.isFinite ? v : 0) }
         let Int = { (v: Double) in v.isFinite ? Swift.Int(min(max(v, 0), 1e15)) : 0 }   // nooit crashen op een rare waarde
-        return "\(Self.stamp.string(from: time)),\(f(cpu)),\(f(ram)),\(f(ramUsedGB)),\(pressure),\(f(gpu)),\(temp.map(f) ?? ""),\(gpuTemp.map(f) ?? ""),\(Int(down)),\(Int(up)),\(pingMs.map(f) ?? ""),\(f(diskFreeGB)),\(battery.map(f) ?? ""),\(f(diskTotalGB)),\(Int(diskRead)),\(Int(diskWrite)),\(String(format: "%.2f", swapGB)),\(fanPct.map(f) ?? "")\n"
+        return "\(Self.stamp.string(from: time)),\(f(cpu)),\(f(ram)),\(f(ramUsedGB)),\(pressure),\(f(gpu)),\(temp.map(f) ?? ""),\(gpuTemp.map(f) ?? ""),\(Int(down)),\(Int(up)),\(pingMs.map(f) ?? ""),\(f(diskFreeGB)),\(battery.map(f) ?? ""),\(f(diskTotalGB)),\(Int(diskRead)),\(Int(diskWrite)),\(String(format: "%.2f", swapGB)),\(fanPct.map(f) ?? ""),\(wifiDbm.map(String.init) ?? "")\n"
     }
 
     /// Ventilatoren in % van hun maximum (gemiddeld); nil zonder ventilator of als de helper ze stuurt (dan zegt het niets over stof).

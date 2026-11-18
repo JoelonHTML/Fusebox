@@ -247,6 +247,8 @@ enum LinkRate {
         cached = (Date(), r > 0 ? r : nil, i?.rssiValue() ?? 0, i?.wlanChannel()?.channelNumber ?? 0)
     }
     static func wifiMbit() -> Double? { read(); return cached.mbit }
+    /// Signaal in dBm als Wi-Fi verbonden is (hooguit 10 s oud), anders nil.
+    static var rssi: Int? { read(); return cached.mbit != nil && cached.rssi < 0 ? cached.rssi : nil }
     /// "Good · −52 dBm · ch 36"
     static var signal: String? { read(); return cached.mbit != nil && cached.rssi < 0 ? signalText(cached.rssi, cached.ch) : nil }
     static func signalText(_ rssi: Int, _ ch: Int) -> String {
@@ -255,6 +257,42 @@ enum LinkRate {
     }
     /// Regel voor de NET-feiten: ("Wi-Fi link", "286 Mbit/s"). Wat de router je Mac geeft, niet je internetsnelheid.
     static var fact: (String, String)? { wifiMbit().map { ("Wi-Fi link", "\(Int($0.rounded())) Mbit/s") } }
+}
+
+/// Wi-Fi-uitval via CoreWLAN-meldingen (linkDidChange), dus zonder te pollen. Geen netwerknaam, BSSID of MAC: alleen of de verbinding er is.
+/// Slaapstand en Wi-Fi zelf uitzetten tellen niet als uitval.
+final class WifiWatch: NSObject, CWEventDelegate, @unchecked Sendable {
+    static let shared = WifiWatch()
+    private let lock = NSLock()
+    private var down = false, dropped = false, quietUntil = Date.distantPast
+
+    func start() {
+        let c = CWWiFiClient.shared()
+        c.delegate = self
+        try? c.startMonitoringEvent(with: .linkDidChange)
+        // Rond slapen/wakker worden valt de link vanzelf weg en komt terug: 30 s niet meetellen
+        for n in [NSWorkspace.willSleepNotification, NSWorkspace.didWakeNotification] {
+            NSWorkspace.shared.notificationCenter.addObserver(forName: n, object: nil, queue: nil) { [weak self] _ in
+                self?.lock.withLock { self?.quietUntil = Date().addingTimeInterval(30); self?.down = false }
+            }
+        }
+    }
+
+    func linkDidChangeForWiFiInterface(withName name: String) {
+        let i = CWWiFiClient.shared().interface(withName: name)
+        let up = (i?.rssiValue() ?? 0) != 0, on = i?.powerOn() ?? false
+        lock.withLock {
+            if up || !on || Date() < quietUntil { down = false; return }
+            if !down { dropped = true }
+            down = true
+        }
+    }
+
+    /// Voor de log (elke meting): 0 = weggevallen (sinds de vorige meting, ook als hij al terug is), <0 = signaal in dBm, nil = geen Wi-Fi.
+    func value() -> Int? {
+        let gone = lock.withLock { let g = dropped || down; dropped = false; return g }
+        return gone ? 0 : LinkRate.rssi
+    }
 }
 
 /// Batterij-icoon dat toont hoe vol: "battery.75percent".

@@ -456,7 +456,7 @@ enum FanDust {
 
     static func selfTest() {
         let head = Sample.csvHeader
-        precondition(head.hasSuffix(",ventilator_pct\n"), "ventilator-kolom achteraan")
+        precondition(head.contains(",ventilator_pct,"), "ventilator-kolom")
         // 90 minuten, elke 30 s een regel; `cpu` en `fan` per minuut
         func log(cpu: (Int) -> Double, fan: (Int) -> Double?) -> String {
             var s = head

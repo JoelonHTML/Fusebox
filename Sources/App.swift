@@ -138,6 +138,7 @@ struct MeterkastApp: App {
         FanController.selfTest()
         FanDust.selfTest()
         NetScanner.selfTest()
+        InternetStats.findSelfTest()
         Installer.selfTest()
         Updater.selfTest()
         Hotkey.selfTest()

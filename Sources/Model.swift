@@ -96,6 +96,7 @@ final class Meter: ObservableObject {
         // Eerste echte waarden snel tonen (de getallen flippen dan binnen), daarna elke 2 s
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) { [weak self] in self?.tick() }
         lowImpactCheck()
+        WifiWatch.shared.start()   // Wi-Fi-uitval voor Checkup › Log
         // Low impact "Automatic" volgt de energiebesparingsmodus van macOS; een andere keuze in Instellingen werkt meteen
         for name in [Notification.Name.NSProcessInfoPowerStateDidChange, UserDefaults.didChangeNotification] {
             NotificationCenter.default.addObserver(forName: name, object: nil, queue: .main) { [weak self] _ in self?.lowImpactCheck() }
@@ -151,6 +152,7 @@ final class Meter: ObservableObject {
         if !pingHost.isEmpty && s.time.timeIntervalSince(pingAt) >= pingEvery - 0.5 { pingAt = s.time; pinger.ping(host: pingHost) }
         s.pingMs = pingHost.isEmpty ? nil : pinger.lastMs
         s.pingPending = !pingHost.isEmpty && !pinger.answered
+        s.wifiDbm = WifiWatch.shared.value()
         if let programs, programsVisible { ui.apps = programs }
         fanControl.update(s)
         if let minuteList { minuteApps.apps = minuteList; minuteTasks(s) }
