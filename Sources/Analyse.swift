@@ -33,6 +33,8 @@ fileprivate struct Minute: Sendable {
     var diskFreeGB: Double? = nil, diskTotalGB: Double? = nil
     var ping: Double? = nil        // gemiddelde ms
     var offline = false            // ping-kolom bestaat, maar meer dan de helft leeg (geen internet)
+    var wifi: Double? = nil        // gemiddeld Wi-Fi-signaal (dBm)
+    var wifiDrop = false           // Wi-Fi viel weg in deze minuut
 }
 
 fileprivate struct AppAgg: Sendable {
@@ -72,6 +74,7 @@ fileprivate struct LogFile: Sendable, Identifiable { let name: String, bytes: In
 
 fileprivate struct Report: Sendable {
     var minutes = 0, busyMin = 0, pressureMin = 0, hotMin = 0
+    var wifiDrops = 0, weakWifiMin = 0
     var first: Date?
     var diskFreeGB: Double?, diskTotalGB: Double?
     var score: Int?, reason = "No measurements for this period yet"
@@ -95,7 +98,7 @@ fileprivate struct Tip: Identifiable {
 }
 
 enum Analysis {
-    fileprivate static let busyCPU = 85.0, hotTemp = 95.0, slowPing = 200.0
+    fileprivate static let busyCPU = 85.0, hotTemp = 95.0, slowPing = 200.0, weakWifi = -75.0
     fileprivate static let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
 
     /// Fallback voor oude logs zonder kolom schijf_totaal_gb.
@@ -119,15 +122,16 @@ enum Analysis {
         for (i, c) in head.split(separator: ",").enumerated() { col[c] = i }
         guard let iCPU = col["cpu_pct"] else { return [] }
         let iRAM = col["ram_gb"], iP = col["geheugendruk"], iT = col["temp_c"], iD = col["schijf_vrij_gb"]
-        let iDT = col["schijf_totaal_gb"], iPing = col["ping_ms"]
+        let iDT = col["schijf_totaal_gb"], iPing = col["ping_ms"], iW = col["wifi_dbm"]
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "yyyy-MM-dd HH:mm"
         var out: [Minute] = []
         var key: Substring = "", time: Date?
-        var n = 0.0, cpu = 0.0, ram = 0.0, p = 1, tSum = 0.0, tN = 0.0, disk: Double?, total: Double?, pSum = 0.0, pN = 0.0
+        var n = 0.0, cpu = 0.0, ram = 0.0, p = 1, tSum = 0.0, tN = 0.0, disk: Double?, total: Double?, pSum = 0.0, pN = 0.0, wSum = 0.0, wN = 0.0, wDrop = false
         func close() {
             guard let time, n > 0 else { return }
             out.append(Minute(time: time, cpu: cpu / n, ramGB: ram / n, pressure: p, temp: tN > 0 ? tSum / tN : nil,
-                              diskFreeGB: disk, diskTotalGB: total, ping: pN > 0 ? pSum / pN : nil, offline: iPing != nil && pN < n / 2))
+                              diskFreeGB: disk, diskTotalGB: total, ping: pN > 0 ? pSum / pN : nil, offline: iPing != nil && pN < n / 2,
+                              wifi: wN > 0 ? wSum / wN : nil, wifiDrop: wDrop))
         }
         for line in lines.dropFirst() {
             let v = line.split(separator: ",", omittingEmptySubsequences: false)
@@ -137,12 +141,13 @@ enum Analysis {
             if k != key {
                 close()
                 key = k; time = f.date(from: String(k))
-                n = 0; cpu = 0; ram = 0; p = 1; tSum = 0; tN = 0; disk = nil; total = nil; pSum = 0; pN = 0
+                n = 0; cpu = 0; ram = 0; p = 1; tSum = 0; tN = 0; disk = nil; total = nil; pSum = 0; pN = 0; wSum = 0; wN = 0; wDrop = false
             }
             n += 1; cpu += c; ram += d(iRAM) ?? 0
             p = max(p, d(iP).flatMap { Int(exactly: $0.rounded()) } ?? 1)   // "nan"/"inf" uit een bewerkt bestand: niet crashen
             if let t = d(iT) { tSum += t; tN += 1 }
             if let x = d(iPing) { pSum += x; pN += 1 }
+            if let x = d(iW) { if x == 0 { wDrop = true } else if x < 0 { wSum += x; wN += 1 } }
             if let x = d(iD) { disk = x }
             if let x = d(iDT) { total = x }
         }
@@ -288,6 +293,8 @@ enum Analysis {
         r.busyMin = m.filter { $0.cpu >= busyCPU }.count
         r.pressureMin = m.filter { $0.pressure >= 2 }.count
         r.hotMin = m.filter { ($0.temp ?? 0) >= hotTemp }.count
+        r.wifiDrops = wifiDrops(m).count
+        r.weakWifiMin = m.filter { !$0.wifiDrop && ($0.wifi ?? 0) < weakWifi }.count
         let lastDisk = m.last { $0.diskFreeGB != nil }
         r.diskFreeGB = lastDisk?.diskFreeGB; r.diskTotalGB = lastDisk?.diskTotalGB
         (r.score, r.reason) = score(m)
@@ -349,6 +356,9 @@ enum Analysis {
         return out
     }
 
+    /// Wi-Fi-uitval: opeenvolgende minuten waarin hij wegviel = één keer.
+    fileprivate static func wifiDrops(_ m: [Minute]) -> [[Minute]] { runs(m, minLength: 1) { $0.wifiDrop } }
+
     /// Drukke momenten: ≥ 5 opeenvolgende minuten met CPU ≥ 85 %, nieuwste eerst, max 5.
     fileprivate static func busyMoments(_ m: [Minute], apps: [Date: [String: Double]], limit: Int = 5) -> [Busy] {
         runs(m, minLength: 5) { $0.cpu >= busyCPU }.reversed().prefix(limit).map { run in
@@ -378,6 +388,14 @@ enum Analysis {
             let pings = run.compactMap(\.ping)
             let text = run.allSatisfy(\.offline) ? "Internet down" : "Internet slow: avg. \(Int(pings.reduce(0, +) / Double(max(pings.count, 1)))) ms"
             out.append(Event(start: a, end: b, icon: "wifi.exclamationmark", text: text, level: 1))
+        }
+        for run in wifiDrops(m) {
+            let (a, b) = span(run)
+            out.append(Event(start: a, end: b, icon: "wifi.slash", text: run.count > 1 ? "Wi-Fi dropped for \(mins(run.count))" : "Wi-Fi dropped", level: 1))
+        }
+        for run in runs(m, minLength: 1, { !$0.wifiDrop && ($0.wifi ?? 0) < weakWifi }) {
+            let (a, b) = span(run)
+            out.append(Event(start: a, end: b, icon: "wifi.exclamationmark", text: "Weak Wi-Fi: around \(Int((run.compactMap(\.wifi).reduce(0, +) / Double(run.count)).rounded())) dBm", level: 1))
         }
         if let low = m.first(where: { diskLow(free: $0.diskFreeGB, total: $0.diskTotalGB) }) {
             out.append(Event(start: low.time, end: low.time.addingTimeInterval(60), icon: "internaldrive",
@@ -437,6 +455,12 @@ enum Analysis {
         if diskLow(free: r.diskFreeGB, total: r.diskTotalGB), let free = r.diskFreeGB {
             out.append(Tip(id: "disk", text: "Your disk is almost full (\(Int(free)) GB free) — clean up large files; macOS gets slow without free space",
                            action: .open(URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!, "Open Storage")))
+        }
+        if r.wifiDrops >= 3 {
+            out.append(Tip(id: "wifidrop", text: "Wi-Fi dropped \(r.wifiDrops)× \(r.when). Move closer to the router or restart it; a cable never drops.", action: nil))
+        }
+        if r.weakWifiMin >= 15 {
+            out.append(Tip(id: "wifiweak", text: "Weak Wi-Fi signal for \(duration(r.weakWifiMin)) \(r.when) — move closer to the router, or add a mesh point where you work", action: nil))
         }
         if r.pressureMin >= 30 {
             out.append(Tip(id: "mem", text: "Memory was (almost) full for \(duration(r.pressureMin)) — close apps you're not using, or restart your Mac", action: nil))
@@ -644,6 +668,16 @@ enum Analysis {
         precondition(net.count == 2 && net[0].offline && net[1].ping == 250 && diskLow(free: net[0].diskFreeGB, total: net[0].diskTotalGB), "net")
         precondition(events(net, apps: [:]).map(\.text).contains("Internet down") == false, "weg+traag is één reeks")
         precondition(events(net, apps: [:]).contains { $0.text.hasPrefix("Disk almost full") }, "schijf-event")
+        // Wi-Fi: weg (2 min), zwak (1 min, gem. −81), weer weg (kort), daarna kabel (leeg)
+        var wcsv = "tijd,cpu_pct,wifi_dbm\n"
+        for (t, w) in [("00:01", "-60"), ("00:03", "0"), ("01:01", "0"), ("02:01", "-60"), ("03:01", "-80"), ("03:31", "-82"),
+                       ("04:01", "-60"), ("05:01", "0"), ("06:01", "-60"), ("07:01", "")] { wcsv += "2026-11-16 10:\(t),5,\(w)\n" }
+        let wm = parseMain(wcsv), wt = events(wm, apps: [:]).map(\.text)
+        precondition(wm.count == 8 && wm[0].wifiDrop && wm[7].wifi == nil && !wm[7].wifiDrop, "wifi-minuten")
+        precondition(wt.filter { $0.hasPrefix("Wi-Fi dropped") }.count == 2 && wt.contains("Wi-Fi dropped for 2 min") && wt.contains("Weak Wi-Fi: around -81 dBm"), "wifi-log \(wt)")
+        var wd = Day(); wd.minutes = wm
+        let wr = report(wd)
+        precondition(wr.wifiDrops == 2 && wr.weakWifiMin == 1, "wifi-telling")
 
         var s = Sample(); s.cpu = 97; s.pressure = 1; s.temp = 60; s.diskFreeGB = 0
         let hog = AppUsage(id: "/x/Hog.app", name: "Hog", explanation: "", kind: .app, pids: [1], cpu: 80, memGB: 1, energyW: 0, icon: nil)

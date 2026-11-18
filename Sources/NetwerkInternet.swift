@@ -287,6 +287,7 @@ final class InternetStats: ObservableObject {
         task?.cancel(); task = nil
         speedTask?.cancel(); speedTask = nil
         ipTask?.cancel(); ipTask = nil
+        findTask?.cancel(); findTask = nil; findBusy = false
         testing = false; speedPhase = nil; speedLive = nil; speedConfirm = nil; publicIPState = nil
     }
 
@@ -481,6 +482,129 @@ final class InternetStats: ObservableObject {
         }
         return (parts.joined(separator: ". "), rBad || iBad ? false : nil)
     }
+
+    // MARK: Probleem zoeken: Wi-Fi, router, DNS of internet? (alleen na een klik, ~6 s)
+
+    struct Finding: Equatable { let text: String; let ok: Bool?; let numbers: String }
+    @Published private(set) var finding: Finding?
+    @Published private(set) var findBusy = false
+    private var findTask: Task<Void, Never>?
+
+    /// 20 pings naar router en 1.1.1.1 (TCP 443 als ICMP geblokkeerd is), tegelijk 3 verse DNS-opzoekingen, plus het Wi-Fi-signaal.
+    func findProblem() {
+        guard findTask == nil else { return }
+        finding = nil
+        guard let c = NetConnection.current() else {
+            finding = Finding(text: "Not connected to a network: turn on Wi-Fi or plug in a cable", ok: false, numbers: ""); return
+        }
+        findBusy = true
+        findTask = Task { [weak self] in
+            let w = c.kind == "Wi-Fi" ? WifiDetail.current(c.iface) : nil
+            let inetIP: UInt32 = 0x0101_0101   // 1.1.1.1
+            async let dns = NetScanner.offMain { Self.freshDNS() }
+            let r = await NetScanner.offMain { NetProbe.ping([c.router, inetIP].compactMap { $0 }, rounds: 20, every: 0.25, linger: 1.0) }
+            var inet = PingStats(r.rtt[inetIP] ?? [], sent: 20)
+            if inet.got == 0 {
+                let tcp = await NetScanner.offMain { (0..<5).compactMap { _ in NetProbe.tcpProbe([(inetIP, 443)], timeout: 1)[0]?.ms } }
+                if !tcp.isEmpty { inet = PingStats(tcp, sent: 5) }
+            }
+            let d = await dns
+            guard let self, !Task.isCancelled else { return }
+            self.finding = Self.find(wired: c.kind != "Wi-Fi", rssi: w?.rssi, snr: w?.snr, band: w?.band, channel: w?.channel,
+                                     router: c.router.map { PingStats(r.rtt[$0] ?? [], sent: 20) }, internet: inet, dnsMs: d)
+            self.findBusy = false
+            self.findTask = nil
+        }
+    }
+
+    /// Mediaan van 3 opzoekingen van willekeurige namen (staan nergens in een cache, dus de DNS-server moet echt antwoorden). nil = geen antwoord.
+    nonisolated static func freshDNS() -> Double? {
+        let names = ["apple.com", "cloudflare.com", "google.com"].map { "fb-\(UInt32.random(in: 0 ... .max)).\($0)" }
+        let out = OSAllocatedUnfairLock(initialState: [Double]())
+        DispatchQueue.concurrentPerform(iterations: names.count) { i in
+            if let ms = lookup(names[i], timeout: 3) { out.withLock { $0.append(ms) } }
+        }
+        return SpeedMath.median(out.withLock { $0 })
+    }
+
+    /// getaddrinfo met een tijdslimiet; "bestaat niet" (NXDOMAIN) telt als antwoord.
+    nonisolated static func lookup(_ name: String, timeout: Double) -> Double? {
+        let result = OSAllocatedUnfairLock<Double?>(initialState: nil), done = DispatchSemaphore(value: 0)
+        let t0 = Date()
+        DispatchQueue.global(qos: .utility).async {
+            var hints = addrinfo(); hints.ai_family = AF_INET; hints.ai_socktype = SOCK_STREAM
+            var res: UnsafeMutablePointer<addrinfo>?
+            let r = getaddrinfo(name, nil, &hints, &res)
+            if let res { freeaddrinfo(res) }
+            if r == 0 || r == EAI_NONAME { let ms = -t0.timeIntervalSinceNow * 1000; result.withLock { $0 = ms } }
+            done.signal()
+        }
+        _ = done.wait(timeout: .now() + timeout)
+        return result.withLock { $0 }
+    }
+
+    /// Eén oordeel in gewone woorden, met de getallen eronder. router nil = geen router bekend; got 0 = geen antwoord.
+    nonisolated static func find(wired: Bool, rssi: Int?, snr: Int?, band: String?, channel: Int?,
+                                 router: PingStats?, internet: PingStats, dnsMs: Double?) -> Finding {
+        func ms(_ v: Double?) -> String { v.map { $0 < 1 ? "<1 ms" : "\(Int($0.rounded())) ms" } ?? "no reply" }
+        func lost(_ s: PingStats) -> String { s.got > 0 && s.loss > 0 ? " (\(Int((s.loss * 100).rounded()))% lost)" : "" }
+        var nums = ["router " + (router.map { ms($0.avg) + lost($0) } ?? "unknown"), "internet " + ms(internet.avg) + lost(internet), "DNS " + ms(dnsMs)]
+        if let rssi { nums.append("Wi-Fi \(rssi) dBm" + (snr.map { " · SNR \($0) dB" } ?? "") + (channel.map { " · ch \($0)" } ?? "") + (band.map { " (\($0))" } ?? "")) }
+        func say(_ text: String, _ ok: Bool?) -> Finding { Finding(text: text, ok: ok, numbers: nums.joined(separator: ", ")) }
+
+        let local = wired ? "network" : "Wi-Fi"
+        let weak = !wired && ((rssi.map { $0 < -72 } ?? false) || (snr.map { $0 < 20 } ?? false))
+        let weakText = "Weak Wi-Fi signal\(rssi.map { " (\($0) dBm)" } ?? ""): move closer to the router or use a cable"
+        let rDead = router?.got == 0, iDead = internet.got == 0
+        if router == nil && iDead { return say("No router found: reconnect to your network", false) }
+        if rDead && iDead {
+            return say(weak ? weakText : wired ? "Router not responding: check the cable, then restart the router" : "Router not responding: restart the router", false)
+        }
+        // Router negeert pings maar internet werkt: dan zegt de router-meting niets
+        if let r = router, r.got > 0, r.loss >= 0.1 || (r.avg ?? 0) > 50 || (r.jitter ?? 0) > 30 {
+            if weak { return say(weakText, false) }
+            if wired { return say("The cable link to your router is unstable: check the cable, then restart the router", false) }
+            return say("Your Wi-Fi is unstable despite a good signal: interference or a busy router; restart the router"
+                       + (band == "2.4 GHz" ? " or switch to 5 GHz" : ""), false)
+        }
+        if iDead { return say("Your \(local) is fine, but the internet doesn't answer: restart the modem, or your provider has an outage", false) }
+        if internet.loss >= 0.05 || (internet.avg ?? 0) > 100 || (internet.jitter ?? 0) > 30 {
+            let what = internet.loss >= 0.05 ? "loses data" : (internet.avg ?? 0) > 100 ? "is slow" : "is unsteady"
+            return say("Your \(local) is fine; your internet provider \(what) (router \(ms(router?.avg)), internet \(ms(internet.avg)))", false)
+        }
+        guard let dnsMs else { return say("Name lookups (DNS) fail: try 1.1.1.1 as DNS server in Network settings", false) }
+        if dnsMs > 300 { return say("DNS is slow (\(ms(dnsMs))): try 1.1.1.1 as DNS server in Network settings", false) }
+        if weak { return say("Everything works, but the Wi-Fi signal is weak\(rssi.map { " (\($0) dBm)" } ?? ""): moving closer to the router helps", nil) }
+        return say("No problem found: \(local), router, DNS and internet are all fine", true)
+    }
+
+    static func findSelfTest() {
+        let good = PingStats(Array(repeating: 3, count: 20), sent: 20), net = PingStats(Array(repeating: 15, count: 20), sent: 20)
+        let none = PingStats([], sent: 20)
+        func f(wired: Bool = false, rssi: Int? = -55, snr: Int? = 35, band: String? = "5 GHz", router: PingStats? = good, internet: PingStats = net, dns: Double? = 20) -> Finding {
+            find(wired: wired, rssi: wired ? nil : rssi, snr: wired ? nil : snr, band: wired ? nil : band, channel: wired ? nil : 36, router: router, internet: internet, dnsMs: dns)
+        }
+        let ok = f()
+        precondition(ok.ok == true && ok.text == "No problem found: Wi-Fi, router, DNS and internet are all fine", ok.text)
+        precondition(ok.numbers == "router 3 ms, internet 15 ms, DNS 20 ms, Wi-Fi -55 dBm · SNR 35 dB · ch 36 (5 GHz)", ok.numbers)
+        let slow = f(internet: PingStats(Array(repeating: 180, count: 20), sent: 20))
+        precondition(slow.text == "Your Wi-Fi is fine; your internet provider is slow (router 3 ms, internet 180 ms)", slow.text)
+        precondition(f(wired: true, internet: PingStats(Array(repeating: 15, count: 18), sent: 20)).text.hasPrefix("Your network is fine; your internet provider loses data"), "verlies")
+        let lossy = PingStats(Array(repeating: 4, count: 16), sent: 20)
+        precondition(f(rssi: -80, snr: 12, router: lossy).text == "Weak Wi-Fi signal (-80 dBm): move closer to the router or use a cable", "zwak")
+        precondition(f(band: "2.4 GHz", router: lossy).text.hasSuffix("restart the router or switch to 5 GHz"), "storing 2.4")
+        precondition(f(wired: true, router: lossy).text.hasPrefix("The cable link"), "kabel")
+        precondition(f(router: none, internet: none, dns: nil).text == "Router not responding: restart the router", "router weg")
+        precondition(f(wired: true, router: none, internet: none).text.contains("check the cable"), "router weg kabel")
+        precondition(f(internet: none, dns: nil).text.hasPrefix("Your Wi-Fi is fine, but the internet doesn't answer"), "internet weg")
+        precondition(f(router: none).ok == true, "router negeert pings")
+        precondition(f(router: nil, internet: none).text.hasPrefix("No router found"), "geen router")
+        precondition(f(dns: 900).text == "DNS is slow (900 ms): try 1.1.1.1 as DNS server in Network settings", "dns traag")
+        precondition(f(dns: nil).text.hasPrefix("Name lookups (DNS) fail"), "dns weg")
+        let meh = f(rssi: -76, snr: 25)
+        precondition(meh.ok == nil && meh.text.hasPrefix("Everything works, but the Wi-Fi signal is weak (-76 dBm)"), meh.text)
+        precondition(f(wired: true).text.hasPrefix("No problem found: network,") && !f(wired: true).numbers.contains("Wi-Fi"), "kabel goed")
+    }
 }
 
 // MARK: - Weergave
@@ -504,6 +628,7 @@ struct InternetPanel: View {
                             if !pingHost.isEmpty { stat("Internet", stats.internet) }
                         }
                         verdictLine
+                        findLine
                     } else {
                         line("wifi.slash", "Not connected to a network")
                     }
@@ -539,6 +664,21 @@ struct InternetPanel: View {
                 line(v.ok == false ? "exclamationmark.triangle" : v.ok == true ? "checkmark.circle" : "info.circle", v.text)
                     .foregroundStyle(theme.rowStyle == .blocks ? .white : v.ok == false ? theme.warn : v.ok == true ? theme.good : theme.onRow(true))
             }
+        }
+    }
+
+    /// "Is het mijn Wi-Fi of het internet?": knop, daarna één oordeel met de getallen eronder.
+    @ViewBuilder private var findLine: some View {
+        if stats.findBusy {
+            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking Wi-Fi, router, DNS and internet… (about 6 s)") }
+        } else {
+            if let f = stats.finding {
+                line(f.ok == false ? "exclamationmark.triangle" : f.ok == true ? "checkmark.circle" : "info.circle", f.text)
+                    .foregroundStyle(theme.rowStyle == .blocks ? .white : f.ok == false ? theme.warn : f.ok == true ? theme.good : theme.onRow(true))
+                if !f.numbers.isEmpty { Text(f.numbers).font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.leading, 22).fixedSize(horizontal: false, vertical: true) }
+            }
+            Button { stats.findProblem() } label: { NetPill(title: stats.finding == nil ? "Find the problem" : "Check again", icon: "stethoscope") }
+                .buttonStyle(.plain).help("Is it your Wi-Fi or the internet? About 6 s: pings your router and 1.1.1.1, times fresh DNS lookups and reads the Wi-Fi signal")
         }
     }
 
