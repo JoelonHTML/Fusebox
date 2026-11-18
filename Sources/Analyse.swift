@@ -96,6 +96,15 @@ fileprivate struct Report: Sendable {
 fileprivate struct Tip: Identifiable {
     enum Action { case stop(String), open(URL, String) }
     let id: String, text: String, action: Action?
+
+    /// In welke Checkup-categorie de tip staat (op het begin van de id): perf, power, stability, storage of history.
+    var category: String {
+        let starts = { (p: [String]) in p.contains { id.hasPrefix($0) } }
+        if starts(["loop", "crashed", "stopped", "jetsam", "wifidrop", "wifiweak"]) { return "stability" }
+        if starts(["battery"]) { return "power" }
+        if starts(["disk", "login", "orphan"]) { return "storage" }
+        return "perf"   // geheugen, warmte, stof, zware apps, herstarten
+    }
 }
 
 enum Analysis {
@@ -804,7 +813,6 @@ private struct AnalysisPage: View, Equatable {
                 if let report, shown("score") { part(report, tips, .score) }
                 if report == nil { why }   // nog aan het laden: de knop alvast bruikbaar
                 if let report {
-                    if shown("tips"), !tips.isEmpty { topTips(report, tips) }
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(groups(report)) { g in group(g, report, tips) }
                     }
@@ -900,6 +908,9 @@ private struct AnalysisPage: View, Equatable {
 
     private func group(_ g: Group, _ r: Report, _ tips: [Tip]) -> some View {
         let open = openIDs.contains(g.id)
+        // Tips horen bij hun categorie: aantal vooraan in de kop, de tips zelf bovenaan als je openklapt
+        let mine = shown("tips") ? tips.filter { $0.category == g.id } : []
+        let summary = (mine.isEmpty ? [] : ["\(mine.count) tip" + (mine.count == 1 ? "" : "s")]) + [g.summary]
         return VStack(alignment: .leading, spacing: 10) {
             Button {
                 var s = openIDs
@@ -911,7 +922,7 @@ private struct AnalysisPage: View, Equatable {
                         .foregroundStyle(g.warn ? theme.warn : link).frame(width: 22)
                     VStack(alignment: .leading, spacing: 2) {
                         Text(g.title).font(theme.label(15).bold()).foregroundStyle(theme.text)
-                        Text(g.summary).font(theme.label(11)).foregroundStyle(g.warn ? theme.warn : theme.secondary).lineLimit(1).truncationMode(.tail)
+                        Text(summary.joined(separator: " · ")).font(theme.label(11)).foregroundStyle(g.warn ? theme.warn : theme.secondary).lineLimit(1).truncationMode(.tail)
                     }
                     Spacer(minLength: 6)
                     Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondary)
@@ -922,7 +933,13 @@ private struct AnalysisPage: View, Equatable {
             .buttonStyle(.plain)
             .accessibilityLabel("\(g.title), \(open ? "expanded" : "collapsed")")
             // Ingeklapt staat de inhoud niet in de boom: de .task van die kaarten (pmset, opstartitems, schijf) loopt dan niet
-            if open { content(g.id, r, tips).padding(.bottom, 12).transition(.opacity) }
+            if open {
+                VStack(alignment: .leading, spacing: 10) {
+                    if !mine.isEmpty { ReportSections(report: r, tips: mine, previousName: period.previousName, parts: [.tips], logDir: meter.logDir, act: act) }
+                    content(g.id, r, tips)
+                }
+                .padding(.bottom, 12).transition(.opacity)
+            }
         }
         .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
     }
@@ -930,7 +947,6 @@ private struct AnalysisPage: View, Equatable {
     /// Accentkleur buiten de kaarten; bij kleurblokken is die te licht op de pagina, dan de tekstkleur.
     private var link: Color { theme.rowStyle == .blocks ? theme.text : theme.accent }
     @AppStorage("checkupOpen") private var openRaw = "perf"   // open categorieën, komma-gescheiden
-    @State private var allTips = false
     private var openIDs: Set<String> { Set(openRaw.split(separator: ",").map(String.init)) }
 
     @ViewBuilder private func content(_ id: String, _ r: Report, _ tips: [Tip]) -> some View {
@@ -975,16 +991,6 @@ private struct AnalysisPage: View, Equatable {
     }
 
     /// De drie belangrijkste tips; de rest achter "Show all".
-    private func topTips(_ r: Report, _ tips: [Tip]) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            ReportSections(report: r, tips: allTips ? tips : Array(tips.prefix(3)), previousName: period.previousName, parts: [.tips], logDir: meter.logDir, act: act)
-            if tips.count > 3 {
-                Button(allTips ? "Show fewer" : "Show all \(tips.count) tips") { withAnimation(.snappy(duration: 0.2)) { allTips.toggle() } }
-                    .buttonStyle(.plain).font(theme.label(11).weight(.semibold)).foregroundStyle(link)
-            }
-        }
-    }
-
     private var picker: some View {
         HStack(spacing: 8) {
             Picker("Period", selection: $period) { ForEach(Period.allCases) { Text($0.title).tag($0) } }
