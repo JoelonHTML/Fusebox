@@ -233,10 +233,14 @@ struct StartupSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("Startup & background items").font(theme.label(12)).foregroundStyle(theme.onRow())
+                CardTitle(icon: "power", title: "Startup & background items", tone: items?.contains(where: \.orphan) == true ? 1 : 0)
                 Spacer()
                 Button("Login Items…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!) }
                     .buttonStyle(Pill(color: theme.onRow()))
+            }
+            if let items {
+                let login = Set(items.filter { $0.atLogin && !$0.orphan }.map(\.name)).count
+                Headline(big: "\(login)", small: login == 1 ? "app starts at login" : "apps start at login")
             }
             Text("Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items.")
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
@@ -261,14 +265,14 @@ struct StartupSection: View {
     /// Achtergelaten door weggegooide apps: opvallend (warn), alleen tonen als er iets is. Wij verwijderen niets.
     @ViewBuilder private func orphans(_ list: [StartupItem]) -> some View {
         if !list.isEmpty {
-            Text("Left behind by deleted apps").font(theme.label(11)).foregroundStyle(theme.warn).padding(.top, 4)
+            Text("Left behind by deleted apps").font(theme.label(11).weight(.semibold)).foregroundStyle(theme.tone(1, icon: false)).padding(.top, 4)
             Text("These try to start every time but their app is gone. Safe to remove.")
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             ForEach(list) { i in
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.warn)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.tone(1))
                     Text(i.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
-                    if !i.user { Text("needs your password to remove").foregroundStyle(theme.onRow(true)).lineLimit(1) }
+                    if !i.user { Text("needs your password to remove").font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1) }
                     Spacer(minLength: 4)
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow()))
                 }
@@ -279,7 +283,7 @@ struct StartupSection: View {
     }
 
     @ViewBuilder private func group(_ title: String, _ list: [StartupItem]) -> some View {
-        Text(title).font(theme.label(11)).foregroundStyle(theme.onRow()).padding(.top, 4)
+        Text(title).font(theme.label(11).weight(.semibold)).foregroundStyle(theme.onRow()).padding(.top, 4)
         // Zelfde app meerdere keren (bijv. 3× OneDrive): één regel; draait als er één draait
         let list: [StartupItem] = Dictionary(grouping: list, by: \.name).values
             .map { (g: [StartupItem]) -> StartupItem in
@@ -292,11 +296,11 @@ struct StartupSection: View {
                 return x != y ? x > y : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
             }
         if list.isEmpty { Text("None").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
-        ForEach(list) { i in
+        Capped(items: list, id: \.id) { i in
             HStack(spacing: 6) {
                 Circle().fill(i.running ? (theme.rowStyle == .blocks ? .white : theme.good) : theme.onRow(true).opacity(0.35)).frame(width: 6, height: 6)
                 Text(i.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
-                Text(i.running ? "running" : i.user ? "you" : "all users").foregroundStyle(theme.onRow(true)).lineLimit(1)
+                Text(i.running ? "running" : i.user ? "you" : "all users").font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                 Spacer(minLength: 4)
                 if let u = i.usage {
                     Text(u.text).font(theme.number(11)).foregroundStyle(u.watt >= 1 || u.cpu >= 5 ? theme.warn : theme.onRow(true)).lineLimit(1)
@@ -318,15 +322,24 @@ struct DiskSection: View {
     @State private var result = MainActor.assumeIsolated { DiskSection.last }
     @State private var run = 0
     @State private var progress: (done: Int, total: Int, now: String)?
+    /// Vrij en totaal (GB), één keer bij openen gelezen
+    @State private var space: (free: Double, total: Double)? = {
+        let v = try? URL(fileURLWithPath: "/").resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey, .volumeTotalCapacityKey])
+        guard let f = v?.volumeAvailableCapacityForImportantUsage, let t = v?.volumeTotalCapacity, t > 0 else { return nil }
+        return (Double(f) / 1e9, Double(t) / 1e9)
+    }()
+
+    private var low: Bool { space.map { $0.free < $0.total * 0.1 } ?? false }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("What takes my disk space?").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+                CardTitle(icon: "internaldrive", title: "What takes my disk space?", tone: low ? 1 : 0)
                 Spacer()
                 Button(result == nil ? "Find large folders" : "Check again") { run += 1 }
                     .buttonStyle(Pill(color: theme.onRow())).disabled(progress != nil)
             }
+            if let space { Headline(big: "\(Int(space.free)) GB free", small: "of \(Int(space.total)) GB", tone: low ? 1 : 0) }
             if let p = progress {
                 ProgressView(value: Double(p.done), total: Double(max(p.total, 1))).controlSize(.small).tint(theme.rowStyle == .blocks ? .white : theme.accent)
                 Text("Checking \(p.now)…").font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.middle)

@@ -76,7 +76,7 @@ struct BackgroundSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("What macOS is doing").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+            CardTitle(icon: "gearshape.2", title: "What macOS is doing")
             if let now {
                 Text(now.isEmpty ? "Nothing special in the background right now." : now.joined(separator: ". ") + " — this passes by itself.")
                     .font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
@@ -87,9 +87,9 @@ struct BackgroundSection: View {
                 Text("Busy \(when)").font(theme.label(11)).foregroundStyle(theme.onRow(true)).padding(.top, 2)
                 ForEach(seen.sorted { $0.value > $1.value }, id: \.key) { k, v in
                     HStack(spacing: 6) {
-                        Text(k).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                        Text(k).foregroundStyle(theme.onRow()).lineLimit(1)
                         Spacer(minLength: 4)
-                        Text(duration(v)).font(theme.number(11)).foregroundStyle(theme.onRow())
+                        Text(duration(v)).font(theme.number(10)).foregroundStyle(theme.onRow(true))
                     }
                     .font(theme.label(11))
                 }

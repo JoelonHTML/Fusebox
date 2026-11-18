@@ -217,9 +217,9 @@ extension Metric {
         case .battery:
             guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: "no battery", valueSize: 24) }
             let time = s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? (s.charging ? "charging" : "")
-            // Naast BAT: laden → batterij met bliksem; op de accu → batterij die toont hoe vol, plus (instelling
-            // "batteryTime") hoe lang nog tot leeg, bijv. "2:35". Geen "tot vol": dat zegt weinig.
-            let left = !s.charging && d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
+            // Naast BAT: laden → batterij met bliksem, op de accu → batterij die toont hoe vol; plus (instelling "batteryTime")
+            // de schatting van macOS: op de accu hoe lang tot leeg, aan de lader hoe lang tot vol (bijv. "2:35" / "0:48").
+            let left = d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
             var row = MetricRowData(label: abbr, value: pct(b), side: left ?? "", level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
                                  detail: time.isEmpty ? "on power adapter" : time, values: h.compactMap(\.battery), valueSize: 24)
             row.sideIcon = s.charging ? "battery.100percent.bolt" : batteryIcon(b)

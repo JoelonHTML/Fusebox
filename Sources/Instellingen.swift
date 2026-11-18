@@ -384,8 +384,8 @@ struct LiveSettings: View {
             }
             OptionPreview(label: "NET", icon: "wifi", side: [netPing ? "17 ms" : nil, netSpeed ? "412 Mbit" : nil].compactMap { $0 }.joined(separator: " · "), value: "↓8 ↑2", unit: "KB/s")
             Toggle(isOn: $batteryTime) {
-                Text("Battery time left")
-                Text("Next to BAT on battery power: how long until empty. While charging: a battery with a bolt.")
+                Text("Battery time")
+                Text("Next to BAT: on battery, how long until empty; while charging (battery with a bolt), how long until full. macOS's own estimate.")
             }
             OptionPreview(label: "BAT", icon: "battery.75percent", side: batteryTime ? "2:35" : "", value: "81%")
         }

@@ -339,13 +339,14 @@ private let when: DateFormatter = { let f = DateFormatter(); f.locale = Locale(i
 
 private struct PowerCard<Content: View>: View {
     @Environment(\.theme) private var theme
-    let title: String, index: Int
+    let title: String, icon: String, index: Int
+    var tone = 0
     var refresh: (() -> Void)?
     @ViewBuilder let content: Content
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(title).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+                CardTitle(icon: icon, title: title, tone: tone)
                 Spacer()
                 if let refresh {
                     Button(action: refresh) { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain).foregroundStyle(theme.onRow(true)).help("Check again")
@@ -366,12 +367,17 @@ struct DrainSection: View {
     @State private var drain = MainActor.assumeIsolated { DrainSection.cache }
 
     var body: some View {
-        PowerCard(title: "What drained my battery", index: index) {
+        PowerCard(title: "What drained my battery", icon: "battery.25percent", index: index) {
             if let d = drain {
-                Text(subtitle(d)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
+                if let a = d.apps.first, d.total > 0 {
+                    Headline(big: "\(a.name) \(pct(a.wh / d.total * 100))", small: subtitle(d))
+                } else {
+                    Text(subtitle(d)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
+                }
                 if d.apps.isEmpty { Text("No app data for this time yet").foregroundStyle(theme.onRow(true)) }
                 let top = d.apps.first?.wh ?? 1, bar = theme.rowStyle == .blocks ? Color.white : theme.accent
-                ForEach(d.apps, id: \.name) { a in
+                // De grootste staat al in de kop
+                ForEach(d.total > 0 ? Array(d.apps.dropFirst()) : d.apps, id: \.name) { a in
                     HStack(spacing: 6) {
                         Text(a.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: 4)
@@ -404,9 +410,12 @@ struct SleepDrainSection: View {
     @State private var spans = MainActor.assumeIsolated { SleepDrainSection.cache }
 
     var body: some View {
-        PowerCard(title: "Battery use while asleep", index: index) {
+        PowerCard(title: "Battery use while asleep", icon: "moon.zzz", index: index, tone: spans?.contains(where: heavy) == true ? 1 : 0) {
             if let spans {
                 if spans.isEmpty { Text("No sleep longer than 30 minutes in the last 2 days").foregroundStyle(theme.onRow(true)) }
+                if let s = spans.last(where: { $0.lost != nil }) {
+                    Headline(big: s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? "", small: "during the last sleep on battery (\(duration(s.minutes)))", tone: heavy(s) ? 1 : 0)
+                }
                 ForEach(spans.suffix(4).reversed()) { s in
                     VStack(alignment: .leading, spacing: 1) {
                         HStack(spacing: 6) {
@@ -414,9 +423,9 @@ struct SleepDrainSection: View {
                             Text(duration(s.minutes)).foregroundStyle(theme.onRow(true))
                             Spacer(minLength: 4)
                             Text(s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? "on charger").font(theme.number(11))
-                                .foregroundStyle((s.lost ?? 0) >= 3 && (s.lost ?? 0) * 60 > s.minutes ? theme.warn : theme.onRow())   // meer dan 1% per uur
+                                .foregroundStyle(heavy(s) ? theme.tone(1, icon: false) : theme.onRow())
                         }
-                        Text(detail(s)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
+                        Text(detail(s)).font(theme.label(10)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                     }
                 }
             } else { ProgressView().controlSize(.small) }
@@ -427,6 +436,9 @@ struct SleepDrainSection: View {
             Self.cache = s; spans = s
         }
     }
+
+    /// Meer dan 1% per uur (en minstens 3%): opvallend.
+    private func heavy(_ s: Power.SleepSpan) -> Bool { (s.lost ?? 0) >= 3 && (s.lost ?? 0) * 60 > s.minutes }
 
     /// "Woken by lid opened · woke briefly 41×, mostly network access (Wi-Fi/Bluetooth)"
     private func detail(_ s: Power.SleepSpan) -> String {
@@ -445,13 +457,13 @@ struct AwakeSection: View {
     @State private var run = 0
 
     var body: some View {
-        PowerCard(title: "What keeps my Mac awake", index: index, refresh: { run += 1 }) {
+        PowerCard(title: "What keeps my Mac awake", icon: holds?.contains { $0.what == "keeping the screen on" } == true ? "eye" : "cup.and.saucer", index: index, refresh: { run += 1 }) {
             if let holds {
                 if holds.isEmpty { Text("Nothing: your Mac can sleep normally").foregroundStyle(theme.onRow(true)) }
                 ForEach(holds) { h in
                     HStack(spacing: 6) {
                         Text(h.app).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.tail)
-                        Text(h.what).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                        Text(h.what).font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                         Spacer(minLength: 4)
                         if !h.age.isEmpty { Text(h.age).font(theme.number(11)).foregroundStyle(theme.onRow(true)) }
                     }
@@ -472,12 +484,13 @@ struct BatteryHealthSection: View {
     @State private var data: (rows: [(day: String, pct: Int, cycles: Int?)], now: Diag.Battery?)?
 
     var body: some View {
-        PowerCard(title: "Battery health", index: index) {
+        PowerCard(title: "Battery health", icon: "heart.text.square", index: index, tone: data?.now?.worn == true ? 1 : 0) {
             if let data {
                 let rows = data.rows
                 if let b = data.now {
-                    Text([b.capacity.map { "\($0)% of original capacity" }, b.cycles.map { "\($0) cycles" }].compactMap { $0 }.joined(separator: " · "))
-                        .foregroundStyle(theme.onRow())
+                    Headline(big: b.capacity.map { "\($0)%" } ?? (b.condition ?? b.health),
+                             small: [b.capacity.map { _ in "of original capacity" }, b.cycles.map { "\($0) cycles" }].compactMap { $0 }.joined(separator: " · "),
+                             tone: b.worn ? 1 : 0)
                 }
                 if rows.count >= 2, let first = rows.first, let last = rows.last {
                     let v = rows.map { Double($0.pct) }, lo = (v.min() ?? 0) - 1, hi = (v.max() ?? 100) + 1

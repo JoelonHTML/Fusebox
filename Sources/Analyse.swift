@@ -97,6 +97,18 @@ fileprivate struct Tip: Identifiable {
     enum Action { case stop(String), open(URL, String) }
     let id: String, text: String, action: Action?
 
+    /// Iets dat echt aandacht vraagt (crashlus, geheugen op, schijf vol, warm, versleten accu): waarschuwingsdriehoek i.p.v. lampje.
+    var serious: Bool { ["loop", "jetsam", "disk", "mem", "hot", "battery", "leak"].contains { id.hasPrefix($0) } }
+
+    /// Wat er is (vet) en wat je kunt doen (klein): splitsen op " — ", anders op de eerste zin.
+    var parts: (head: String, rest: String?) {
+        let r = text.range(of: " — ") ?? text.range(of: ". ")
+        guard let r else { return (text, nil) }
+        let head = text[..<r.lowerBound] + (text[r] == ". " ? "." : "")
+        let rest = text[r.upperBound...].trimmingCharacters(in: .whitespacesAndNewlines)
+        return (String(head), rest.isEmpty ? nil : rest.prefix(1).uppercased() + rest.dropFirst())
+    }
+
     /// In welke Checkup-categorie de tip staat (op het begin van de id): perf, power, stability, storage of history.
     var category: String {
         let starts = { (p: [String]) in p.contains { id.hasPrefix($0) } }
@@ -795,6 +807,7 @@ private struct AnalysisPage: View, Equatable {
     @State private var note: String?
     @State private var checking = false
     @State private var share: String?
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     init(meter: Meter) {
         self.meter = meter
@@ -915,7 +928,9 @@ private struct AnalysisPage: View, Equatable {
             Button {
                 var s = openIDs
                 if open { s.remove(g.id) } else { s.insert(g.id) }
-                withAnimation(.snappy(duration: 0.2)) { openRaw = s.sorted().joined(separator: ",") }   // low impact: venster zet animaties uit
+                // Kort en goedkoop: alleen doorzichtigheid en een paar punten schuiven (geen vervaging/schaal/schaduw).
+                // Low impact: het venster zet animaties uit via een transaction; dat blijft zo werken.
+                withAnimation(.easeOut(duration: 0.2)) { openRaw = s.sorted().joined(separator: ",") }
             } label: {
                 HStack(spacing: 10) {
                     Image(systemName: g.icon).font(.system(size: 15, weight: .semibold))
@@ -938,7 +953,9 @@ private struct AnalysisPage: View, Equatable {
                     if !mine.isEmpty { ReportSections(report: r, tips: mine, previousName: period.previousName, parts: [.tips], logDir: meter.logDir, act: act) }
                     content(g.id, r, tips)
                 }
-                .padding(.bottom, 12).transition(.opacity)
+                .padding(.bottom, 12)
+                // Minder beweging: alleen vervagen, niet schuiven
+                .transition(reduceMotion ? .opacity : .opacity.combined(with: .offset(y: -6)))
             }
         }
         .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
@@ -969,7 +986,13 @@ private struct AnalysisPage: View, Equatable {
             }
         case "stability":
             if let c = r.crashes, !c.isEmpty { part(r, tips, .crashes) }
-            else { Text("No apps crashed or stopped responding \(r.when).").font(theme.label(12)).foregroundStyle(theme.onRow(true)).frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8) }
+            else {
+                VStack(alignment: .leading, spacing: 4) {
+                    CardTitle(icon: "checkmark.seal", title: "Crashes", tone: 3)
+                    Headline(big: "None", small: "No apps crashed or stopped responding \(r.when)", tone: 3)
+                }
+                .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8)
+            }
         case "storage":
             cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10) } }
         default:
@@ -1006,6 +1029,7 @@ private struct AnalysisPage: View, Equatable {
     private var why: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
+                Image(systemName: "magnifyingglass").font(.system(size: 13 * theme.scale, weight: .semibold)).foregroundStyle(theme.tone(0)).frame(width: 18)
                 Text("Why is my Mac slow?").font(theme.label(15).bold()).foregroundStyle(theme.onRow())
                 Spacer()
                 Button(diagnosis == nil ? "Check now" : "Check again") {
@@ -1177,16 +1201,16 @@ fileprivate struct ReportSections: View {
     }
 
     private var cpuTop: some View {
-        top("Top 5 CPU", report.topCPU, value: { pct($0.cpu) }, frac: { $0.cpu / max(report.topCPU.first?.cpu ?? 1, 0.1) }, index: 1)
+        top("Top 5 CPU", icon: "cpu", report.topCPU, value: { pct($0.cpu) }, frac: { $0.cpu / max(report.topCPU.first?.cpu ?? 1, 0.1) }, index: 1)
     }
     private var ramTop: some View {
-        top("Top 5 RAM", report.topRAM, value: { one($0.mem) + " GB" }, frac: { $0.mem / max(report.topRAM.first?.mem ?? 1, 0.01) }, index: 2)
+        top("Top 5 RAM", icon: "memorychip", report.topRAM, value: { one($0.mem) + " GB" }, frac: { $0.mem / max(report.topRAM.first?.mem ?? 1, 0.01) }, index: 2)
     }
 
-    private func top(_ title: String, _ list: [AppStat], value: @escaping (AppStat) -> String, frac: @escaping (AppStat) -> Double, index: Int) -> some View {
+    private func top(_ title: String, icon: String, _ list: [AppStat], value: @escaping (AppStat) -> String, frac: @escaping (AppStat) -> Double, index: Int) -> some View {
         let bar = theme.rowStyle == .blocks ? Color.white : theme.accent
         return VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+            CardTitle(icon: icon, title: title)
             if list.isEmpty { Text("No data yet").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
             ForEach(list) { a in
                 VStack(alignment: .leading, spacing: 2) {
@@ -1216,11 +1240,15 @@ fileprivate struct ReportSections: View {
         let up = Int(report.boot.map { Date().timeIntervalSince($0) } ?? ProcessInfo.processInfo.systemUptime) / 60
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE d MMM HH:mm"
         return VStack(alignment: .leading, spacing: 4) {
-            Text("Running time").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
-            line("Mac on for", "\(duration(up)) (\(f.string(from: Date().addingTimeInterval(-Double(up) * 60))))")
+            CardTitle(icon: "clock", title: "Running time", tone: report.uptimeDays >= Diag.restartDays ? 1 : 0)
+            Headline(big: duration(up), small: "Mac on since \(f.string(from: Date().addingTimeInterval(-Double(up) * 60)))",
+                     tone: report.uptimeDays >= Diag.restartDays ? 1 : 0)
             line("Fusebox measuring since", report.first.map { f.string(from: $0) } ?? "–")
             line("Measured this period", duration(report.minutes))
-            ForEach(report.topSeen) { a in line(a.name, "seen active \(duration(a.minutes))") }
+            if !report.topSeen.isEmpty {
+                Text("Seen active longest").font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.top, 3)
+                ForEach(report.topSeen) { a in item(a.name, duration(a.minutes)) }
+            }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: 3)
@@ -1228,7 +1256,7 @@ fileprivate struct ReportSections: View {
 
     private func battery(_ b: Diag.Battery) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Battery").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+            CardTitle(icon: "battery.100percent", title: "Battery", tone: b.worn ? 1 : 0)
             Text(b.summary).font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1237,11 +1265,25 @@ fileprivate struct ReportSections: View {
 
     private func crashes(_ c: Diag.Crashes) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Crashes").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
-            ForEach(Array(c.rows.enumerated()), id: \.offset) { line($0.element.label, $0.element.value) }
+            CardTitle(icon: "exclamationmark.octagon", title: "Crashes", tone: c.crashes.isEmpty && c.hangs.isEmpty ? 1 : 2)
+            let n = c.crashes.count + c.hangs.count
+            if n > 0 { Headline(big: "\(n) app" + (n == 1 ? "" : "s"), small: "crashed or stopped responding \(report.when)", tone: 1) }
+            Capped(items: Array(c.rows.enumerated()), id: \.offset, limit: limit) { item($0.element.label, $0.element.value) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: 8)
+    }
+
+    /// Lijsten inkorten op het scherm; in de PDF (geen logmap) alles.
+    private var limit: Int? { logDir == nil ? nil : 5 }
+
+    /// Regel waarin de naam opvalt en de bijzaak (tijd, aantal) klein en grijs staat.
+    private func item(_ name: String, _ detail: String) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 6) {
+            Text(name).font(theme.label(12)).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.tail)
+            Spacer(minLength: 4)
+            Text(detail).font(theme.number(10)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.8)
+        }
     }
 
     private func line(_ a: String, _ b: String) -> some View {
@@ -1255,9 +1297,10 @@ fileprivate struct ReportSections: View {
 
     private var busy: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Busy moments").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
-            if report.busy.isEmpty { Text("No long busy periods (≥ 5 min above 85% CPU)").foregroundStyle(theme.onRow(true)) }
-            ForEach(report.busy) { Text(Analysis.busyLabel($0)).foregroundStyle(theme.onRow()) }
+            CardTitle(icon: "flame", title: "Busy moments", tone: report.busy.isEmpty ? 0 : 1)
+            Headline(big: report.busy.isEmpty ? "None" : "\(report.busy.count)", small: "periods of ≥ 5 min above 85% CPU \(report.when)",
+                     tone: report.busy.isEmpty ? 3 : 1)
+            ForEach(report.busy) { b in item(b.app.map { "Mostly \($0)" } ?? "Busy", "\(Analysis.span(b.start, b.end)) · \(pct(b.cpu))") }
         }
         .font(theme.label(11)).frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: 4)
@@ -1267,15 +1310,19 @@ fileprivate struct ReportSections: View {
     private var peakSection: some View {
         let p = report.peaks
         return VStack(alignment: .leading, spacing: 5) {
-            Text("Peaks").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+            CardTitle(icon: "waveform.path.ecg", title: "Peaks")
             if p.isEmpty {
-                Text("No peaks recorded \(report.when) (CPU or GPU ≥ 80%, hot, memory pressure or heavy disk use)").foregroundStyle(theme.onRow(true))
+                Headline(big: "None", small: "No peaks recorded \(report.when) (CPU or GPU ≥ 80%, hot, memory pressure or heavy disk use)", tone: 3)
             } else {
+                Headline(big: "\(p.count)", small: "peak" + (p.count == 1 ? "" : "s") + " \(report.when)")
                 if let from = report.peakFrom { PeakTimeline(peaks: p, from: from, days: report.peakDays).padding(.vertical, 2) }
                 ForEach(Peaks.summary(p, when: report.when), id: \.self) { Text($0).foregroundStyle(theme.onRow()) }
-                ForEach(p.suffix(6).reversed()) { x in
-                    Text("\(Analysis.span(x.start, x.end)) · \(x.kind.title) \(x.kind.format(x.top))" + (x.cause.map { " · \($0)" } ?? ""))
-                        .foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.middle)
+                Capped(items: logDir == nil ? Array(p.suffix(6).reversed()) : p.reversed(), id: \.id, limit: limit) { x in
+                    HStack(alignment: .firstTextBaseline, spacing: 6) {
+                        Text(Analysis.span(x.start, x.end)).font(theme.number(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
+                        Text("\(x.kind.title) \(x.kind.format(x.top))" + (x.cause.map { " · \($0)" } ?? ""))
+                            .foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
+                    }
                 }
             }
         }
@@ -1288,7 +1335,14 @@ fileprivate struct ReportSections: View {
             header("Tips")
             ForEach(Array(tips.enumerated()), id: \.element.id) { i, tip in
                 HStack(alignment: .center, spacing: 8) {
-                    Text(tip.text).font(theme.label(12)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
+                    let (head, rest) = tip.parts
+                    Image(systemName: tip.serious ? "exclamationmark.triangle.fill" : "lightbulb")
+                        .font(.system(size: 13 * theme.scale, weight: .semibold)).foregroundStyle(theme.tone(tip.serious ? 1 : 0)).frame(width: 18)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(head).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+                        if let rest { Text(rest).font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
+                    }
+                    .fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 4)
                     if let act, let a = tip.action {
                         switch a {
@@ -1305,14 +1359,15 @@ fileprivate struct ReportSections: View {
 
     private var log: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Log").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+            CardTitle(icon: "list.bullet.rectangle", title: "Log")
             if report.events.isEmpty { Text("Nothing unusual happened").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
-            ForEach(report.events) { e in
+            Capped(items: report.events, id: \.id, limit: limit) { e in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Image(systemName: e.icon).frame(width: 14)
                         .foregroundStyle(theme.rowStyle == .blocks ? .white : e.level >= 2 ? theme.danger : e.level == 1 ? theme.warn : theme.secondary)
-                    Text(Analysis.span(e.start, e.end)).font(theme.number(11)).foregroundStyle(theme.onRow(true)).lineLimit(1)
-                    Text(e.text).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
+                    Text(e.text).font(theme.label(12)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
+                    Spacer(minLength: 4)
+                    Text(Analysis.span(e.start, e.end)).font(theme.number(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                 }
                 .font(theme.label(11))
             }
@@ -1346,5 +1401,63 @@ struct Pill: ButtonStyle {
             .overlay(Capsule().stroke(color.opacity(0.6), lineWidth: 1))
             .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.55 : 1)
+    }
+}
+
+// MARK: - Bouwstenen voor de Checkup-kaarten (ook in Accu/Opstart/Gezondheid)
+
+/// Toon van een kaart: 0 gewoon, 1 let op, 2 ernstig, 3 goed.
+extension Theme {
+    /// Kleur voor icoon of kop; bij kleurblokken altijd wit (op het blok). Gewone toon: accent voor iconen, tekstkleur voor koppen.
+    func tone(_ t: Int, icon: Bool = true) -> Color {
+        if rowStyle == .blocks { return .white }
+        switch t { case 1: return warn; case 2: return danger; case 3: return good; default: return icon ? accent : text }
+    }
+}
+
+/// Kaarttitel met een klein SF Symbol ervoor.
+struct CardTitle: View {
+    @Environment(\.theme) private var theme
+    let icon: String, title: String
+    var tone = 0
+    var body: some View {
+        HStack(spacing: 6) {
+            Image(systemName: icon).font(.system(size: 11 * theme.scale, weight: .semibold)).foregroundStyle(theme.tone(tone)).frame(width: 16)
+            Text(title).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
+        }
+    }
+}
+
+/// Eén kernfeit groot, de uitleg klein eronder: zo zie je bij scrollen meteen waar het om gaat.
+struct Headline: View {
+    @Environment(\.theme) private var theme
+    let big: String
+    var small: String? = nil
+    var tone = 0
+    var body: some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(big).font(theme.number(22)).foregroundStyle(theme.tone(tone, icon: false)).lineLimit(1).minimumScaleFactor(0.7)
+            if let small { Text(small).font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true) }
+        }
+        .padding(.bottom, 2)
+    }
+}
+
+/// Lange lijst: eerst `limit` regels, de rest achter "Show all (N)". `limit` nil = alles (PDF).
+struct Capped<Item, ID: Hashable, Row: View>: View {
+    @Environment(\.theme) private var theme
+    let items: [Item], id: KeyPath<Item, ID>
+    var limit: Int? = 5
+    @ViewBuilder let row: (Item) -> Row
+    @State private var all = false
+
+    var body: some View {
+        // +1: geen "Show all (6)" voor één verborgen regel
+        let cut = limit.map { all || items.count <= $0 + 1 ? items.count : $0 } ?? items.count
+        ForEach(items.prefix(cut), id: id) { row($0) }
+        if let limit, items.count > limit + 1 {
+            Button(all ? "Show less" : "Show all (\(items.count))") { all.toggle() }
+                .buttonStyle(.plain).font(theme.label(11).weight(.semibold)).foregroundStyle(theme.tone(0)).padding(.top, 1)
+        }
     }
 }

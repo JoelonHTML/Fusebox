@@ -27,6 +27,15 @@ final class Meter: ObservableObject {
     private var looking: Bool {
         ticks <= 5 || (!screenAsleep && NSApp.windows.contains { $0.isVisible && $0.occlusionState.contains(.visible) })
     }
+    /// Minuten tot vol op basis van de stijging sinds ±5–15 min geleden; nil als het (nog) niet stijgt of te kort meet.
+    static func timeToFull(now b: Double, at t: Date, history: [Sample]) -> Int? {
+        guard b < 100, let old = history.last(where: { t.timeIntervalSince($0.time) >= 300 }), let ob = old.battery,
+              t.timeIntervalSince(old.time) <= 900 else { return nil }
+        let perMin = (b - ob) / (t.timeIntervalSince(old.time) / 60)
+        guard perMin > 0.05 else { return nil }
+        return Int(((100 - b) / perMin).rounded())
+    }
+
     /// Weer in beeld (venster terug, scherm wakker): meteen de nieuwste waarden tonen, niet pas bij de volgende meting.
     func refresh() { objectWillChange.send() }
     /// Programma's: `ui` ververst elke 2 s zolang die pagina open is; `minuteApps` meet per minuut voor de log/analyse.
@@ -152,6 +161,8 @@ final class Meter: ObservableObject {
         if !pingHost.isEmpty && s.time.timeIntervalSince(pingAt) >= pingEvery - 0.5 { pingAt = s.time; pinger.ping(host: pingHost) }
         s.pingMs = pingHost.isEmpty ? nil : pinger.lastMs
         s.pingPending = !pingHost.isEmpty && !pinger.answered
+        // Aan het laden maar macOS heeft (nog) geen schatting: zelf uitrekenen uit hoe snel het % de laatste minuten steeg
+        if s.charging, s.batteryMinutes == nil, let b = s.battery { s.batteryMinutes = Self.timeToFull(now: b, at: s.time, history: recent) }
         s.wifiDbm = WifiWatch.shared.value()
         if let programs, programsVisible { ui.apps = programs }
         fanControl.update(s)
@@ -390,6 +401,9 @@ enum LowImpact {
         precondition(decide("auto", lowPower: true, battery: nil, charging: false) && decide("auto", lowPower: false, battery: 19, charging: false), "auto aan")
         precondition(!decide("auto", lowPower: false, battery: 19, charging: true) && !decide("auto", lowPower: false, battery: 20, charging: false)
                      && !decide(nil, lowPower: false, battery: nil, charging: false), "auto uit")   // aan de lader, 20% of meer, geen accu
+        var a = Sample(); a.time = Date(timeIntervalSince1970: 0); a.battery = 30
+        precondition(Meter.timeToFull(now: 40, at: Date(timeIntervalSince1970: 600), history: [a]) == 60, "tijd tot vol")   // 1%/min → 60 min
+        precondition(Meter.timeToFull(now: 30, at: Date(timeIntervalSince1970: 600), history: [a]) == nil, "stijgt niet")
         print("low impact: ok")
     }
 }
