@@ -800,14 +800,9 @@ private struct AnalysisPage: View, Equatable {
         ScrollView {
             VStack(alignment: .leading, spacing: 12) {
                 picker
-                // Samenvatting bovenaan: waarom traag + gezondheidsscore, daarna de belangrijkste tips
-                if columns == 2, let report, shown("score") {
-                    HStack(alignment: .top, spacing: 12) { why; part(report, tips, .score) }
-                        .fixedSize(horizontal: false, vertical: true)
-                } else {
-                    why
-                    if let report, shown("score") { part(report, tips, .score) }
-                }
+                // Samenvatting bovenaan: gezondheidsscore, daarna de belangrijkste tips ("Why is my Mac slow?" staat onder Performance)
+                if let report, shown("score") { part(report, tips, .score) }
+                if report == nil { why }   // nog aan het laden: de knop alvast bruikbaar
                 if let report {
                     if shown("tips"), !tips.isEmpty { topTips(report, tips) }
                     VStack(alignment: .leading, spacing: 0) {
@@ -941,6 +936,7 @@ private struct AnalysisPage: View, Equatable {
     @ViewBuilder private func content(_ id: String, _ r: Report, _ tips: [Tip]) -> some View {
         switch id {
         case "perf":
+            why
             if shown("tops") { part(r, tips, .tops) }
             cols { if shown("peaks") { part(r, tips, .peaks) } } right: {
                 if shown("busy") { part(r, tips, .busy) }
