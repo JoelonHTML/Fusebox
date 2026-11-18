@@ -861,6 +861,10 @@ private struct AnalysisPage: View, Equatable {
         if report != nil && !off.contains("startup") { StartupSection(index: 9) }
         if report != nil && !off.contains("disk") { DiskSection(index: 10) }
         if let report, !off.contains("background") { BackgroundSection(apps: meter.minuteApps.apps.map { ($0.name, $0.cpu) }, seen: report.jobMinutes, when: report.when, index: 11) }
+        if report != nil && Power.hasBattery && !off.contains("drain") { DrainSection(index: 12, dir: meter.logDir) }
+        if report != nil && Power.hasBattery && !off.contains("sleep") { SleepDrainSection(index: 13) }
+        if report != nil && !off.contains("awake") { AwakeSection(index: 14) }
+        if report != nil && Power.hasBattery && !off.contains("health") { BatteryHealthSection(index: 15, dir: meter.logDir) }
     }
 
     private var picker: some View {

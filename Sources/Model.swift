@@ -220,6 +220,7 @@ final class Meter: ObservableObject {
             if !FileManager.default.fileExists(atPath: file.path) { try? AppUsage.csvHeader.write(to: file, atomically: true, encoding: .utf8) }
             _ = Self.append(lines, to: file)
         }
+        BatteryHealth.tick(s.time, dir: logDir)   // één regel per dag in battery-health.csv
         checkAlerts(s, top: apps.first { $0.kind != .macos })
         checkPeakAlert(s, apps: apps)
     }

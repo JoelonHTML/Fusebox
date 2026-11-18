@@ -155,6 +155,7 @@ struct MeterkastApp: App {
         Peaks.selfTest()
         PeakAlert.selfTest()
         Installed.selfTest()
+        Power.selfTest()
         let s = Sampler()
         _ = s.sample()
         let m = AppMonitor()
