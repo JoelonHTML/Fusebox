@@ -11,7 +11,22 @@ struct StartupItem: Identifiable, Sendable, Equatable {
     let user: Bool          // ~/Library/LaunchAgents (alleen van deze gebruiker)
     let atLogin: Bool       // LaunchAgent met RunAtLoad/KeepAlive: start bij inloggen
     var running = false
+    /// Wat het kost (alleen te meten bij processen van deze gebruiker; die van het systeem/root niet): gemiddeld sinds de start
+    var usage: StartupUsage?
     var id: String { plist.path }
+}
+
+/// Gebruik van de processen van een opstartitem: CPU en vermogen gemiddeld sinds ze draaien, geheugen nu.
+struct StartupUsage: Sendable, Equatable {
+    var cpu = 0.0, memMB = 0.0, watt = 0.0
+    static func + (a: Self, b: Self) -> Self { .init(cpu: a.cpu + b.cpu, memMB: a.memMB + b.memMB, watt: a.watt + b.watt) }
+    /// "0.4% CPU · 52 MB · 0.1 W"
+    var text: String {
+        let c = cpu < 0.1 ? "<0.1" : cpu < 10 ? String(format: "%.1f", cpu) : "\(Int(cpu.rounded()))"
+        let m = memMB >= 1024 ? String(format: "%.1f GB", memMB / 1024) : "\(Int(memMB.rounded())) MB"
+        let w = watt < 0.1 ? "<0.1" : String(format: "%.1f", watt)
+        return "\(c)% CPU · \(m) · \(w) W"
+    }
 }
 
 enum Startup {
@@ -38,30 +53,51 @@ enum Startup {
     /// Login-items van SMAppService/sfltool vragen beheerdersrechten: die slaan we over.
     static func read() -> [StartupItem] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
-        let running = runningPaths()
+        let running = runningPIDs()
         var out: [StartupItem] = []
         for (dir, user, agent) in [(home + "/Library/LaunchAgents", true, true), ("/Library/LaunchAgents", false, true), ("/Library/LaunchDaemons", false, false)] {
             for f in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where f.hasSuffix(".plist") {
                 let url = URL(fileURLWithPath: dir).appendingPathComponent(f)
                 guard let d = NSDictionary(contentsOf: url) as? [String: Any], var it = item(d, plist: url, user: user, agent: agent) else { continue }
-                it.running = it.program.map { running.contains($0) || running.contains(URL(fileURLWithPath: $0).resolvingSymlinksInPath().path) } ?? false
+                let pids = it.program.map { running[$0] ?? running[URL(fileURLWithPath: $0).resolvingSymlinksInPath().path] ?? [] } ?? []
+                it.running = !pids.isEmpty
+                it.usage = pids.compactMap(usage).reduce(nil) { ($0 ?? StartupUsage()) + $1 }
                 out.append(it)
             }
         }
         return out.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
     }
 
-    /// Paden van alle draaiende programma's (proc_pidpath werkt ook voor root-processen).
-    private static func runningPaths() -> Set<String> {
+    /// Pad → pids van alle draaiende programma's (proc_pidpath werkt ook voor root-processen).
+    private static func runningPIDs() -> [String: [pid_t]] {
         var n = proc_listallpids(nil, 0)
         var pids = [pid_t](repeating: 0, count: Int(max(n, 0)) + 64)
         n = proc_listallpids(&pids, Int32(pids.count * MemoryLayout<pid_t>.size))
-        var paths = Set<String>()
+        var paths: [String: [pid_t]] = [:]
         var buf = [CChar](repeating: 0, count: 4096)
         for pid in pids.prefix(Int(max(n, 0))) where pid > 0 {
-            if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 { paths.insert(String(cString: buf)) }
+            if proc_pidpath(pid, &buf, UInt32(buf.count)) > 0 { paths[String(cString: buf), default: []].append(pid) }
         }
         return paths
+    }
+
+    private static let tick: Double = { var t = mach_timebase_info(); mach_timebase_info(&t); return Double(t.numer) / Double(t.denom) }()
+
+    /// Eén proces: processortijd en energie gedeeld door hoe lang het al draait; geheugen zoals Activiteitenweergave.
+    /// nil voor processen van andere gebruikers (root): die mag alleen macOS zelf meten.
+    static func usage(_ pid: pid_t) -> StartupUsage? {
+        var ri = rusage_info_v6()
+        let ok = withUnsafeMutablePointer(to: &ri) { p in p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(pid, RUSAGE_INFO_V6, $0) } }
+        guard ok == 0 else { return nil }
+        let alive = Double(mach_absolute_time() &- ri.ri_proc_start_abstime) * tick / 1e9
+        return average(cpuNs: Double(ri.ri_user_time + ri.ri_system_time) * tick, energyNj: Double(ri.ri_energy_nj), seconds: alive,
+                       memBytes: Double(ri.ri_phys_footprint), cores: Double(ProcessInfo.processInfo.activeProcessorCount))
+    }
+
+    /// CPU in % van de hele Mac (alle kernen samen = 100%, zoals overal in Fusebox).
+    static func average(cpuNs: Double, energyNj: Double, seconds: Double, memBytes: Double, cores: Double) -> StartupUsage {
+        let t = max(seconds, 1)
+        return StartupUsage(cpu: cpuNs / 1e9 / t / cores * 100, memMB: memBytes / 1_048_576, watt: energyNj / 1e9 / t)
     }
 }
 
@@ -144,6 +180,9 @@ enum DiskScan {
     }
 
     static func selfTest() {
+        let su = Startup.average(cpuNs: 36e9, energyNj: 3600e9, seconds: 3600, memBytes: 52 * 1_048_576, cores: 10)
+        precondition(abs(su.cpu - 0.1) < 0.0001 && abs(su.watt - 1) < 0.0001 && su.memMB == 52 && su.text == "0.1% CPU · 52 MB · 1.0 W", "opstart-gebruik")
+        precondition(StartupUsage(cpu: 0.01, memMB: 2048, watt: 0.05).text == "<0.1% CPU · 2.0 GB · <0.1 W", "opstart-tekst")
         let d: [String: Any] = ["Label": "com.vendor.thing_helper", "ProgramArguments": ["/Applications/Thing.app/Contents/Library/Helper.app/Contents/MacOS/h", "-x"], "RunAtLoad": true]
         let p = URL(fileURLWithPath: "/tmp/x.plist")
         let i = Startup.item(d, plist: p, user: true, agent: true)
@@ -206,8 +245,15 @@ struct StartupSection: View {
         Text(title).font(theme.label(11)).foregroundStyle(theme.onRow()).padding(.top, 4)
         // Zelfde app meerdere keren (bijv. 3× OneDrive): één regel; draait als er één draait
         let list: [StartupItem] = Dictionary(grouping: list, by: \.name).values
-            .map { (g: [StartupItem]) -> StartupItem in var f = g.first(where: \.user) ?? g[0]; f.running = g.contains(where: \.running); return f }
-            .sorted { (a: StartupItem, b: StartupItem) in a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending }
+            .map { (g: [StartupItem]) -> StartupItem in
+                var f = g.first(where: \.user) ?? g[0]; f.running = g.contains(where: \.running)
+                f.usage = g.compactMap(\.usage).reduce(nil) { ($0 ?? StartupUsage()) + $1 }; return f
+            }
+            // Wat het meest kost bovenaan (energie), daarna op naam
+            .sorted { (a: StartupItem, b: StartupItem) in
+                let x = a.usage?.watt ?? -1, y = b.usage?.watt ?? -1
+                return x != y ? x > y : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+            }
         if list.isEmpty { Text("None").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
         ForEach(list) { i in
             HStack(spacing: 6) {
@@ -215,6 +261,10 @@ struct StartupSection: View {
                 Text(i.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
                 Text(i.running ? "running" : i.user ? "you" : "all users").foregroundStyle(theme.onRow(true)).lineLimit(1)
                 Spacer(minLength: 4)
+                if let u = i.usage {
+                    Text(u.text).font(theme.number(11)).foregroundStyle(u.watt >= 1 || u.cpu >= 5 ? theme.warn : theme.onRow(true)).lineLimit(1)
+                        .help("Average since it started (memory: now)")
+                }
                 if i.user { Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow())) }
             }
             .font(theme.label(11))
