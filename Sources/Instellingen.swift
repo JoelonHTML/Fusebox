@@ -248,7 +248,7 @@ struct ProfileSettings: View {
             }
             if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
         }
-        Section { LowImpactPicker(); SmoothBigToggle() }
+        Section { LowImpactPicker() }
         Section("Share with friends") {
             HStack {
                 Button("Share my settings…") { Prefs.shareDialog() }
@@ -363,6 +363,7 @@ struct LiveSettings: View {
                 }
                 .disabled(graphs == .never)
             }
+            SmoothBigToggle().disabled(graphs == .never)
         }
         Section("Small window") {
             Toggle(isOn: $perCore) {
@@ -810,7 +811,7 @@ struct SmoothBigToggle: View {
     var body: some View {
         Toggle(isOn: $on) {
             Text("Smooth large graphs")
-            Text("Large graphs glide instead of stepping with each measurement. Uses a bit more GPU, more so in a big window.")
+            Text("Large graphs glide instead of stepping with each measurement. Costs a little more processor in a big window.")
         }
     }
 }
