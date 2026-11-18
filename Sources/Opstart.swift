@@ -11,6 +11,8 @@ struct StartupItem: Identifiable, Sendable, Equatable {
     let user: Bool          // ~/Library/LaunchAgents (alleen van deze gebruiker)
     let atLogin: Bool       // LaunchAgent met RunAtLoad/KeepAlive: start bij inloggen
     var running = false
+    /// Het programma bestaat niet meer (app weggegooid, de plist bleef staan)
+    var orphan = false
     /// Wat het kost (alleen te meten bij processen van deze gebruiker; die van het systeem/root niet): gemiddeld sinds de start
     var usage: StartupUsage?
     var id: String { plist.path }
@@ -36,7 +38,14 @@ enum Startup {
         let program = (d["Program"] as? String) ?? (d["ProgramArguments"] as? [String])?.first
         let keepAlive = (d["KeepAlive"] as? Bool) ?? (d["KeepAlive"] is [String: Any])   // KeepAlive kan ook een voorwaarden-dict zijn
         return StartupItem(label: label, name: friendlyName(program: program, label: label), program: program, plist: plist,
-                           user: user, atLogin: agent && (d["RunAtLoad"] as? Bool == true || keepAlive))
+                           user: user, atLogin: agent && (d["RunAtLoad"] as? Bool == true || keepAlive),
+                           orphan: program.map(missing) ?? false)
+    }
+
+    /// Absoluut pad dat niet (meer) bestaat; fileExists volgt symlinks, dus een kapotte link telt ook als weg.
+    /// Geen pad (alleen een naam, of BundleProgram) of een schijf die nu niet is aangesloten (/Volumes): niet beoordelen.
+    static func missing(_ path: String) -> Bool {
+        path.hasPrefix("/") && !path.hasPrefix("/Volumes/") && !FileManager.default.fileExists(atPath: path)
     }
 
     /// Naam van de app waar het bij hoort (buitenste .app in het pad), anders iets leesbaars uit het label.
@@ -192,6 +201,13 @@ enum DiskScan {
         precondition(Startup.item(["Label": "com.apple.foo"], plist: p, user: true, agent: true) == nil
                      && Startup.item(["Label": "x.y", "Disabled": true], plist: p, user: true, agent: true) == nil
                      && Startup.item(["Program": "/bin/x"], plist: p, user: true, agent: true) == nil, "apple/uit/geen label")
+        // Achtergelaten: programma bestaat niet meer; wel bestaand, zonder pad of op een losse schijf: niet
+        let gone: [String: Any] = ["Label": "com.vendor.gone", "Program": "/Applications/Weg-\(UUID().uuidString).app/Contents/MacOS/helper"]
+        precondition(Startup.item(gone, plist: p, user: true, agent: true)?.orphan == true
+                     && Startup.item(["Label": "x.y", "ProgramArguments": ["/bin/sh", "-c", "true"]], plist: p, user: true, agent: true)?.orphan == false
+                     && Startup.item(["Label": "x.y", "ProgramArguments": ["node"]], plist: p, user: true, agent: true)?.orphan == false
+                     && Startup.item(["Label": "x.y"], plist: p, user: true, agent: true)?.orphan == false
+                     && !Startup.missing("/Volumes/Extern/x"), "achtergelaten")
         precondition(Startup.friendlyName(program: "/usr/local/bin/x", label: "com.teamviewer.teamviewer_service") == "Teamviewer Service"
                      && Startup.friendlyName(program: nil, label: "com.google.keystone.agent") == "Google Keystone Agent"
                      && Startup.friendlyName(program: nil, label: "solo") == "solo", "vriendelijke naam")
@@ -225,8 +241,9 @@ struct StartupSection: View {
             Text("Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items.")
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             if let items {
-                group("Apps that start at login", items.filter(\.atLogin))
-                group("Background helpers", items.filter { !$0.atLogin })
+                orphans(items.filter(\.orphan))
+                group("Apps that start at login", items.filter { $0.atLogin && !$0.orphan })
+                group("Background helpers", items.filter { !$0.atLogin && !$0.orphan })
             } else {
                 ProgressView().controlSize(.small)
             }
@@ -238,6 +255,26 @@ struct StartupSection: View {
             let r = await Task.detached(priority: .utility) { Startup.read() }.value
             Self.cache = r
             items = r
+        }
+    }
+
+    /// Achtergelaten door weggegooide apps: opvallend (warn), alleen tonen als er iets is. Wij verwijderen niets.
+    @ViewBuilder private func orphans(_ list: [StartupItem]) -> some View {
+        if !list.isEmpty {
+            Text("Left behind by deleted apps").font(theme.label(11)).foregroundStyle(theme.warn).padding(.top, 4)
+            Text("These try to start every time but their app is gone. Safe to remove.")
+                .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
+            ForEach(list) { i in
+                HStack(spacing: 6) {
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.warn)
+                    Text(i.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
+                    if !i.user { Text("needs your password to remove").foregroundStyle(theme.onRow(true)).lineLimit(1) }
+                    Spacer(minLength: 4)
+                    Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow()))
+                }
+                .font(theme.label(11))
+                .help(i.plist.path + (i.program.map { "\nMissing: " + $0 } ?? ""))
+            }
         }
     }
 

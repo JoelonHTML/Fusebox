@@ -401,3 +401,82 @@ struct CurveEditor: View {
         raw = FanCurve.format(pts)
     }
 }
+
+// MARK: - Stof: ventilator hard terwijl de Mac bijna niets doet (kolom ventilator_pct in de meterkast-log)
+
+enum FanDust {
+    static let fastPct = 60.0, calm = 20.0, needMinutes = 60
+    static let tip = "Your fan spins hard while your Mac is barely busy — the vents may be dusty. Clean them or have them cleaned."
+
+    /// Afgelopen 7 dagen samen minstens een uur verdacht? Macs zonder ventilator: nooit. Afgesloten dagen veranderen niet: één keer lezen.
+    static func check(dir: URL, now: Date = Date()) -> Bool {
+        guard Fans.count > 0 else { return false }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"
+        var total = 0
+        for back in 0..<7 {
+            guard let d = Calendar.current.date(byAdding: .day, value: -back, to: now) else { continue }
+            let name = f.string(from: d)
+            lock.lock(); let hit = back > 0 ? cache[name] : nil; lock.unlock()
+            if let hit { total += hit; continue }
+            let n = (try? String(contentsOf: dir.appendingPathComponent("meterkast-\(name).csv"), encoding: .utf8)).map(minutes) ?? 0
+            if back > 0 { lock.lock(); cache[name] = n; lock.unlock() }   // vandaag groeit nog
+            total += n
+        }
+        return total >= needMinutes
+    }
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var cache: [String: Int] = [:]
+
+    /// Eén dag-log → minuten met de ventilator boven `fastPct` terwijl CPU én GPU al minstens 3 minuten onder `calm` zitten
+    /// (zo telt nadraaien na zwaar werk niet). Kolommen op naam; oude logs zonder ventilator_pct geven 0.
+    static func minutes(_ text: String) -> Int {
+        let lines = text.split(separator: "\n")
+        var col: [Substring: Int] = [:]
+        for (i, c) in (lines.first ?? "").split(separator: ",").enumerated() { col[c] = i }
+        guard let iF = col["ventilator_pct"], let iC = col["cpu_pct"] else { return 0 }
+        let iG = col["gpu_pct"]
+        var key: Substring = "", n = 0.0, cpu = 0.0, gpu = 0.0, fan = 0.0, fanN = 0.0, streak = 0, out = 0
+        func close() {
+            guard n > 0 else { return }
+            streak = cpu / n < calm && gpu / n < calm ? streak + 1 : 0
+            if streak >= 3, fanN > n / 2, fan / fanN > fastPct { out += 1 }
+        }
+        for line in lines.dropFirst() {
+            let v = line.split(separator: ",", omittingEmptySubsequences: false)
+            guard v.count > max(iF, iC), v[0].count >= 16, let c = Double(v[iC]) else { continue }
+            let k = v[0].prefix(16)
+            if k != key { close(); key = k; n = 0; cpu = 0; gpu = 0; fan = 0; fanN = 0 }
+            n += 1; cpu += c
+            gpu += iG.flatMap { $0 < v.count ? Double(v[$0]) : nil } ?? 0
+            if let x = Double(v[iF]) { fan += x; fanN += 1 }
+        }
+        close()
+        return out
+    }
+
+    static func selfTest() {
+        let head = Sample.csvHeader
+        precondition(head.hasSuffix(",ventilator_pct\n"), "ventilator-kolom achteraan")
+        // 90 minuten, elke 30 s een regel; `cpu` en `fan` per minuut
+        func log(cpu: (Int) -> Double, fan: (Int) -> Double?) -> String {
+            var s = head
+            for m in 0..<90 { for sec in ["00", "30"] {
+                var x = Sample(); x.cpu = cpu(m)
+                x.time = Sample.stamp.date(from: String(format: "2026-11-16 %02d:%02d:%@", 10 + m / 60, m % 60, sec))!
+                x.fans = fan(m).map { [FanReading(rpm: $0 * 57, min: 1200, max: 5700)] } ?? []
+                s += x.csv
+            } }
+            return s
+        }
+        let dusty = minutes(log(cpu: { _ in 5 }, fan: { _ in 80 }))
+        precondition(dusty == 88, "stof: \(dusty)")                                         // eerste 2 minuten: nog geen 3 rustige op rij
+        precondition(minutes(log(cpu: { _ in 70 }, fan: { _ in 90 })) == 0, "zwaar werk = geen stof")
+        precondition(minutes(log(cpu: { _ in 5 }, fan: { _ in 30 })) == 0, "rustige ventilator")
+        precondition(minutes(log(cpu: { $0 < 45 ? 80 : 5 }, fan: { _ in 80 })) == 43, "nadraaien telt niet")   // 45..89 = 45, min 2 voor de reeks
+        precondition(minutes(log(cpu: { _ in 5 }, fan: { _ in nil })) == 0, "geen ventilator")
+        precondition(minutes("tijd,cpu_pct\n2026-11-16 10:00:00,5\n") == 0 && minutes("") == 0, "oude log")
+        var forced = Sample(); forced.fans = [FanReading(rpm: 5000, min: 1200, max: 5700, forced: true)]
+        precondition(forced.fanPct == nil && Sample().fanPct == nil, "helper stuurt = niet meetellen")
+        print("stof ok")
+    }
+}
