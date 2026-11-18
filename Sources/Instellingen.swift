@@ -645,6 +645,12 @@ struct AboutSettings: View {
                 }
             }
             Text("A lightweight activity monitor for your Mac: live measurements, apps and advice.").foregroundStyle(.secondary)
+            LabeledContent("Made by") {
+                VStack(alignment: .trailing, spacing: 1) {
+                    Text("Joël Nieuwkoop")
+                    Text("ClaudIA Software & Development").foregroundStyle(.secondary)
+                }
+            }
         }
         UpdateSection()
         Section {
