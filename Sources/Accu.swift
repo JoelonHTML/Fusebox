@@ -376,8 +376,8 @@ struct DrainSection: View {
                         Text(a.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.tail)
                         Spacer(minLength: 4)
                         Capsule().fill(bar.opacity(0.7)).frame(width: 50 * max(a.wh / max(top, 0.001), 0.04), height: 4)
-                        Text(String(format: "%.1f Wh", a.wh)).font(theme.number(11)).foregroundStyle(theme.onRow()).frame(width: 52, alignment: .trailing)
-                        Text(d.total > 0 ? pct(a.wh / d.total * 100) : "–").font(theme.number(11)).foregroundStyle(theme.onRow(true)).frame(width: 34, alignment: .trailing)
+                        // Alleen het aandeel: macOS telt per app maar een deel van de energie (scherm e.d. niet), de Wh zeiden niets
+                        Text(d.total > 0 ? pct(a.wh / d.total * 100) : "–").font(theme.number(11)).foregroundStyle(theme.onRow()).frame(width: 38, alignment: .trailing)
                     }
                 }
             } else { ProgressView().controlSize(.small) }
@@ -413,7 +413,7 @@ struct SleepDrainSection: View {
                             Text("\(when.string(from: s.start)) → \(when.string(from: s.end))").foregroundStyle(theme.onRow())
                             Text(duration(s.minutes)).foregroundStyle(theme.onRow(true))
                             Spacer(minLength: 4)
-                            Text(s.lost.map { "−\($0)%" } ?? "on charger").font(theme.number(11))
+                            Text(s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? "on charger").font(theme.number(11))
                                 .foregroundStyle((s.lost ?? 0) >= 3 && (s.lost ?? 0) * 60 > s.minutes ? theme.warn : theme.onRow())   // meer dan 1% per uur
                         }
                         Text(detail(s)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)

@@ -658,6 +658,8 @@ struct InternetPanel: View {
         Group {
             if stats.testing {
                 line("hourglass", "Testing the connection…")
+            } else if stats.finding != nil || stats.findBusy {
+                EmptyView()   // de grondige controle (hieronder) vervangt het snelle oordeel: geen twee tegenstrijdige regels
             } else if stats.router != nil || stats.internet != nil {
                 let v = InternetStats.verdict(wired: stats.conn?.kind != "Wi-Fi", rssi: stats.wifi?.rssi, snr: stats.wifi?.snr,
                                               router: stats.router, internet: stats.internet, dnsMs: stats.dnsMs, internetCheck: !pingHost.isEmpty)

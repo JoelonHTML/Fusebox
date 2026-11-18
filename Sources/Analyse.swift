@@ -802,20 +802,21 @@ private struct AnalysisPage: View, Equatable {
                 picker
                 if columns == 3 {
                     HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops]) }
+                        VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops]); power }
                         VStack(alignment: .leading, spacing: 10) { sections(tips, [.runtime, .battery, .busy, .peaks, .crashes]); extras }
                         VStack(alignment: .leading, spacing: 10) { sections(tips, [.tips, .log]) }
                     }
                 } else if columns == 2 {
                     HStack(alignment: .top, spacing: 12) {
                         VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops, .runtime, .battery]); extras }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.busy, .peaks, .crashes, .tips, .log]) }
+                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.busy, .peaks, .crashes, .tips]); power; if report != nil { sections(tips, [.log]) } }
                     }
                 } else {
                     why
                     // Eén kolom: opstartitems en schijfruimte vóór het (lange) logboek, niet helemaal onderaan
                     sections(tips, ReportSections.Part.allCases.filter { $0 != .log })
                     extras
+                    power
                     if report != nil { sections(tips, [.log]) }
                 }
                 if let report { exportBar(report, tips) }
@@ -861,6 +862,11 @@ private struct AnalysisPage: View, Equatable {
         if report != nil && !off.contains("startup") { StartupSection(index: 9) }
         if report != nil && !off.contains("disk") { DiskSection(index: 10) }
         if let report, !off.contains("background") { BackgroundSection(apps: meter.minuteApps.apps.map { ($0.name, $0.cpu) }, seen: report.jobMinutes, when: report.when, index: 11) }
+    }
+
+    /// Accu en slaap (Accu.swift): in een eigen kolom-plek, zodat de kolommen ongeveer even lang blijven.
+    @ViewBuilder private var power: some View {
+        let off = Set(hideRaw.split(separator: ",").map(String.init))
         if report != nil && Power.hasBattery && !off.contains("drain") { DrainSection(index: 12, dir: meter.logDir) }
         if report != nil && Power.hasBattery && !off.contains("sleep") { SleepDrainSection(index: 13) }
         if report != nil && !off.contains("awake") { AwakeSection(index: 14) }
