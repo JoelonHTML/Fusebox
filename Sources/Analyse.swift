@@ -819,6 +819,10 @@ private struct AnalysisPage: View, Equatable {
         // Pas na het rapport: anders staan ze eerst bovenaan en springt alles weg als het rapport binnenkomt
         if report != nil && !off.contains("startup") { StartupSection(index: 9) }
         if report != nil && !off.contains("disk") { DiskSection(index: 10) }
+        if report != nil && Power.hasBattery && !off.contains("drain") { DrainSection(index: 11, dir: meter.logDir) }
+        if report != nil && Power.hasBattery && !off.contains("sleep") { SleepDrainSection(index: 12) }
+        if report != nil && !off.contains("awake") { AwakeSection(index: 13) }
+        if report != nil && Power.hasBattery && !off.contains("health") { BatteryHealthSection(index: 14, dir: meter.logDir) }
     }
 
     private var picker: some View {
