@@ -336,7 +336,8 @@ final class Sampler {
             if b != 0 {
                 defer { IOObjectRelease(b) }
                 func n(_ k: String) -> NSNumber? { IORegistryEntryCreateCFProperty(b, k as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber }
-                if let a = n("Amperage"), let v = n("Voltage") { s.batteryW = Double(a.int64Value) * v.doubleValue / 1e6 }   // UInt64-bitpatroon → Int64 = negatief bij ontladen
+                // macOS meldt de stroom soms een tijdje als 0 (meter nog niet bijgewerkt): dan geen getal i.p.v. "0 W"
+                if let a = n("Amperage"), a.int64Value != 0, let v = n("Voltage") { s.batteryW = Double(a.int64Value) * v.doubleValue / 1e6 }   // UInt64-bitpatroon → Int64 = negatief bij ontladen
             }
             return
         }

@@ -772,8 +772,10 @@ private struct AnalysisPage: View, Equatable {
                     }
                 } else {
                     why
-                    sections(tips, ReportSections.Part.allCases)
+                    // Eén kolom: opstartitems en schijfruimte vóór het (lange) logboek, niet helemaal onderaan
+                    sections(tips, ReportSections.Part.allCases.filter { $0 != .log })
                     extras
+                    if report != nil { sections(tips, [.log]) }
                 }
                 if let report { exportBar(report, tips) }
             }
@@ -814,8 +816,9 @@ private struct AnalysisPage: View, Equatable {
     /// Opstartitems en schijfruimte (Opstart.swift): niet in het rapport/PDF, alleen hier op de pagina.
     @ViewBuilder private var extras: some View {
         let off = Set(hideRaw.split(separator: ",").map(String.init))
-        if !off.contains("startup") { StartupSection(index: 9) }
-        if !off.contains("disk") { DiskSection(index: 10) }
+        // Pas na het rapport: anders staan ze eerst bovenaan en springt alles weg als het rapport binnenkomt
+        if report != nil && !off.contains("startup") { StartupSection(index: 9) }
+        if report != nil && !off.contains("disk") { DiskSection(index: 10) }
     }
 
     private var picker: some View {

@@ -1,3 +1,4 @@
+import os
 import SwiftUI
 
 // MARK: - Checkup: wat start mee met de Mac, en wat neemt schijfruimte in?
@@ -74,10 +75,13 @@ enum DiskScan {
     /// Mappen waarvoor macOS om toestemming vraagt (Bureaublad, Documenten, Downloads, iCloud, gegevens van andere apps)
     /// of die zonder Volledige schijftoegang dicht zitten. Zonder die toegang: niet lezen, wel noemen.
     static let protected = ["Desktop", "Documents", "Downloads", ".Trash", "Library/Mobile Documents", "Library/Containers",
-                            "Library/Group Containers", "Library/Application Support/MobileSync"]
+                            "Library/Group Containers", "Library/Application Support/MobileSync",
+                            // Muziek-, TV- en Fotobibliotheek: macOS vraagt toestemming (Media & Apple Music, Foto's); lezen bleef hangen op die vraag
+                            "Music/Music", "Movies/TV", "Pictures/Photos Library.photoslibrary", "Library/Photos",
+                            "Library/Mail", "Library/Messages", "Library/Safari", "Library/Calendars", "Library/HomeKit"]
     /// Nooit doorlopen: cloudmappen (File Provider) kunnen bij lezen gaan downloaden.
     static let never = ["Library/CloudStorage"]
-    static let titles = [".Trash": "Trash", "Library/Application Support/MobileSync": "iPhone & iPad backups"]
+    static let titles = [".Trash": "Trash", "Library/Application Support/MobileSync": "iPhone & iPad backups", "Music/Music": "Music library", "Movies/TV": "TV library", "Pictures/Photos Library.photoslibrary": "Photos library", "Library/Photos": "Photos data"]
 
     /// Volledige schijftoegang? Openen van de TCC-database faalt dan stil (geen venster).
     static var fullDiskAccess: Bool {
@@ -105,6 +109,17 @@ enum DiskScan {
 
     /// Grootte op schijf; mappen in `skip` (eigen regel of beschermd) worden niet doorlopen. Stopt bij annuleren.
     /// async zonder actor: loopt buiten de hoofdthread.
+    /// Zelfde, maar hoogstens `within` seconden: macOS kan het openen van een beschermde map laten wachten op een
+    /// toestemmingsvraag. Dan nil ("niet bekeken") en door met de volgende; die ene draad blijft wachten tot macOS antwoordt.
+    static func size(_ url: URL, skip: Set<String>, within: Double) async -> Int64? {
+        let once = OSAllocatedUnfairLock(initialState: false)
+        return await withCheckedContinuation { (c: CheckedContinuation<Int64?, Never>) in
+            func finish(_ v: Int64?) { if once.withLock({ let first = !$0; $0 = true; return first }) { c.resume(returning: v) } }
+            Task.detached(priority: .utility) { finish(await size(url, skip: skip)) }
+            Task.detached { try? await Task.sleep(for: .seconds(within)); finish(nil) }
+        }
+    }
+
     static func size(_ url: URL, skip: Set<String>) async -> Int64 {
         let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
         func one(_ u: URL) -> Int64 {
@@ -242,7 +257,7 @@ struct DiskSection: View {
                     .font(theme.label(11))
                 }
                 if !r.skipped.isEmpty {
-                    Text("Not checked (no access): " + r.skipped.map(\.title).joined(separator: ", ") + ". Give Fusebox Full Disk Access to include these.")
+                    Text("Not checked (macOS protects these): " + r.skipped.map(\.title).joined(separator: ", ") + ". Give Fusebox Full Disk Access to include them.")
                         .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
@@ -256,16 +271,20 @@ struct DiskSection: View {
             let home = FileManager.default.homeDirectoryForCurrentUser
             let (todo, skipped) = await Task.detached(priority: .utility) { DiskScan.targets(home: home, fda: DiskScan.fullDiskAccess) }.value
             // Elke regel en elke beschermde map overslaan bij het doorlopen: niets dubbel tellen, geen toestemmingsvragen.
-            let skip = Set((todo + skipped).map(\.url.path))
-            var done: [DiskItem] = []
+            let fda = DiskScan.fullDiskAccess
+            // … ook beschermde mappen díep in een regel (Muziek/Music, Foto's-bibliotheek): zonder toegang nooit openen
+            let skip = Set((todo + skipped).map(\.url.path) + (fda ? [] : DiskScan.protected.map { home.appendingPathComponent($0).path }))
+            var done: [DiskItem] = [], slow: [DiskItem] = []
             for (n, item) in todo.enumerated() {
                 progress = (n, todo.count, item.title)
                 var i = item
-                i.bytes = await DiskScan.size(i.url, skip: skip.subtracting([i.url.path]))
+                let url = i.url, s = skip.subtracting([i.url.path])
+                // Echt van de hoofdthread af: een async-functie zonder eigen actor draait anders op de hoofdthread mee (venster bevroor)
+                i.bytes = await DiskScan.size(url, skip: s, within: 15)
                 if Task.isCancelled { progress = nil; return }   // pagina verlaten: half resultaat niet tonen
-                done.append(i)
+                if i.bytes == nil { slow.append(i) } else { done.append(i) }
             }
-            let r = (DiskScan.top(done), skipped)
+            let r = (DiskScan.top(done), skipped + slow)
             Self.last = r
             result = r
             progress = nil
