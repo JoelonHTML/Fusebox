@@ -345,7 +345,7 @@ private struct PowerCard<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text(title).font(theme.label(12)).foregroundStyle(theme.onRow())
+                Text(title).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
                 Spacer()
                 if let refresh {
                     Button(action: refresh) { Image(systemName: "arrow.clockwise") }.buttonStyle(.plain).foregroundStyle(theme.onRow(true)).help("Check again")
@@ -400,7 +400,7 @@ struct DrainSection: View {
 struct SleepDrainSection: View {
     @Environment(\.theme) private var theme
     let index: Int
-    @MainActor private static var cache: [Power.SleepSpan]?
+    @MainActor static var cache: [Power.SleepSpan]?
     @State private var spans = MainActor.assumeIsolated { SleepDrainSection.cache }
 
     var body: some View {

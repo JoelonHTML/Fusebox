@@ -76,7 +76,7 @@ struct BackgroundSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("What macOS is doing").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("What macOS is doing").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             if let now {
                 Text(now.isEmpty ? "Nothing special in the background right now." : now.joined(separator: ". ") + " — this passes by itself.")
                     .font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)

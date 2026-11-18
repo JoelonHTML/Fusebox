@@ -227,7 +227,7 @@ enum DiskScan {
 struct StartupSection: View {
     @Environment(\.theme) private var theme
     let index: Int
-    @MainActor private static var cache: [StartupItem]?
+    @MainActor static var cache: [StartupItem]?
     @State private var items: [StartupItem]? = MainActor.assumeIsolated { StartupSection.cache }
 
     var body: some View {
@@ -322,7 +322,7 @@ struct DiskSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                Text("What takes my disk space?").font(theme.label(12)).foregroundStyle(theme.onRow())
+                Text("What takes my disk space?").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
                 Spacer()
                 Button(result == nil ? "Find large folders" : "Check again") { run += 1 }
                     .buttonStyle(Pill(color: theme.onRow())).disabled(progress != nil)

@@ -125,10 +125,11 @@ struct CheckupSettings: View {
     @AppStorage("restartDays") private var restartDays = 14
 
     /// Zelfde ids als ReportSections.Part in Analyse.swift (+ startup/disk uit Opstart.swift, drain/sleep/awake/health uit Accu.swift).
-    private static let parts = [("score", "Health score"), ("tops", "Top apps"), ("runtime", "Running time"), ("battery", "Battery"),
-                                ("busy", "Busy moments"), ("peaks", "Peaks"), ("crashes", "Crashes"), ("tips", "Tips"), ("log", "Log"),
-                                ("startup", "Startup items"), ("disk", "Disk space"), ("background", "macOS background"),
-                                ("drain", "Battery drain"), ("sleep", "Sleep drain"), ("awake", "Keeps awake"), ("health", "Battery health")]
+    /// Volgorde zoals op de pagina: samenvatting, Performance, Battery & power, Stability, Startup & storage, History.
+    private static let parts = [("score", "Health score"), ("tips", "Tips"),
+                                ("tops", "Top apps"), ("peaks", "Peaks"), ("busy", "Busy moments"), ("background", "macOS background"),
+                                ("battery", "Battery"), ("health", "Battery health"), ("drain", "Battery drain"), ("sleep", "Sleep drain"), ("awake", "Keeps awake"),
+                                ("crashes", "Crashes"), ("startup", "Startup items"), ("disk", "Disk space"), ("runtime", "Running time"), ("log", "Log")]
 
     var body: some View {
         Section("When you open Checkup") {
@@ -142,7 +143,7 @@ struct CheckupSettings: View {
         } header: {
             Text("Sections")
         } footer: {
-            caption("\"Why is my Mac slow?\" is always there. Exported PDFs always contain everything.")
+            caption("\"Why is my Mac slow?\" is always there. A category with all its sections off disappears. Exported PDFs always contain everything.")
         }
         Section("Restart reminder") {
             Picker("Suggest a restart after", selection: $restartDays) {

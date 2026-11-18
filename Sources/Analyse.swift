@@ -798,34 +798,31 @@ private struct AnalysisPage: View, Equatable {
     var body: some View {
         let tips = report.map { Analysis.tips($0, current: meter.minuteApps.apps) } ?? []
         ScrollView {
-            VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 12) {
                 picker
-                if columns == 3 {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops]); power }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.runtime, .battery, .busy, .peaks, .crashes]); extras }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.tips, .log]) }
-                    }
-                } else if columns == 2 {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 10) { why; sections(tips, [.score, .tops, .runtime, .battery]); extras }
-                        VStack(alignment: .leading, spacing: 10) { sections(tips, [.busy, .peaks, .crashes, .tips]); power; if report != nil { sections(tips, [.log]) } }
-                    }
+                // Samenvatting bovenaan: waarom traag + gezondheidsscore, daarna de belangrijkste tips
+                if columns == 2, let report, shown("score") {
+                    HStack(alignment: .top, spacing: 12) { why; part(report, tips, .score) }
+                        .fixedSize(horizontal: false, vertical: true)
                 } else {
                     why
-                    // Eén kolom: opstartitems en schijfruimte vóór het (lange) logboek, niet helemaal onderaan
-                    sections(tips, ReportSections.Part.allCases.filter { $0 != .log })
-                    extras
-                    power
-                    if report != nil { sections(tips, [.log]) }
+                    if let report, shown("score") { part(report, tips, .score) }
                 }
-                if let report { exportBar(report, tips) }
+                if let report {
+                    if shown("tips"), !tips.isEmpty { topTips(report, tips) }
+                    VStack(alignment: .leading, spacing: 0) {
+                        ForEach(groups(report)) { g in group(g, report, tips) }
+                    }
+                    if !groups(report).contains(where: { $0.id == "history" }) { exportBar(report, tips) }
+                } else {
+                    HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }.padding(20)
+                }
             }
             .padding(.horizontal, 12).padding(.bottom, 12)
         }
         .scrollIndicators(.never)
         .clipped()   // niet onder de doorzichtige werkbalk doorschuiven (dan verdwijnen de tab-iconen)
-        .onGeometryChange(for: Int.self) { $0.size.width >= 1080 ? 3 : $0.size.width >= 700 ? 2 : 1 } action: { columns = $0 }
+        .onGeometryChange(for: Int.self) { $0.size.width >= 620 ? 2 : 1 } action: { columns = $0 }
         .onAppear { if let p = Period(rawValue: start) { period = p } }   // vaste beginstand; "last" = laatst gekozen
         .task(id: "\(period.rawValue)#\(reload)") {
             loading = true
@@ -846,31 +843,150 @@ private struct AnalysisPage: View, Equatable {
         .sheet(isPresented: Binding(get: { share != nil }, set: { if !$0 { share = nil } })) { shareSheet(share ?? "") }
     }
 
-    @ViewBuilder private func sections(_ tips: [Tip], _ parts: [ReportSections.Part]) -> some View {
-        if let report {
-            let off = Set(hideRaw.split(separator: ",").map(String.init))
-            ReportSections(report: report, tips: tips, previousName: period.previousName, parts: parts.filter { !off.contains($0.rawValue) }, logDir: meter.logDir, act: act)
-        } else {
-            HStack { Spacer(); ProgressView().controlSize(.small); Spacer() }.padding(20)
+    // MARK: Categorieën
+
+    /// Onderdeel aan in Instellingen › Checkup (en accu-onderdelen alleen op een Mac met accu).
+    private func shown(_ id: String) -> Bool {
+        let off = Set(hideRaw.split(separator: ",").map(String.init))
+        return !off.contains(id) && (Power.hasBattery || !["drain", "sleep", "health"].contains(id))
+    }
+
+    /// Eén onderdeel uit het rapport (dezelfde kaart als in de PDF).
+    private func part(_ r: Report, _ tips: [Tip], _ p: ReportSections.Part) -> some View {
+        ReportSections(report: r, tips: tips, previousName: period.previousName, parts: [p], logDir: meter.logDir, act: act)
+    }
+
+    private struct Group: Identifiable { let id, title, icon, summary: String; let warn: Bool }
+
+    /// De inklapbare categorieën; een categorie zonder zichtbare onderdelen valt weg.
+    /// De samenvatting in de kop gebruikt alleen wat al bekend is (rapport of cache), niets wordt ervoor ingelezen.
+    private func groups(_ r: Report) -> [Group] {
+        var g: [Group] = []
+        if ["tops", "busy", "peaks", "background"].contains(where: shown) {
+            let top = r.topCPU.first.map { "\($0.name) busiest" } ?? "No app data yet"
+            let peaks = r.peaks.isEmpty ? "no peaks" : "\(r.peaks.count) peak" + (r.peaks.count == 1 ? "" : "s")
+            let busy = r.busy.isEmpty ? [] : ["\(r.busy.count) busy moment" + (r.busy.count == 1 ? "" : "s")]
+            g.append(Group(id: "perf", title: "Performance", icon: "gauge.with.dots.needle.67percent",
+                           summary: ([top] + busy + [peaks]).joined(separator: " · "), warn: !r.busy.isEmpty))
+        }
+        if ["battery", "drain", "sleep", "awake", "health"].contains(where: shown), Power.hasBattery || shown("awake") {
+            let b = r.battery
+            let lost = SleepDrainSection.cache?.last.flatMap { s in s.lost.flatMap { $0 > 0 ? "lost \($0)% while asleep" : nil } }
+            let parts = [lost, b?.capacity.map { "\($0)% capacity" }, b?.cycles.map { "\($0) cycles" }].compactMap { $0 }
+            g.append(Group(id: "power", title: Power.hasBattery ? "Battery & power" : "Power", icon: Power.hasBattery ? "battery.75percent" : "bolt",
+                           summary: parts.isEmpty ? "What uses energy and what keeps your Mac awake" : parts.joined(separator: " · "),
+                           warn: b?.worn ?? false))
+        }
+        if shown("crashes") {
+            let c = r.crashes ?? Diag.Crashes()
+            let parts = [c.crashes.isEmpty ? nil : "\(c.crashes.count) app" + (c.crashes.count == 1 ? "" : "s") + " crashed",
+                         c.hangs.isEmpty ? nil : "\(c.hangs.count) stopped responding",
+                         c.jetsam > 0 ? "out of memory \(c.jetsam)×" : nil].compactMap { $0 }
+            g.append(Group(id: "stability", title: "Stability", icon: "exclamationmark.triangle",
+                           summary: parts.isEmpty ? "No crashes or hangs \(r.when)" : parts.joined(separator: " · "), warn: !c.crashes.isEmpty || !c.hangs.isEmpty))
+        }
+        if shown("startup") || shown("disk") {
+            let items = StartupSection.cache
+            let login = items.map { l in "\(l.filter { $0.atLogin && !$0.orphan }.count) items start at login" }
+            let orphans = items.map { $0.filter(\.orphan).count } ?? 0
+            let free = r.diskFreeGB.map { "\(Int($0)) GB free" }
+            let parts = [login, orphans > 0 ? "\(orphans) left behind" : nil, free].compactMap { $0 }
+            g.append(Group(id: "storage", title: "Startup & storage", icon: "internaldrive",
+                           summary: parts.isEmpty ? "Login items and disk space" : parts.joined(separator: " · "),
+                           warn: orphans > 0 || Analysis.diskLow(free: r.diskFreeGB, total: r.diskTotalGB)))
+        }
+        if shown("runtime") || shown("log") {
+            let ev = r.events.isEmpty ? "nothing unusual" : "\(r.events.count) event" + (r.events.count == 1 ? "" : "s")
+            g.append(Group(id: "history", title: "History & export", icon: "clock.arrow.circlepath",
+                           summary: "Measured \(duration(r.minutes)) · \(ev)", warn: false))
+        }
+        return g
+    }
+
+    private func group(_ g: Group, _ r: Report, _ tips: [Tip]) -> some View {
+        let open = openIDs.contains(g.id)
+        return VStack(alignment: .leading, spacing: 10) {
+            Button {
+                var s = openIDs
+                if open { s.remove(g.id) } else { s.insert(g.id) }
+                withAnimation(.snappy(duration: 0.2)) { openRaw = s.sorted().joined(separator: ",") }   // low impact: venster zet animaties uit
+            } label: {
+                HStack(spacing: 10) {
+                    Image(systemName: g.icon).font(.system(size: 15, weight: .semibold))
+                        .foregroundStyle(g.warn ? theme.warn : link).frame(width: 22)
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(g.title).font(theme.label(15).bold()).foregroundStyle(theme.text)
+                        Text(g.summary).font(theme.label(11)).foregroundStyle(g.warn ? theme.warn : theme.secondary).lineLimit(1).truncationMode(.tail)
+                    }
+                    Spacer(minLength: 6)
+                    Image(systemName: "chevron.right").font(.system(size: 12, weight: .semibold)).foregroundStyle(theme.secondary)
+                        .rotationEffect(.degrees(open ? 90 : 0))
+                }
+                .padding(.vertical, 10).contentShape(Rectangle())
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel("\(g.title), \(open ? "expanded" : "collapsed")")
+            // Ingeklapt staat de inhoud niet in de boom: de .task van die kaarten (pmset, opstartitems, schijf) loopt dan niet
+            if open { content(g.id, r, tips).padding(.bottom, 12).transition(.opacity) }
+        }
+        .overlay(alignment: .top) { Rectangle().fill(theme.line).frame(height: 1) }
+    }
+
+    /// Accentkleur buiten de kaarten; bij kleurblokken is die te licht op de pagina, dan de tekstkleur.
+    private var link: Color { theme.rowStyle == .blocks ? theme.text : theme.accent }
+    @AppStorage("checkupOpen") private var openRaw = "perf"   // open categorieën, komma-gescheiden
+    @State private var allTips = false
+    private var openIDs: Set<String> { Set(openRaw.split(separator: ",").map(String.init)) }
+
+    @ViewBuilder private func content(_ id: String, _ r: Report, _ tips: [Tip]) -> some View {
+        switch id {
+        case "perf":
+            if shown("tops") { part(r, tips, .tops) }
+            cols { if shown("peaks") { part(r, tips, .peaks) } } right: {
+                if shown("busy") { part(r, tips, .busy) }
+                if shown("background") { BackgroundSection(apps: meter.minuteApps.apps.map { ($0.name, $0.cpu) }, seen: r.jobMinutes, when: r.when, index: 11) }
+            }
+        case "power":
+            cols {
+                // "Battery health" toont capaciteit en cycli al (plus de lijn): de oude Battery-kaart alleen als die uit staat
+                if shown("health") { BatteryHealthSection(index: 15, dir: meter.logDir) } else if shown("battery") { part(r, tips, .battery) }
+                if shown("drain") { DrainSection(index: 12, dir: meter.logDir) }
+            } right: {
+                if shown("sleep") { SleepDrainSection(index: 13) }
+                if shown("awake") { AwakeSection(index: 14) }
+            }
+        case "stability":
+            if let c = r.crashes, !c.isEmpty { part(r, tips, .crashes) }
+            else { Text("No apps crashed or stopped responding \(r.when).").font(theme.label(12)).foregroundStyle(theme.onRow(true)).frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8) }
+        case "storage":
+            cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10) } }
+        default:
+            cols { if shown("runtime") { part(r, tips, .runtime) } } right: { if shown("log") { part(r, tips, .log) } }
+            exportBar(r, tips)
         }
     }
 
-    /// Opstartitems en schijfruimte (Opstart.swift): niet in het rapport/PDF, alleen hier op de pagina.
-    @ViewBuilder private var extras: some View {
-        let off = Set(hideRaw.split(separator: ",").map(String.init))
-        // Pas na het rapport: anders staan ze eerst bovenaan en springt alles weg als het rapport binnenkomt
-        if report != nil && !off.contains("startup") { StartupSection(index: 9) }
-        if report != nil && !off.contains("disk") { DiskSection(index: 10) }
-        if let report, !off.contains("background") { BackgroundSection(apps: meter.minuteApps.apps.map { ($0.name, $0.cpu) }, seen: report.jobMinutes, when: report.when, index: 11) }
+    /// Twee kolommen in een breed venster, anders onder elkaar.
+    @ViewBuilder private func cols<L: View, R: View>(@ViewBuilder _ left: () -> L, @ViewBuilder right: () -> R) -> some View {
+        if columns == 2 {
+            HStack(alignment: .top, spacing: 12) {
+                VStack(alignment: .leading, spacing: 10) { left() }.frame(maxWidth: .infinity, alignment: .topLeading)
+                VStack(alignment: .leading, spacing: 10) { right() }.frame(maxWidth: .infinity, alignment: .topLeading)
+            }
+        } else {
+            VStack(alignment: .leading, spacing: 10) { left(); right() }
+        }
     }
 
-    /// Accu en slaap (Accu.swift): in een eigen kolom-plek, zodat de kolommen ongeveer even lang blijven.
-    @ViewBuilder private var power: some View {
-        let off = Set(hideRaw.split(separator: ",").map(String.init))
-        if report != nil && Power.hasBattery && !off.contains("drain") { DrainSection(index: 12, dir: meter.logDir) }
-        if report != nil && Power.hasBattery && !off.contains("sleep") { SleepDrainSection(index: 13) }
-        if report != nil && !off.contains("awake") { AwakeSection(index: 14) }
-        if report != nil && Power.hasBattery && !off.contains("health") { BatteryHealthSection(index: 15, dir: meter.logDir) }
+    /// De drie belangrijkste tips; de rest achter "Show all".
+    private func topTips(_ r: Report, _ tips: [Tip]) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            ReportSections(report: r, tips: allTips ? tips : Array(tips.prefix(3)), previousName: period.previousName, parts: [.tips], logDir: meter.logDir, act: act)
+            if tips.count > 3 {
+                Button(allTips ? "Show fewer" : "Show all \(tips.count) tips") { withAnimation(.snappy(duration: 0.2)) { allTips.toggle() } }
+                    .buttonStyle(.plain).font(theme.label(11).weight(.semibold)).foregroundStyle(link)
+            }
+        }
     }
 
     private var picker: some View {
@@ -888,7 +1004,7 @@ private struct AnalysisPage: View, Equatable {
     private var why: some View {
         VStack(alignment: .leading, spacing: 6) {
             HStack {
-                Text("Why is my Mac slow?").font(theme.label(14)).foregroundStyle(theme.onRow())
+                Text("Why is my Mac slow?").font(theme.label(15).bold()).foregroundStyle(theme.onRow())
                 Spacer()
                 Button(diagnosis == nil ? "Check now" : "Check again") {
                     let last = meter.since(30)
@@ -915,7 +1031,7 @@ private struct AnalysisPage: View, Equatable {
             }
             if let note { Text(note).font(theme.label(11)).foregroundStyle(theme.rowStyle == .blocks ? .white : theme.warn) }
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)   // naast de score even hoog
         .themedRow(theme, index: 0)
     }
 
@@ -1046,7 +1162,7 @@ fileprivate struct ReportSections: View {
                 Text("/10").font(theme.number(14)).foregroundStyle(theme.onRow(true))
             }
             VStack(alignment: .leading, spacing: 3) {
-                Text("Health").font(theme.label(13)).foregroundStyle(theme.onRow())
+                Text("Health").font(theme.label(14).weight(.semibold)).foregroundStyle(theme.onRow())
                 Text(report.reason).font(theme.label(12)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                 if let s, let p = report.prevScore {
                     Text(s > p ? "↑ better than \(previousName) (\(p))" : s < p ? "↓ worse than \(previousName) (\(p))" : "= same as \(previousName)")
@@ -1068,7 +1184,7 @@ fileprivate struct ReportSections: View {
     private func top(_ title: String, _ list: [AppStat], value: @escaping (AppStat) -> String, frac: @escaping (AppStat) -> Double, index: Int) -> some View {
         let bar = theme.rowStyle == .blocks ? Color.white : theme.accent
         return VStack(alignment: .leading, spacing: 5) {
-            Text(title).font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text(title).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             if list.isEmpty { Text("No data yet").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
             ForEach(list) { a in
                 VStack(alignment: .leading, spacing: 2) {
@@ -1098,7 +1214,7 @@ fileprivate struct ReportSections: View {
         let up = Int(report.boot.map { Date().timeIntervalSince($0) } ?? ProcessInfo.processInfo.systemUptime) / 60
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE d MMM HH:mm"
         return VStack(alignment: .leading, spacing: 4) {
-            Text("Running time").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("Running time").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             line("Mac on for", "\(duration(up)) (\(f.string(from: Date().addingTimeInterval(-Double(up) * 60))))")
             line("Fusebox measuring since", report.first.map { f.string(from: $0) } ?? "–")
             line("Measured this period", duration(report.minutes))
@@ -1110,7 +1226,7 @@ fileprivate struct ReportSections: View {
 
     private func battery(_ b: Diag.Battery) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Battery").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("Battery").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             Text(b.summary).font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1119,7 +1235,7 @@ fileprivate struct ReportSections: View {
 
     private func crashes(_ c: Diag.Crashes) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Crashes").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("Crashes").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             ForEach(Array(c.rows.enumerated()), id: \.offset) { line($0.element.label, $0.element.value) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1137,7 +1253,7 @@ fileprivate struct ReportSections: View {
 
     private var busy: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Busy moments").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("Busy moments").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             if report.busy.isEmpty { Text("No long busy periods (≥ 5 min above 85% CPU)").foregroundStyle(theme.onRow(true)) }
             ForEach(report.busy) { Text(Analysis.busyLabel($0)).foregroundStyle(theme.onRow()) }
         }
@@ -1149,7 +1265,7 @@ fileprivate struct ReportSections: View {
     private var peakSection: some View {
         let p = report.peaks
         return VStack(alignment: .leading, spacing: 5) {
-            Text("Peaks").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("Peaks").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             if p.isEmpty {
                 Text("No peaks recorded \(report.when) (CPU or GPU ≥ 80%, hot, memory pressure or heavy disk use)").foregroundStyle(theme.onRow(true))
             } else {
@@ -1187,7 +1303,7 @@ fileprivate struct ReportSections: View {
 
     private var log: some View {
         VStack(alignment: .leading, spacing: 4) {
-            Text("Log").font(theme.label(12)).foregroundStyle(theme.onRow())
+            Text("Log").font(theme.label(12).weight(.semibold)).foregroundStyle(theme.onRow())
             if report.events.isEmpty { Text("Nothing unusual happened").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
             ForEach(report.events) { e in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
