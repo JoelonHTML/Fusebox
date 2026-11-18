@@ -42,6 +42,8 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         Hotkey.apply()   // sneltoets om Fusebox te tonen/verbergen
         // Meldingen aan maar nog nooit toestemming gevraagd? Dan laat macOS ze stil vallen. Vraagt alleen de eerste keer echt.
         if UserDefaults.standard.bool(forKey: "notify") { Notify.ask() }
+        // Eén keer (nieuwe installatie of deze update): actief om meldingen vragen, even na het openen van het venster
+        DispatchQueue.main.asyncAfter(deadline: .now() + 2) { MainActor.assumeIsolated { Notify.askOnce() } }
         MainActor.assumeIsolated { Updater.shared.start() }   // automatisch bijwerken via GitHub Releases
         let d = UserDefaults.standard
         guard !d.bool(forKey: "loginRefreshedFusebox") else { return }

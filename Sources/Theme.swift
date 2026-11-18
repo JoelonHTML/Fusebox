@@ -337,6 +337,37 @@ extension Color {
 /// Meldingen (macOS Berichtgeving).
 enum Notify {
     static func ask() { UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in } }
+
+    /// Eén keer per "vraagronde" (nieuwe installatie, of een update die de ronde ophoogt) actief om meldingen vragen:
+    /// nog niet gekozen → de vraag van macOS; uitgezet → eigen venster met een knop naar Systeeminstellingen.
+    /// Nodig omdat macOS zijn vraag maar één keer stelt, en een update zonder Apple-handtekening soms als nieuwe app telt.
+    static let askRound = 1
+    @MainActor static func askOnce() {
+        let d = UserDefaults.standard
+        guard d.integer(forKey: "notifyAskRound") < askRound else { return }
+        d.set(askRound, forKey: "notifyAskRound")
+        UNUserNotificationCenter.current().getNotificationSettings { s in
+            let status = s.authorizationStatus
+            DispatchQueue.main.async {
+                switch status {
+                case .notDetermined:
+                    d.set(true, forKey: "notify")
+                    UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in }
+                case .denied:
+                    NSApp.activate()
+                    let a = NSAlert()
+                    a.messageText = "Allow notifications from Fusebox?"
+                    a.informativeText = "Fusebox tells you when an update is ready and when an app keeps your Mac busy. Notifications for Fusebox are off in System Settings."
+                    a.addButton(withTitle: "Open Settings"); a.addButton(withTitle: "Not now")
+                    if a.runModal() == .alertFirstButtonReturn {
+                        d.set(true, forKey: "notify")
+                        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")")!)
+                    }
+                default: break   // al toegestaan
+                }
+            }
+        }
+    }
     static let whatsNew = "whatsnew"   // categorie met knop "What's new" → changelog in Settings › About
     static func registerCategories() {
         let open = UNNotificationAction(identifier: "open", title: "What's new", options: [.foreground])

@@ -800,7 +800,7 @@ enum SettingsPlacement {
 
 /// Grote grafieken (detail, groot venster) laten glijden in plaats van per meting verspringen.
 struct SmoothBigToggle: View {
-    @AppStorage("smoothBig") private var on = false
+    @AppStorage("smoothBig") private var on = true
     var body: some View {
         Toggle(isOn: $on) {
             Text("Smooth large graphs")

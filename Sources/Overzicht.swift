@@ -306,7 +306,7 @@ struct SparkView: View {
     /// Glijden alleen in kleine grafiekjes. Een grote grafiek (detail, groot venster) die 15× per seconde verschuift,
     /// laat macOS het hele (glazen) venster steeds opnieuw opbouwen: veel GPU voor niets. Die springt elke meting.
     var glides = true
-    @AppStorage("smoothBig") private var smoothBig = false   // instelling: grote grafieken toch laten glijden
+    @AppStorage("smoothBig") private var smoothBig = true   // instelling: grote grafieken toch laten glijden
     @State private var drawn: CGFloat = 1        // 0…1: hoeveel van de lijn getekend is (opstart-animatie)
     @State private var waiting = false           // opgestart zonder lijn: inschuiven zodra de 2e meting er is
 
