@@ -127,6 +127,9 @@ final class SMC {
     deinit { if conn != 0 { IOServiceClose(conn) } }
 
     /// Eén sleutel lezen en omzetten naar een getal volgens zijn eigen type (flt/fpe2/ui8/ui16/ui32).
+    /// Bestaat deze sleutel (met een echte maat)? Alleen lezen, mag zonder root.
+    func has(_ name: String) -> Bool { call(9, key: Self.code(name)).map { u32($0, 28) > 0 } ?? false }
+
     func value(_ name: String) -> Double? {
         let key = Self.code(name)
         // Maat en type van een sleutel veranderen nooit: één keer opvragen (scheelt de helft van de SMC-aanroepen)

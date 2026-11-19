@@ -61,7 +61,11 @@ final class ChargeController {
     /// Wat nu geldt (hoofdthread; voor de BAT-kaart).
     nonisolated(unsafe) static var now: ChargeLimit.Reason?
     /// nil = onbekend, false = deze Mac heeft geen bekende laadsleutel.
-    nonisolated(unsafe) static var supported: Bool?
+    /// Vooraf al bekend zonder helper: kent de SMC een van de laadsleutels? (macOS 27 heeft ze op veel Macs dichtgezet)
+    nonisolated(unsafe) static var supported: Bool? = {
+        let smc = SMC(scanTemps: false)
+        return smc.has("CHTE") || (smc.has("CH0B") && smc.has("CH0C")) ? nil : false
+    }()
 
     private let queue = DispatchQueue(label: "local.fusebox.charge")
     private var sent: String?, sentAt = Date.distantPast
@@ -122,7 +126,7 @@ struct ChargeSettings: View {
                 Text("Limit charging")
                 Text("Keeps the battery healthier when you're mostly plugged in. Needs the Fusebox helper (admin password once).")
             }
-            .disabled(key == "none")
+            .disabled(key == "none" || ChargeController.supported == false)
             LabeledContent("Stop charging at") {
                 HStack {
                     Slider(value: Binding(get: { Double(limit) }, set: { limit = Int($0.rounded()) }), in: 50...100, step: 5).frame(width: 200)
@@ -139,8 +143,9 @@ struct ChargeSettings: View {
             Text("Charge limit")
         } footer: {
             VStack(alignment: .leading, spacing: 4) {
-                if key == "none" {
-                    Text("Not supported on this Mac. macOS has its own charge limit in System Settings › Battery.").foregroundStyle(.orange)
+                if key == "none" || ChargeController.supported == false {
+                    Text("Not supported on this Mac: macOS doesn't let apps hold the charge here. Use macOS's own charge limit in System Settings › Battery.").foregroundStyle(.orange)
+                    Button("Open Battery Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!) }
                 } else if on && !FanHelper.installed {
                     Text("Install the helper below, then Fusebox can hold the charge.").foregroundStyle(.orange)
                 }
