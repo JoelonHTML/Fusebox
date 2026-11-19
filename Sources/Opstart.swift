@@ -22,13 +22,17 @@ struct StartupItem: Identifiable, Sendable, Equatable {
 /// Gebruik van de processen van een opstartitem: CPU en vermogen gemiddeld sinds ze draaien, geheugen nu.
 struct StartupUsage: Sendable, Equatable {
     var cpu = 0.0, memMB = 0.0, watt = 0.0
-    static func + (a: Self, b: Self) -> Self { .init(cpu: a.cpu + b.cpu, memMB: a.memMB + b.memMB, watt: a.watt + b.watt) }
+    /// false = gemeten via `ps` (systeemhelpers van root): processortijd en geheugen wel, energie niet
+    var energyKnown = true
+    static func + (a: Self, b: Self) -> Self {
+        .init(cpu: a.cpu + b.cpu, memMB: a.memMB + b.memMB, watt: a.watt + b.watt, energyKnown: a.energyKnown && b.energyKnown)
+    }
     /// "0.4% CPU · 52 MB · 0.1 W"
     var text: String {
         let c = cpu < 0.1 ? "<0.1" : cpu < 10 ? String(format: "%.1f", cpu) : "\(Int(cpu.rounded()))"
         let m = memMB >= 1024 ? String(format: "%.1f GB", memMB / 1024) : "\(Int(memMB.rounded())) MB"
         let w = watt < 0.1 ? "<0.1" : String(format: "%.1f", watt)
-        return "\(c)% CPU · \(m) · \(w) W"
+        return energyKnown ? "\(c)% CPU · \(m) · \(w) W" : "\(c)% CPU · \(m)"
     }
 }
 
@@ -71,7 +75,10 @@ enum Startup {
                 guard let d = NSDictionary(contentsOf: url) as? [String: Any], var it = item(d, plist: url, user: user, agent: agent) else { continue }
                 let pids = it.program.map { running[$0] ?? running[URL(fileURLWithPath: $0).resolvingSymlinksInPath().path] ?? [] } ?? []
                 it.running = !pids.isEmpty
-                it.usage = pids.compactMap(usage).reduce(nil) { ($0 ?? StartupUsage()) + $1 }
+                // Eigen processen: proc_pid_rusage (met energie). Die van root (systeemhelpers) mag dat niet: dan `ps`.
+                let own = pids.compactMap(usage)
+                let other = own.count == pids.count ? [] : psUsage(pids.filter { usage($0) == nil })
+                it.usage = (own + other).reduce(nil) { ($0 ?? StartupUsage()) + $1 }
                 out.append(it)
             }
         }
@@ -102,6 +109,29 @@ enum Startup {
         let alive = Double(mach_absolute_time() &- ri.ri_proc_start_abstime) * tick / 1e9
         return average(cpuNs: Double(ri.ri_user_time + ri.ri_system_time) * tick, energyNj: Double(ri.ri_energy_nj), seconds: alive,
                        memBytes: Double(ri.ri_phys_footprint), cores: Double(ProcessInfo.processInfo.activeProcessorCount))
+    }
+
+    /// Via `ps` (werkt ook voor processen van root, zonder rechten): processortijd / looptijd, en het geheugen (RSS).
+    static func psUsage(_ pids: [pid_t]) -> [StartupUsage] {
+        guard !pids.isEmpty else { return [] }
+        let out = Diag.run("/bin/ps", ["-o", "time=,etime=,rss=", "-p", pids.map(String.init).joined(separator: ",")], timeout: 3)
+        let cores = Double(ProcessInfo.processInfo.activeProcessorCount)
+        return out.split(separator: "\n").compactMap { l in
+            let f = l.split(separator: " ", omittingEmptySubsequences: true)
+            guard f.count >= 3, let cpu = seconds(String(f[0])), let alive = seconds(String(f[1])), let rss = Double(f[2]) else { return nil }
+            var u = average(cpuNs: cpu * 1e9, energyNj: 0, seconds: alive, memBytes: rss * 1024, cores: cores)
+            u.energyKnown = false
+            return u
+        }
+    }
+
+    /// "4:05.35", "1:02:03", "01-03:19:23" (dagen-uren:min:sec) → seconden.
+    static func seconds(_ s: String) -> Double? {
+        let dayParts = s.split(separator: "-")
+        let days = dayParts.count == 2 ? Double(dayParts[0]) ?? 0 : 0
+        let parts = (dayParts.last ?? "").split(separator: ":").compactMap { Double($0) }
+        guard !parts.isEmpty, parts.count == (dayParts.last ?? "").split(separator: ":").count else { return nil }
+        return days * 86_400 + parts.reduce(0) { $0 * 60 + $1 }
     }
 
     /// CPU in % van de hele Mac (alle kernen samen = 100%, zoals overal in Fusebox).
@@ -247,6 +277,8 @@ enum DiskScan {
         let su = Startup.average(cpuNs: 36e9, energyNj: 3600e9, seconds: 3600, memBytes: 52 * 1_048_576, cores: 10)
         precondition(abs(su.cpu - 0.1) < 0.0001 && abs(su.watt - 1) < 0.0001 && su.memMB == 52 && su.text == "0.1% CPU · 52 MB · 1.0 W", "opstart-gebruik")
         precondition(StartupUsage(cpu: 0.01, memMB: 2048, watt: 0.05).text == "<0.1% CPU · 2.0 GB · <0.1 W", "opstart-tekst")
+        precondition(Startup.seconds("4:05.35") == 245.35 && Startup.seconds("1:02:03") == 3723 && Startup.seconds("01-03:19:23") == 98_363 && Startup.seconds("x") == nil, "ps-tijden")
+        precondition(StartupUsage(cpu: 0.5, memMB: 40, watt: 0, energyKnown: false).text == "0.5% CPU · 40 MB", "zonder energie")
         let d: [String: Any] = ["Label": "com.vendor.thing_helper", "ProgramArguments": ["/Applications/Thing.app/Contents/Library/Helper.app/Contents/MacOS/h", "-x"], "RunAtLoad": true]
         let p = URL(fileURLWithPath: "/tmp/x.plist")
         let i = Startup.item(d, plist: p, user: true, agent: true)
