@@ -26,6 +26,7 @@ struct Sample {
     var batteryW: Double?                      // vermogen van de accu in watt: + laden, − ontladen
     var adapterW: Int?                         // vermogen van de lader (watt), nil zonder lader
     var onAC = false                           // aan de lader (ook als hij niet laadt: vol, of oplaadlimiet)
+    var batteryTemp: Double?                   // warmste accusensor °C (SMC TB0T…TB2T), nil op desktop
     var fans: [FanReading] = []                // per ventilator; leeg op Macs zonder ventilator
     var fanRPM: Double?                        // gemiddelde toeren van alle ventilatoren
     var cores: [Double] = []                   // procent per kern (leeg bij de eerste meting)
@@ -157,6 +158,9 @@ final class SMC {
         }
     }
 
+    /// Warmste accusensor (TB0T…TB2T, type flt), of nil zonder accu.
+    func batteryTemp() -> Double? { ["TB0T", "TB1T", "TB2T"].compactMap { value($0) }.filter { (-20...120).contains($0) }.max() }
+
     /// Warmste processorkern en warmste punt van de grafische chip, in °C.
     func read() -> (cpu: Double?, gpu: Double?) { (maxTemp(cpuKeys), maxTemp(gpuKeys)) }
     var keyCount: Int { cpuKeys.count + gpuKeys.count }
@@ -171,7 +175,7 @@ final class Sampler {
     private var lastTime = clock_gettime_nsec_np(CLOCK_MONOTONIC)   // telt slaap mee, springt niet als de klok verzet wordt
     private var diskFreeGB = 0.0, diskTotalGB = 0.0, diskAt = Date.distantPast
     private var lastIO: (r: UInt64, w: UInt64)?
-    private var temp: (cpu: Double?, gpu: Double?) = (nil, nil), tempAt = Date.distantPast
+    private var temp: (cpu: Double?, gpu: Double?) = (nil, nil), tempAt = Date.distantPast, batteryTemp: Double?
 
     func sample() -> Sample {
         var s = Sample()
@@ -244,8 +248,9 @@ final class Sampler {
         }
 
         // Temperatuur: elke 10 s is genoeg (verandert traag), in low impact elke 30 s. ponytail: leest alle ~73 SMC-sensoren (~14 ms), alleen Tp/Tg-subset als dat ooit te zwaar is
-        if s.time.timeIntervalSince(tempAt) >= (LowImpact.on ? 30 : 10) { temp = smc.read(); tempAt = s.time }
+        if s.time.timeIntervalSince(tempAt) >= (LowImpact.on ? 30 : 10) { temp = smc.read(); batteryTemp = smc.batteryTemp(); tempAt = s.time }
         s.temp = temp.cpu
+        s.batteryTemp = batteryTemp
         s.gpuTemp = temp.gpu
 
         // Ventilatoren: elke 2 s (een handvol sleutels); Macs zonder ventilator slaan dit over

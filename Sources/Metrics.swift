@@ -142,6 +142,7 @@ extension Metric {
         case .ssd:
             out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"),
                    today.isEmpty ? nil : Fact(label: "Written today", value: bytes(total(today, \.diskWrite))),
+                   SSDHealth.cached.map { Fact(label: "Health", value: $0.text) },
                    Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
         case .io:
             out = [Fact(label: "Read", value: bytes(total(h, \.diskRead))),
@@ -153,8 +154,9 @@ extension Metric {
             let w = s.batteryW.map { "\(Int(Swift.abs($0).rounded())) W" }
             // Aan de lader maar niet aan het laden en niet vol: macOS houdt hem vast (oplaadlimiet / geoptimaliseerd laden)
             out = s.charging ? [Fact(label: "Charging", value: s.batteryMinutes.map { "full in \(duration($0))" } ?? "–"), w.map { Fact(label: "Charging at", value: $0) }]
-                : s.onAC ? [b < 99 ? Fact(label: "Charge limit", value: "holding at \(pct(b))") : nil]
+                : s.onAC ? [ChargeLimit.fact(s) ?? (b < 99 ? Fact(label: "Charge limit", value: "holding at \(pct(b))") : nil)]
                 : [Fact(label: "On battery", value: s.batteryMinutes.map { "\(duration($0)) left" } ?? "–"), w.map { Fact(label: "Using", value: $0) }]
+            if s.charging { out.insert(ChargeLimit.fact(s), at: 1) }   // "Charge limit 80%" terwijl hij er naartoe laadt
             if s.onAC { out.append(Fact(label: "Power adapter", value: s.adapterW.map { "\($0) W" } ?? "connected")) }
             out.append(spread(h.compactMap(\.battery)))
         case .fan:

@@ -6,9 +6,9 @@ import ServiceManagement
 // De tab-views zijn niet privé: het stappenplan (Stappenplan.swift) gebruikt ze ook.
 
 enum SettingsTab: String, CaseIterable, Identifiable {
-    case profile, look, live, processes, checkup, network, docked, menubar, alerts, fans, data, about
-    /// "Fans" alleen op Macs met ventilatoren.
-    static var shown: [SettingsTab] { allCases.filter { $0 != .fans || Fans.count > 0 } }
+    case profile, look, live, processes, checkup, network, docked, menubar, alerts, fans, battery, data, about
+    /// "Fans" alleen op Macs met ventilatoren, "Battery" alleen met accu.
+    static var shown: [SettingsTab] { allCases.filter { ($0 != .fans || Fans.count > 0) && ($0 != .battery || Power.hasBattery) } }
     var id: String { rawValue }
     var title: String {
         switch self {
@@ -22,6 +22,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .menubar: "Menu bar"
         case .alerts: "Notifications"
         case .fans: "Fans"
+        case .battery: "Battery"
         case .data: "Privacy"
         case .about: "About"
         }
@@ -38,6 +39,7 @@ enum SettingsTab: String, CaseIterable, Identifiable {
         case .menubar: "menubar.rectangle"
         case .alerts: "bell"
         case .fans: "fan"
+        case .battery: "battery.75percent"
         case .data: "lock.shield"
         case .about: "info.circle"
         }
@@ -78,6 +80,7 @@ struct SettingsView: View {
         case .menubar: MenubarSettings()
         case .alerts: AlertSettings()
         case .fans: FanSettings()
+        case .battery: ChargeSettings()
         case .data: DataSettings()
         case .about: AboutSettings()
         }

@@ -31,6 +31,8 @@ enum Prefs {
             "keepDays": 30, "pingHost": "1.1.1.1", "netPerApp": false,
             // Ventilatoren (alleen Macs met ventilator): "auto" | "curve" | "max", curve = "°C:%,…"
             "fanMode": "auto", "fanCurve": FanCurve.balanced,
+            // Oplaadlimiet (alleen Macs met accu, via de helper)
+            "chargeLimitOn": false, "chargeLimit": 80, "chargeHeat": false,
             "setupDone": false,
         ]
         for a in Alert.allCases {
@@ -40,7 +42,7 @@ enum Prefs {
     }()
 
     /// Horen bij deze Mac, gaan niet mee bij importeren.
-    static let local: Set<String> = ["pingHost", "setupDone", "page", "settingsTab", "fanMode", "fanCurve", "keepDays", "autoUpdate"]   // niet via een gedeeld bestand: anders kan iemand je geschiedenis laten wissen of updates uitzetten
+    static let local: Set<String> = ["pingHost", "setupDone", "page", "settingsTab", "fanMode", "fanCurve", "chargeLimitOn", "chargeLimit", "chargeHeat", "keepDays", "autoUpdate"]   // niet via een gedeeld bestand: anders kan iemand je geschiedenis laten wissen of updates uitzetten
 
     static func register(_ d: UserDefaults = .standard) { d.register(defaults: defaults) }
 

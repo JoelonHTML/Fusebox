@@ -71,6 +71,7 @@ final class Meter: ObservableObject {
     let logDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox")
     private lazy var sampler = Sampler()   // alleen op `work` gebruiken
     private let fanControl = FanController()
+    private let chargeControl = ChargeController()
     private var timer: Timer?
     private var minute: [Sample] = []
     private var buffer = ""
@@ -166,6 +167,7 @@ final class Meter: ObservableObject {
         s.wifiDbm = WifiWatch.shared.value()
         if let programs, programsVisible { ui.apps = programs }
         fanControl.update(s)
+        chargeControl.update(s)
         if let minuteList { minuteApps.apps = minuteList; minuteTasks(s) }
         let cal = Calendar.current
         if let first = minute.first, !cal.isDate(first.time, equalTo: s.time, toGranularity: .minute) {
@@ -232,6 +234,7 @@ final class Meter: ObservableObject {
             _ = Self.append(lines, to: file)
         }
         BatteryHealth.tick(s.time, dir: logDir)   // één regel per dag in battery-health.csv
+        SSDHealth.refresh()                       // hooguit eens per uur, op de achtergrond
         checkAlerts(s, top: apps.first { $0.kind != .macos })
         checkPeakAlert(s, apps: apps)
     }

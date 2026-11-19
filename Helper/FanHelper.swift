@@ -1,4 +1,4 @@
-// fusebox-fand — de enige plek die ventilatoren mag sturen (root, LaunchDaemon local.fusebox.fand).
+// fusebox-fand — de enige plek die ventilatoren en het laden van de accu mag sturen (root, LaunchDaemon local.fusebox.fand).
 // Los programma, NIET in Sources/: build.sh compileert dit apart naar Fusebox.app/Contents/Resources/fusebox-fand;
 // Instellingen › Fans kopieert het naar /Library/PrivilegedHelperTools (root:wheel 0755) en start het via launchd.
 //
@@ -6,8 +6,11 @@
 //   status            → "ok fans=N forced=0|1 hot=0|1"
 //   auto              → ventilatoren terug naar macOS
 //   set <fan> <rpm>   → ventilator op dit toerental, altijd binnen [F{i}Mn, F{i}Mx] van macOS
+//   charge limit <50-100> → laden tegenhouden, maar alleen als de accu (zelf gemeten) al rond die grens zit
+//   charge pause      → laden tegenhouden omdat de accu warm is, alleen als hij (zelf gemeten) echt warm is
+//   charge auto       → normaal laden
 // Veiligheid (hier, niet in de app): nooit onder het minimum; ≥ 95 °C → alles vol; 30 s geen "set" → auto;
-// SIGTERM/start → auto. Alles wat niet exact klopt wordt geweigerd.
+// 10 min geen "charge" → normaal laden; SIGTERM/start → auto en normaal laden. Alles wat niet exact klopt wordt geweigerd.
 
 import Foundation
 import IOKit
@@ -16,11 +19,14 @@ import os
 
 let socketPath = "/var/run/local.fusebox.fand.sock"
 let hotLimit = 95.0, coolAgain = 90.0, quietTimeout = 30.0
+let chargeTimeout = 600.0          // 10 min niets van de app → weer normaal laden (een crash laat het laden nooit uit staan)
+let chargeBand = 6.0               // tegenhouden mag vanaf grens − 6% (app: hysterese van 5%, plus 1% afronding)
+let warmBattery = 35.0             // "pause" alleen vanaf 35 °C (app: aan vanaf 40, uit onder 37)
 let log = Logger(subsystem: "local.fusebox.fand", category: "fans")
 
 // MARK: - Pure functies (getest met --selftest, zonder root)
 
-enum Command: Equatable { case status, auto, set(fan: Int, rpm: Int) }
+enum Command: Equatable { case status, auto, set(fan: Int, rpm: Int), chargeAuto, chargeLimit(Int), chargePause }
 
 /// Strikt: alleen printbare ASCII, ≤ 32 tekens, precies één spatie tussen delen, alleen cijfers als getal.
 func parse(_ line: String) -> Command? {
@@ -36,6 +42,11 @@ func parse(_ line: String) -> Command? {
     case (3, "set"):
         guard let f = num(parts[1], 2), let r = num(parts[2], 5) else { return nil }
         return .set(fan: f, rpm: r)
+    case (2, "charge") where parts[1] == "auto": return .chargeAuto
+    case (2, "charge") where parts[1] == "pause": return .chargePause
+    case (3, "charge") where parts[1] == "limit":
+        guard let l = num(parts[2], 3), (50...100).contains(l) else { return nil }
+        return .chargeLimit(l)
     default: return nil
     }
 }
@@ -45,6 +56,23 @@ func clampRPM(_ rpm: Int, min: Double, max: Double) -> Double? {
     guard min > 0, max >= min, max < 20_000 else { return nil }
     return Swift.min(Swift.max(Double(rpm), min), max)
 }
+
+/// Mag het laden nu tegengehouden worden? Alleen op eigen metingen, nooit op het woord van de app.
+/// Geen meting → nee (dan laadt hij gewoon).
+func mayInhibit(_ cmd: Command, battery: Double?, temp: Double?) -> Bool {
+    switch cmd {
+    case let .chargeLimit(l): return battery.map { $0 >= Double(l) - chargeBand } ?? false
+    case .chargePause: return temp.map { $0 >= warmBattery && $0 < 90 } ?? false
+    default: return false
+    }
+}
+
+/// Whitelist van laadsleutels (Apple Silicon): grootte, bytes voor "laden mag" en "niet laden". De eerste die bestaat wint.
+/// CHTE (ui32, little-endian) = nieuwere firmware; CH0B + CH0C (1 byte, 0x02 = tegenhouden) = oudere firmware.
+let chargeKeys: [(names: [String], size: UInt32, allow: [UInt8], inhibit: [UInt8])] = [
+    (["CHTE"], 4, [0, 0, 0, 0], [1, 0, 0, 0]),
+    (["CH0B", "CH0C"], 1, [0], [2]),
+]
 
 func fourCC(_ s: String) -> UInt32 { s.utf8.reduce(0) { $0 << 8 | UInt32($1) } }
 func fourCCString(_ v: UInt32) -> String { String(decoding: [24, 16, 8, 0].map { UInt8(v >> $0 & 0xff) }, as: UTF8.self) }
@@ -88,6 +116,22 @@ func selfTest() {
     precondition(decode("fpe2", [0x25, 0x80]) == 2400 && encode("ui8 ", 1) == [1] && encode("ui8 ", 300) == nil
                  && encode("flt ", .nan) == nil && encode("sp78", 1) == nil, "coderen")
     precondition(fourCCString(fourCC("F0Md")) == "F0Md", "fourCC")
+    // Laden
+    precondition(parse("charge auto") == .chargeAuto && parse("charge pause") == .chargePause
+                 && parse("charge limit 80") == .chargeLimit(80) && parse("charge limit 50") == .chargeLimit(50)
+                 && parse("charge limit 100") == .chargeLimit(100), "charge")
+    for bad in ["charge", "charge limit", "charge limit 49", "charge limit 101", "charge limit 0", "charge limit 080x", "charge limit -80",
+                "charge limit 80 1", "charge limit 8O", "charge  auto", "charge auto ", "Charge auto", "charge limit 1000", "charge limit 80.5",
+                "charge stop", "charge inhibit", "charge limit ８０", "charge limit\t80", "charge pause 1", "charge auto;reboot"] {
+        precondition(parse(bad) == nil, "weigeren: \(bad.debugDescription)")
+    }
+    precondition(parse("charge limit 080") == .chargeLimit(80), "voorloopnul is nog steeds 80")
+    precondition(mayInhibit(.chargeLimit(80), battery: 80, temp: nil) && mayInhibit(.chargeLimit(80), battery: 74, temp: nil)
+                 && !mayInhibit(.chargeLimit(80), battery: 73, temp: nil) && !mayInhibit(.chargeLimit(80), battery: nil, temp: 50), "grens zelf gemeten")
+    precondition(mayInhibit(.chargePause, battery: 10, temp: 41) && !mayInhibit(.chargePause, battery: 90, temp: 30)
+                 && !mayInhibit(.chargePause, battery: 90, temp: nil) && !mayInhibit(.chargePause, battery: 90, temp: 200)
+                 && !mayInhibit(.chargeAuto, battery: 100, temp: 50), "warmte zelf gemeten")
+    precondition(chargeKeys.allSatisfy { $0.allow.count == Int($0.size) && $0.inhibit.count == Int($0.size) && $0.allow != $0.inhibit }, "laadsleutels")
     print("fand: ok")
 }
 
@@ -142,6 +186,17 @@ final class SMC {
         guard let i = info(name), let b = encode(i.type, v), b.count == Int(i.size) else { return false }
         return call(6, key: fourCC(name), size: i.size, bytes: b) != nil
     }
+    /// Ruwe bytes (voor laadsleutels: vaste maat uit de whitelist).
+    func readBytes(_ name: String, size: UInt32) -> [UInt8]? {
+        guard info(name)?.size == size, let o = call(5, key: fourCC(name), size: size) else { return nil }
+        return Array(o[48..<48 + Int(size)])
+    }
+    func writeBytes(_ name: String, _ b: [UInt8]) -> Bool {
+        guard let i = info(name), i.size == UInt32(b.count) else { return false }
+        return call(6, key: fourCC(name), size: i.size, bytes: b) != nil
+    }
+    /// Warmste accusensor (TB0T…TB2T), of nil.
+    func batteryTemp() -> Double? { ["TB0T", "TB1T", "TB2T"].compactMap { read($0) }.filter { (-20...120).contains($0) }.max() }
     /// Warmste processor/grafische sensor, of nil als niets leesbaar is.
     func hottest() -> Double? {
         var best: Double?
@@ -207,6 +262,8 @@ final class Fans {
             if hot { return "ok hot" }   // te warm: blijft vol tot onder 90 °C
             guard force(fan, v) else { auto(); return "err write" }
             return "ok \(Int(v))"
+        case .chargeAuto, .chargeLimit, .chargePause:
+            return "err command"   // hoort bij Charge
         }
     }
 
@@ -225,10 +282,67 @@ final class Fans {
     }
 }
 
+// MARK: - Laden
+
+final class Charge {
+    let smc: SMC
+    /// Welke whitelist-regel op deze Mac bestaat; nil = niet ondersteund.
+    let key: (names: [String], size: UInt32, allow: [UInt8], inhibit: [UInt8])?
+    private(set) var held = false
+    private var lastWord = 0.0
+
+    init(_ smc: SMC) {
+        self.smc = smc
+        key = chargeKeys.first { k in k.names.allSatisfy { smc.readBytes($0, size: k.size) != nil } }
+    }
+    var name: String { key?.names.joined(separator: "+") ?? "none" }
+
+    /// Accu in % (AppleSmartBattery, zelf gelezen).
+    static func battery() -> Double? {
+        let b = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("AppleSmartBattery"))
+        guard b != 0 else { return nil }
+        defer { IOObjectRelease(b) }
+        func n(_ k: String) -> Double? { (IORegistryEntryCreateCFProperty(b, k as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? NSNumber)?.doubleValue }
+        guard let c = n("CurrentCapacity"), let m = n("MaxCapacity"), m > 0, c >= 0 else { return nil }
+        return Swift.min(c / m * 100, 100)
+    }
+
+    /// Schrijven en teruglezen: pas "gelukt" als de SMC het ook echt zo heeft staan.
+    private func put(_ inhibit: Bool) -> Bool {
+        guard let k = key else { return false }
+        let b = inhibit ? k.inhibit : k.allow
+        return k.names.allSatisfy { smc.writeBytes($0, b) && smc.readBytes($0, size: k.size) == b }
+    }
+
+    /// Normaal laden (start, stoppen, stilte, "charge auto").
+    func allow() {
+        guard key != nil else { return }
+        _ = put(false)
+        if held { log.notice("charging back to normal") }
+        held = false
+    }
+
+    func handle(_ cmd: Command) -> String {
+        guard key != nil else { return "err unsupported" }
+        lastWord = Fans.now()
+        guard cmd != .chargeAuto else { allow(); return "ok charging" }
+        guard mayInhibit(cmd, battery: Self.battery(), temp: smc.batteryTemp()) else { allow(); return "ok charging" }
+        guard put(true) else { allow(); return "err write" }
+        if !held { log.notice("charging held") }
+        held = true
+        return "ok held"
+    }
+
+    /// Elke seconde: 10 min niets gehoord → weer normaal laden.
+    func tick() {
+        if held && Fans.now() - lastWord > chargeTimeout { log.notice("no word from Fusebox for 10 min"); allow() }
+    }
+}
+
 // MARK: - Socket
 
 /// Versie van het protocol/de helper; de app vergelijkt dit en vraagt om "Reinstall" als hij ouder is.
-let helperVersion = 2
+let helperVersion = 3
 
 /// Alleen root of wie er nu achter het scherm zit (eigenaar van /dev/console) mag de helper aansturen.
 func allowed(_ c: Int32) -> Bool {
@@ -240,7 +354,7 @@ func allowed(_ c: Int32) -> Bool {
 
 /// Eén regel lezen (≤ 64 bytes, samen hooguit 0,3 s), afhandelen, antwoorden, dicht.
 /// De totale limiet houdt de veiligheidslus (95 °C-check, 30 s-terugval) draaiende, ook bij een trage verbinding.
-func serve(_ c: Int32, _ fans: Fans) {
+func serve(_ c: Int32, _ fans: Fans, _ charge: Charge) {
     guard allowed(c) else { let out = Array("err denied\n".utf8); _ = write(c, out, out.count); return }
     let start = Fans.now()
     var on: Int32 = 1, tv = timeval(tv_sec: 0, tv_usec: 100_000)
@@ -257,7 +371,13 @@ func serve(_ c: Int32, _ fans: Fans) {
     if buf.count <= 64, let nl = buf.firstIndex(of: 10) {
         var line = Array(buf[..<nl])
         if line.last == 13 { line.removeLast() }
-        if let cmd = parse(String(decoding: line, as: UTF8.self)) { reply = fans.handle(cmd) }
+        if let cmd = parse(String(decoding: line, as: UTF8.self)) {
+            switch cmd {
+            case .chargeAuto, .chargeLimit, .chargePause: reply = charge.handle(cmd)
+            case .status: reply = fans.handle(cmd).replacingOccurrences(of: " v=", with: " charge=\(charge.name) held=\(charge.held ? 1 : 0) v=")
+            default: reply = fans.handle(cmd)
+            }
+        }
     }
     let out = Array((reply + "\n").utf8)
     _ = write(c, out, out.count)
@@ -269,9 +389,10 @@ func main() -> Int32 {
     if CommandLine.arguments.contains("--selftest") { selfTest(); return 0 }
     guard getuid() == 0 else { print("fusebox-fand runs as root via launchd (local.fusebox.fand)."); return 1 }
     guard let smc = SMC() else { log.error("no SMC"); return 1 }
-    let fans = Fans(smc)
+    let fans = Fans(smc), charge = Charge(smc)
     fans.auto()   // schone start (ook na een crash: launchd KeepAlive start ons opnieuw)
-    guard fans.count > 0 else { log.notice("no fans: nothing to do"); while stop == 0 { sleep(3600) }; return 0 }
+    charge.allow()
+    guard fans.count > 0 || charge.key != nil else { log.notice("no fans, no charge control: nothing to do"); while stop == 0 { sleep(3600) }; return 0 }
 
     signal(SIGPIPE, SIG_IGN)
     for s in [SIGTERM, SIGINT, SIGHUP] { signal(s) { _ in stop = 1 } }
@@ -285,18 +406,19 @@ func main() -> Int32 {
     withUnsafeMutableBytes(of: &addr.sun_path) { b in for (i, c) in path.enumerated() where i < b.count - 1 { b[i] = c } }
     let bound = withUnsafePointer(to: &addr) { $0.withMemoryRebound(to: sockaddr.self, capacity: 1) { bind(fd, $0, socklen_t(MemoryLayout<sockaddr_un>.size)) } }
     guard bound == 0, chmod(socketPath, 0o666) == 0, listen(fd, 4) == 0 else { log.error("socket failed: \(errno)"); return 1 }
-    log.notice("ready, \(fans.count) fan(s), \(smc.tempKeys.count) temperature sensors")
+    log.notice("ready, \(fans.count) fan(s), \(smc.tempKeys.count) temperature sensors, charge control: \(charge.name)")
 
     var lastTick = 0.0
     while stop == 0 {
         var p = pollfd(fd: fd, events: Int16(POLLIN), revents: 0)
         if poll(&p, 1, 1000) > 0 {
             let c = accept(fd, nil, nil)
-            if c >= 0 { serve(c, fans); close(c) }
+            if c >= 0 { serve(c, fans, charge); close(c) }
         }
-        if Fans.now() - lastTick >= 1 { fans.tick(); lastTick = Fans.now() }
+        if Fans.now() - lastTick >= 1 { fans.tick(); charge.tick(); lastTick = Fans.now() }
     }
     fans.auto()
+    charge.allow()
     close(fd)
     unlink(socketPath)
     return 0
