@@ -130,6 +130,7 @@ struct MeterkastApp: App {
         Alert.selfTest()
         LowImpact.selfTest()
         SettingsPlacement.selfTest()
+        RootView.fitSelfTest()
         LiveLayout.selfTest()
         Analysis.selfTest()
         DiskScan.selfTest()

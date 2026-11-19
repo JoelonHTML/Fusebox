@@ -75,10 +75,14 @@ struct NetworkView: View {
 
     private func toolbar(_ all: [NetDevice]) -> some View {
         HStack(spacing: 8) {
-            Picker("", selection: $filter) {
-                ForEach(NetFilter.allCases) { Text($0.title).tag($0) }
+            // Smal venster (13-inch, kleine helft): filter als compact menu, anders past de werkbalk niet (scanknop viel weg)
+            if width >= .kind {
+                Picker("", selection: $filter) { ForEach(NetFilter.allCases) { Text($0.title).tag($0) } }
+                    .pickerStyle(.segmented).labelsHidden().fixedSize()
+            } else {
+                Picker("", selection: $filter) { ForEach(NetFilter.allCases) { Text($0.title).tag($0) } }
+                    .pickerStyle(.menu).labelsHidden().fixedSize()
             }
-            .pickerStyle(.segmented).labelsHidden().fixedSize()
             searchField.frame(minWidth: 70, maxWidth: 170)
             if width >= .kind { Text(countText(all)).font(theme.label(11)).foregroundStyle(theme.secondary).lineLimit(1) }
             Spacer(minLength: 4)
@@ -86,7 +90,7 @@ struct NetworkView: View {
                 if width >= .kind { Text(scanner.phase).font(theme.label(10)).foregroundStyle(theme.secondary).lineLimit(1) }
                 ProgressView(timerInterval: start...start.addingTimeInterval(scanner.expected), countsDown: false,
                              label: { EmptyView() }, currentValueLabel: { EmptyView() })
-                    .progressViewStyle(.linear).frame(width: 70)
+                    .progressViewStyle(.linear).frame(width: width >= .kind ? 70 : 36)
             }
             Button { draft = rangeText ?? ""; rangeOpen.toggle() } label: {
                 if width >= .kind { NetPill(title: rangeText ?? "This network", icon: "scope") }

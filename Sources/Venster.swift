@@ -275,13 +275,14 @@ struct RootView: View {
         return d.string(forKey: "liveSize").map(NSSizeFromString) ?? NSSize(width: 300, height: 340)
     }
 
-    /// Venster naar `size`, linksboven op zijn plek, nooit voorbij de rand van het scherm (dan kleiner i.p.v. verschuiven).
+    /// Venster naar `size`, linksboven op zijn plek. Past het niet (kleine schermen, 13-inch): eerst verschuiven
+    /// (omhoog/naar links), pas kleiner maken als het venster groter is dan het hele scherm. Eerder kromp het venster
+    /// tot een strookje als het laag op het scherm stond.
     private func place(_ w: NSWindow, size: NSSize, animate: Bool, topLeft: NSPoint? = nil) {
         var size = size
-        let top = topLeft?.y ?? w.frame.maxY, left = topLeft?.x ?? w.frame.minX
-        if let vf = w.screen?.visibleFrame {
-            size.width = max(316, min(size.width, vf.maxX - left))   // niet voorbij de rechterrand
-            size.height = max(160, min(size.height, top - vf.minY))  // niet onder het Dock/de onderrand
+        var top = topLeft?.y ?? w.frame.maxY, left = topLeft?.x ?? w.frame.minX
+        if let vf = (w.screen ?? NSScreen.main)?.visibleFrame {
+            (left, top, size) = Self.fit(left: left, top: top, size: size, in: vf)
         }
         let f = NSRect(x: left, y: top - size.height, width: size.width, height: size.height)
         // `wide` niet hier zetten: dan bouwt de werkbalk al met namen op terwijl het venster nog smal is (">>", scheve druppel)
@@ -291,6 +292,25 @@ struct RootView: View {
             ctx.timingFunction = CAMediaTimingFunction(name: .easeInEaseOut)
             w.animator().setFrame(f, display: true)
         }
+    }
+}
+
+extension RootView {
+    /// Venster binnen het zichtbare scherm: maat hoogstens het scherm (minimaal 316 × 160), daarna schuiven tot het past.
+    static func fit(left: CGFloat, top: CGFloat, size: NSSize, in vf: NSRect) -> (CGFloat, CGFloat, NSSize) {
+        let s = NSSize(width: max(316, min(size.width, vf.width)), height: max(160, min(size.height, vf.height)))
+        let l = min(max(left, vf.minX), vf.maxX - s.width)
+        let t = max(min(top, vf.maxY), vf.minY + s.height)
+        return (l, t, s)
+    }
+
+    static func fitSelfTest() {
+        let vf = NSRect(x: 0, y: 0, width: 1440, height: 800)      // 13-inch: 1440 × 900 min menubalk en Dock
+        let (l, t, s) = fit(left: 1300, top: 300, size: NSSize(width: 600, height: 700), in: vf)
+        precondition(s == NSSize(width: 600, height: 700) && l == 840 && t == 700, "schuiven i.p.v. krimpen")
+        let (_, t2, s2) = fit(left: 10, top: 790, size: NSSize(width: 2000, height: 1200), in: vf)
+        precondition(s2 == NSSize(width: 1440, height: 800) && t2 == 800, "groter dan scherm")
+        print("vensterplek ok")
     }
 }
 

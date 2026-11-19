@@ -460,11 +460,14 @@ final class InternetStats: ObservableObject {
         if rDead && iDead { return ("No answer from the router or the internet → check the connection", false) }
         if iDead { return ("The router answers but the internet doesn't → problem at your provider or modem", false) }
         let r = rDead ? nil : router, i = internetCheck ? internet : nil
-        let rBad = r.map { $0.loss >= 0.02 || ($0.avg ?? 0) > 30 || ($0.jitter ?? 0) > 20 } ?? false
+        // Wi-Fi schommelt van zichzelf (stroombesparing van de chip): pas boven 40 ms schommeling iets zeggen, op een kabel boven 20
+        let rJitter = wired ? 20.0 : 40.0
+        let rBad = r.map { $0.loss >= 0.02 || ($0.avg ?? 0) > 30 || ($0.jitter ?? 0) > rJitter } ?? false
         let iBad = i.map { $0.loss >= 0.02 || ($0.avg ?? 0) > 100 || ($0.jitter ?? 0) > 30 } ?? false
         var parts: [String] = []
         if let r, rBad {
-            let what = r.loss >= 0.02 ? "\(pct(r.loss)) packet loss to the router" : "slow replies from the router (\(ms(r.avg)))"
+            let what = r.loss >= 0.02 ? "\(pct(r.loss)) packet loss to the router"
+                : (r.avg ?? 0) > 30 ? "slow replies from the router (\(ms(r.avg)))" : "unsteady replies from the router (jitter \(ms(r.jitter)))"
             parts.append(weak ? "Wi-Fi signal weak and \(what) → move closer to the router or use a cable"
                          : wired ? "\(what.prefix(1).uppercased() + what.dropFirst()) on a cable → check the cable or restart the router"
                          : "\(what.prefix(1).uppercased() + what.dropFirst()) → Wi-Fi interference or a busy router; restart it or use a cable")
