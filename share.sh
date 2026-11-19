@@ -4,6 +4,7 @@
 set -e
 cd "$(dirname "$0")"
 ./build.sh
+scripts/notarize.sh "$HOME/Applications/Fusebox.app"   # alleen met Apple Developer-account; anders overgeslagen
 rm -f Fusebox.zip
 ditto -c -k --norsrc --noextattr --noqtn --keepParent "$HOME/Applications/Fusebox.app" Fusebox.zip   # zonder ._-metadata
 echo "done: $(pwd)/Fusebox.zip ($(du -h Fusebox.zip | cut -f1))"
