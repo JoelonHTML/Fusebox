@@ -997,7 +997,7 @@ private struct AnalysisPage: View, Equatable {
                 .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8)
             }
         case "storage":
-            cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10) } }
+            cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10); SSDHealthCard(index: 11) } }
         default:
             cols { if shown("runtime") { part(r, tips, .runtime) } } right: { if shown("log") { part(r, tips, .log) } }
             exportBar(r, tips)

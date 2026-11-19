@@ -1,4 +1,5 @@
 import os
+import IOKit
 import SwiftUI
 
 // MARK: - Checkup: wat start mee met de Mac, en wat neemt schijfruimte in?
@@ -388,6 +389,117 @@ struct DiskSection: View {
             Self.last = r
             result = r
             progress = nil
+        }
+    }
+}
+
+// MARK: - SSD-gezondheid: NVMe S.M.A.R.T. van de interne SSD, zonder root (NVMeSMARTLib-plugin van IOKit).
+// Hooguit eens per uur gelezen, op de achtergrond. Nooit serienummers.
+
+enum SSDHealth {
+    struct Info: Equatable {
+        var used = 0, spare = 100, spareMin = 0       // % versleten (kan > 100), % reserve, drempel van de fabrikant
+        var writtenTB = 0.0, hours = 0, mediaErrors = 0
+        var critical: UInt8 = 0                       // NVMe "critical warning"-bits, 0 = niets
+        var warn: Bool { used >= 80 || critical != 0 || spare < spareMin || mediaErrors > 0 }
+        var text: String {
+            let tb = writtenTB < 1 ? "\(Int((writtenTB * 1000).rounded())) GB" : writtenTB < 10 ? "\(one(writtenTB)) TB" : "\(Int(writtenTB.rounded())) TB"
+            return "Wear \(used)% · \(tb) written in total"
+        }
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var info: Info?, readAt = Date.distantPast, busy = false
+    static var cached: Info? { lock.lock(); defer { lock.unlock() }; return info }
+
+    /// Eens per uur opnieuw lezen (achtergrond). Mislukt het (andere Mac, geen plugin), dan blijft het leeg.
+    static func refresh(now: Date = Date()) {
+        lock.lock()
+        guard !busy, now.timeIntervalSince(readAt) >= 3600 else { lock.unlock(); return }
+        busy = true; readAt = now
+        lock.unlock()
+        DispatchQueue.global(qos: .utility).async {
+            let i = read()
+            lock.lock(); info = i ?? info; busy = false; lock.unlock()
+        }
+    }
+
+    /// 512 bytes NVMe SMART/Health-log → Info. Getallen zijn little-endian; data units = 512 000 bytes.
+    static func parse(_ b: [UInt8]) -> Info? {
+        guard b.count >= 192 else { return nil }
+        func le(_ o: Int, _ n: Int) -> Double { (0..<n).reversed().reduce(0.0) { $0 * 256 + Double(b[o + $1]) } }
+        let clamp = { (v: Double) in Int(Swift.min(v, 1e9)) }
+        return Info(used: Int(b[5]), spare: Int(b[3]), spareMin: Int(b[4]), writtenTB: le(48, 16) * 512_000 / 1e12,
+                    hours: clamp(le(128, 16)), mediaErrors: clamp(le(160, 16)), critical: b[0])
+    }
+
+    /// Interne SSD (IOEmbeddedNVMeBlockDevice / IONVMeBlockDevice met "NVMe SMART Capable").
+    static func read() -> Info? {
+        // kIONVMeSMARTUserClientTypeID, kIONVMeSMARTInterfaceID, kIOCFPlugInInterfaceID
+        let client = CFUUIDGetConstantUUIDWithBytes(nil, 0xAA, 0x0F, 0xA6, 0xF9, 0xC2, 0xD6, 0x45, 0x7F, 0xB1, 0x0B, 0x59, 0xA1, 0x32, 0x53, 0x29, 0x2F)
+        let iface = CFUUIDGetConstantUUIDWithBytes(nil, 0xCC, 0xD1, 0xDB, 0x19, 0xFD, 0x9A, 0x4D, 0xAF, 0xBF, 0x95, 0x12, 0x45, 0x4B, 0x23, 0x0A, 0xB6)
+        let plug = CFUUIDGetConstantUUIDWithBytes(nil, 0xC2, 0x44, 0xE8, 0x58, 0x10, 0x9C, 0x11, 0xD4, 0x91, 0xD4, 0x00, 0x50, 0xE4, 0xC6, 0x42, 0x6F)
+        for cls in ["IOEmbeddedNVMeBlockDevice", "IONVMeBlockDevice"] {
+            var it: io_iterator_t = 0
+            guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching(cls), &it) == KERN_SUCCESS else { continue }
+            defer { IOObjectRelease(it) }
+            while case let svc = IOIteratorNext(it), svc != 0 {
+                defer { IOObjectRelease(svc) }
+                guard (IORegistryEntryCreateCFProperty(svc, "NVMe SMART Capable" as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() as? Bool) == true else { continue }
+                var plugin: UnsafeMutablePointer<UnsafeMutablePointer<IOCFPlugInInterface>?>?, score: Int32 = 0
+                guard IOCreatePlugInInterfaceForService(svc, client, plug, &plugin, &score) == KERN_SUCCESS, let plugin, let p = plugin.pointee else { continue }
+                defer { IODestroyPlugInInterface(plugin) }
+                var raw: LPVOID?
+                guard p.pointee.QueryInterface(plugin, CFUUIDGetUUIDBytes(iface), &raw) == S_OK, let raw else { continue }
+                // IONVMeSMARTInterface: IUnknown (4 pointers), version+revision (8 bytes), dan SMARTReadData op offset 40
+                let vtbl = raw.assumingMemoryBound(to: UnsafeRawPointer.self).pointee
+                typealias ReadFn = @convention(c) (UnsafeMutableRawPointer?, UnsafeMutableRawPointer?) -> IOReturn
+                typealias ReleaseFn = @convention(c) (UnsafeMutableRawPointer?) -> UInt32
+                defer { _ = unsafeBitCast(vtbl.load(fromByteOffset: 24, as: UnsafeRawPointer.self), to: ReleaseFn.self)(raw) }
+                var log = [UInt8](repeating: 0, count: 512)
+                let r = log.withUnsafeMutableBytes { unsafeBitCast(vtbl.load(fromByteOffset: 40, as: UnsafeRawPointer.self), to: ReadFn.self)(raw, $0.baseAddress) }
+                if r == kIOReturnSuccess, let i = parse(log) { return i }
+            }
+        }
+        return nil
+    }
+
+    static func selfTest() {
+        var b = [UInt8](repeating: 0, count: 512)
+        b[3] = 100; b[4] = 10; b[5] = 3
+        // 80 069 000 data units ≈ 41 TB; little-endian
+        let units: UInt32 = 80_069_000
+        for i in 0..<4 { b[48 + i] = UInt8(units >> (8 * UInt32(i)) & 0xff) }
+        b[128] = 0x10; b[129] = 0x27   // 10 000 uur
+        let i = parse(b)!
+        precondition(i.used == 3 && i.spare == 100 && i.hours == 10_000 && i.mediaErrors == 0 && !i.warn, "smart \(i)")
+        precondition(i.text == "Wear 3% · 41 TB written in total", "tekst \(i.text)")
+        precondition(Info(writtenTB: 0.82).text == "Wear 0% · 820 GB written in total" && Info(writtenTB: 8.0088).text == "Wear 0% · 8.0 TB written in total", "kleine getallen")
+        precondition(Info(used: 80).warn && Info(critical: 4).warn && Info(spare: 5, spareMin: 10).warn && Info(mediaErrors: 1).warn, "waarschuwen")
+        precondition(parse([1, 2, 3]) == nil, "te kort")
+        if let real = read() { print("ssd: \(real.text), \(real.hours) h") } else { print("ssd: geen S.M.A.R.T.") }
+    }
+}
+
+/// Checkup › Startup & storage: klein kaartje met slijtage van de SSD.
+struct SSDHealthCard: View {
+    @Environment(\.theme) private var theme
+    let index: Int
+    @State private var info = SSDHealth.cached
+
+    var body: some View {
+        if let info {
+            VStack(alignment: .leading, spacing: 4) {
+                CardTitle(icon: "internaldrive", title: "SSD health", tone: info.warn ? 1 : 3)
+                Headline(big: info.warn ? "Check soon" : "OK", small: info.text + " · \(info.hours.formatted(.number.locale(Locale(identifier: "en_US")))) hours on", tone: info.warn ? 1 : 3)
+                if info.warn {
+                    Text("The SSD is wearing out or reports errors. Keep a recent backup.").font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .themedRow(theme, index: index)
+        } else {
+            Color.clear.frame(height: 0).task { info = await Task.detached { SSDHealth.read() }.value }
         }
     }
 }

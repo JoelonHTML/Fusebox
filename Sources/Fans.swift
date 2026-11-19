@@ -74,7 +74,7 @@ enum FanHelper {
 
     /// Moet gelijk zijn aan `helperVersion` in Helper/FanHelper.swift. Ouder → "Reinstall" (updates van de app
     /// vervangen de geïnstalleerde root-helper niet; dat kan alleen met je wachtwoord).
-    static let expectedVersion = 2
+    static let expectedVersion = 3
     static var installed: Bool { FileManager.default.fileExists(atPath: plistPath) && FileManager.default.fileExists(atPath: binPath) }
 
     /// Stuurt één opdracht ("status", "auto", "set 0 2400") en geeft het antwoord ("ok …" / "err …"), of nil als de helper er niet is.
@@ -121,8 +121,13 @@ enum FanHelper {
 
     /// Ventilatoren terug naar macOS, dienst stoppen (de helper zet bij SIGTERM ook zelf op auto), bestanden weg.
     @MainActor static func uninstall() -> String? {
-        send("auto")
+        send("auto"); send("charge auto")
         return admin("/bin/launchctl bootout system/\(label) 2>/dev/null; /bin/rm -f \(q(plistPath)) \(q(binPath)) \(q(socketPath))")
+    }
+
+    /// Eén veld uit het status-antwoord: field("ok … charge=CHTE …", "charge") → "CHTE".
+    static func field(_ reply: String, _ name: String) -> String? {
+        reply.split(separator: " ").first { $0.hasPrefix(name + "=") }.map { String($0.dropFirst(name.count + 1)) }
     }
 
     /// Shell-quoting met enkele aanhalingstekens.
@@ -235,10 +240,6 @@ struct FanSettings: View {
     @EnvironmentObject var meter: Meter
     @AppStorage("fanMode") private var mode = "auto"
     @AppStorage("fanCurve") private var curve = FanCurve.balanced
-    @State private var installed = FanHelper.installed
-    @State private var outdated = false
-    @State private var running: Bool?
-    @State private var note: String?
 
     var body: some View {
         if Fans.count == 0 {
@@ -254,7 +255,7 @@ struct FanSettings: View {
                     Text("Automatic (macOS)").tag("auto"); Text("Custom curve").tag("curve"); Text("Full speed").tag("max")
                 }
                 .pickerStyle(.segmented)
-                if mode != "auto" && !installed {
+                if mode != "auto" && !FanHelper.installed {
                     Text("Install the helper below, then Fusebox can set the fans.").font(.caption).foregroundStyle(.orange)
                 }
             } footer: {
@@ -277,7 +278,7 @@ struct FanSettings: View {
                     }
                 }
             }
-            helperSection
+            HelperSection()
         }
     }
 
@@ -296,17 +297,28 @@ struct FanSettings: View {
         }
     }
 
-    @ViewBuilder private var helperSection: some View {
+}
+
+/// Installeren/bijwerken/verwijderen van de helper; staat onder Settings › Fans en Settings › Battery.
+struct HelperSection: View {
+    @AppStorage("fanMode") private var mode = "auto"
+    @AppStorage("chargeLimitOn") private var chargeOn = false
+    @State private var installed = FanHelper.installed
+    @State private var outdated = false
+    @State private var running: Bool?
+    @State private var note: String?
+
+    var body: some View {
         Section {
             if installed {
                 LabeledContent("Helper", value: running == false ? "Installed, not responding" : outdated ? "Update needed" : "Installed")
                 if outdated {
-                    Text("This Fusebox has a newer fan helper. Click Reinstall… to update it (asks for your password).")
+                    Text("This Fusebox has a newer helper. Click Reinstall… to update it (asks for your password).")
                         .font(.caption).foregroundStyle(.orange)
                 }
                 HStack {
                     Button("Reinstall…") { act(FanHelper.install) }
-                    Button("Uninstall helper…", role: .destructive) { if act(FanHelper.uninstall) { mode = "auto" } }
+                    Button("Uninstall helper…", role: .destructive) { if act(FanHelper.uninstall) { mode = "auto"; chargeOn = false } }
                 }
             } else {
                 LabeledContent("Helper") { Button("Install…") { act(FanHelper.install) } }
@@ -314,9 +326,9 @@ struct FanSettings: View {
             }
             if let note { Text(note).font(.caption).foregroundStyle(.secondary) }
         } header: {
-            Text("Fan helper")
+            Text("Fusebox helper")
         } footer: {
-            Text("A small background program that runs as administrator. It is the only part that can change fan speed, and it gives the fans back to macOS if Fusebox stops talking to it for 30 s.")
+            Text("A small background program that runs as administrator. It is the only part that can change fan speed or charging. If Fusebox stops talking to it, the fans go back to macOS after 30 s and charging back to normal after 10 minutes.")
                 .font(.caption).foregroundStyle(.secondary)
         }
         .task(id: installed) { await check() }
