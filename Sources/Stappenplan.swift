@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 // MARK: - Stappenplan: eerste start (setupDone == false) of via Instellingen › Profiel / menubalk.
 // Eén vraag per stap. Elke keuze schrijft meteen naar UserDefaults, dus de echte vensters veranderen live mee.
@@ -26,6 +27,7 @@ struct SetupView: View {
         ("How should Fusebox start?", "Fusebox uses very little power, so it's fine to keep it running."),
         ("Should Fusebox warn you?", "A notification when something needs attention, like your Mac getting too hot."),
         ("Data and privacy", "Everything stays on your Mac."),
+        ("Permissions", "macOS asks you once for each of these. Allow what you want to use; you can change it later in System Settings."),
         ("You're all set!", "Here's what you picked."),
     ]
     private var last: Int { steps.count - 1 }
@@ -65,6 +67,9 @@ struct SetupView: View {
         .background(MeterHook { meter = $0 })
         .onAppear { snapshot = Prefs.export(); step = 0; finished = false; message = nil }
         .onDisappear {
+            // Installer verplaatst/opent een andere kopie en sluit deze: dan is de setup níet gedaan (de nieuwe kopie
+            // moet hem gewoon tonen). Eerder telde dat sluiten als "klaar", waardoor de setup bij een maat maar even flitste.
+            if Installer.handingOver || meter?.quitting == true { return }
             // Rode knopje = annuleren: alles terug zoals het was, maar niet bij elke start opnieuw vragen.
             if !finished, let snapshot {
                 Prefs.restore(snapshot)
@@ -112,6 +117,7 @@ struct SetupView: View {
             }
             .disabled(!notify)
         case 9: PrivacyStep()
+        case 10: PermissionsStep()
         default: Summary(message: message)
         }
     }
@@ -473,5 +479,76 @@ struct FontCards: View {
                 }
             }
         }
+    }
+}
+
+
+/// Alle toestemmingen op één plek, met de stand en een knop. Niets wordt stiekem gevraagd: elke vraag na een klik.
+private struct PermissionsStep: View {
+    @State private var notif: UNAuthorizationStatus = .notDetermined
+    @State private var fda = DiskScan.fullDiskAccess
+    @State private var lanAsked = UserDefaults.standard.bool(forKey: "lanAsked")
+    @State private var helper = FanHelper.installed
+    @State private var helperNote: String?
+    @AppStorage("notify") private var notify = true
+
+    var body: some View {
+        Section {
+            row("bell.badge", "Notifications", "Updates, peaks, heat and battery warnings",
+                notif == .authorized || notif == .provisional ? "Allowed" : notif == .denied ? "Off" : nil,
+                notif == .denied ? "Open Settings" : "Allow") {
+                if notif == .denied { open("x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")") }
+                else { notify = true; UNUserNotificationCenter.current().requestAuthorization(options: [.alert, .sound]) { _, _ in Task { @MainActor in refresh() } } }
+            }
+            row("network", "Local network", "To find the devices on your network (Network tab)",
+                lanAsked ? "Asked" : nil, lanAsked ? "Open Settings" : "Allow") {
+                if lanAsked { open("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocalNetwork") }
+                else { LocalNetworkNudge.ask(); lanAsked = true; UserDefaults.standard.set(true, forKey: "lanAsked") }
+            }
+            row("internaldrive", "Full Disk Access", "So Checkup can measure all your folders (Photos, Mail, app data)",
+                fda ? "Allowed" : nil, "Open Settings") {
+                open("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")
+            }
+            row("fan", "Fusebox helper", helperNote ?? "Optional: fan control and charge limit. Asks for your password once",
+                helper ? "Installed" : nil, "Install") {
+                helperNote = FanHelper.install(); helper = FanHelper.installed
+            }
+        } footer: {
+            Text("Full Disk Access: in the list, turn on Fusebox (or add it with +). Fusebox only measures; it never reads, sends or deletes your files.")
+                .font(.caption).foregroundStyle(.secondary)
+        }
+        .task {   // stand bijhouden zolang deze stap open is (ook als je in Systeeminstellingen iets aanzet)
+            while !Task.isCancelled { refresh(); try? await Task.sleep(for: .seconds(2)) }
+        }
+    }
+
+    private func refresh() {
+        fda = DiskScan.fullDiskAccess; helper = FanHelper.installed
+        UNUserNotificationCenter.current().getNotificationSettings { s in let st = s.authorizationStatus; Task { @MainActor in notif = st } }
+    }
+
+    private func open(_ s: String) { if let u = URL(string: s) { NSWorkspace.shared.open(u) } }
+
+    private func row(_ icon: String, _ title: String, _ help: String, _ state: String?, _ button: String, action: @escaping () -> Void) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: icon).frame(width: 22).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 1) {
+                Text(title)
+                Text(help).font(.caption).foregroundStyle(.secondary).fixedSize(horizontal: false, vertical: true)
+            }
+            Spacer()
+            if let state { Label(state, systemImage: "checkmark.circle.fill").labelStyle(.titleAndIcon).foregroundStyle(.green).font(.callout) }
+            if state == nil || button == "Open Settings" && state != "Allowed" { Button(button, action: action) }
+        }
+    }
+}
+
+/// macOS vraagt pas om "lokaal netwerk" als een app er echt iets naartoe stuurt: één klein mDNS-pakketje.
+import Network
+enum LocalNetworkNudge {
+    static func ask() {
+        let c = NWConnection(host: "224.0.0.251", port: 5353, using: .udp)
+        c.start(queue: .global(qos: .utility))
+        c.send(content: Data([0]), completion: .contentProcessed { _ in c.cancel() })
     }
 }

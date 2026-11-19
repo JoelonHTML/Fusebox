@@ -32,7 +32,16 @@ cp "$TMP/Fusebox" "$APP/Contents/MacOS/Fusebox"
 cp "$TMP/fusebox-fand" "$APP/Contents/Resources/fusebox-fand"
 cp Resources/oui.tsv "$APP/Contents/Resources/oui.tsv"   # officiële IEEE-fabrikantenlijst (MAC → merk) voor de LAN-scanner
 rm -rf "$APP/Contents/Resources/Fonts" && cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"   # Montserrat (OFL) en Ubuntu (UFL), met licenties
-codesign --force --sign - --identifier local.fusebox.fand "$APP/Contents/Resources/fusebox-fand"
+# Ondertekenen met het vaste Fusebox-certificaat (eigen sleutelhanger, wachtwoord in de inlog-sleutelhanger):
+# dan herkent macOS elke nieuwe versie als dezelfde app en blijven toestemmingen (Volledige schijftoegang e.d.)
+# na een update staan. Geen certificaat (andere Mac)? Dan ad hoc, zoals vroeger.
+KC="$HOME/Library/Keychains/fusebox-signing.keychain-db"
+SIGN=(--sign -)
+if [ -f "$KC" ] && KCPW=$(security find-generic-password -s fusebox-codesign-keychain -a fusebox -w 2>/dev/null); then
+  security unlock-keychain -p "$KCPW" "$KC"
+  SIGN=(--keychain "$KC" --sign "Fusebox Code Signing")
+fi
+codesign --force "${SIGN[@]}" --identifier local.fusebox.fand "$APP/Contents/Resources/fusebox-fand"
 
 cat > "$APP/Contents/Info.plist" <<'EOF'
 <?xml version="1.0" encoding="UTF-8"?>
@@ -58,7 +67,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 EOF
 # Bouwnummer = datum+tijd: zo weet een nieuwe Fusebox dat hij nieuwer is en werkt hij de oude bij (Installer.swift)
 /usr/libexec/PlistBuddy -c "Set :CFBundleVersion $(date +%Y%m%d%H%M)" "$APP/Contents/Info.plist"
-codesign --force --sign - "$APP" >/dev/null
+codesign --force "${SIGN[@]}" "$APP" >/dev/null
 [ -d "$OLD" ] && mv "$OLD" "$HOME/.Trash/Meterkast-oud-$(date +%s).app"
 touch "$APP" # Finder/Dock laten weten dat het icoon veranderd kan zijn
 /System/Library/Frameworks/CoreServices.framework/Frameworks/LaunchServices.framework/Support/lsregister -f "$APP"

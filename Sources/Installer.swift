@@ -121,7 +121,11 @@ enum Installer {
         return false
     }
 
+    /// Deze kopie geeft het over aan een andere (verplaatst/bijgewerkt) en sluit zo: dan telt de setup niet als gedaan.
+    @MainActor static var handingOver = false
+
     @MainActor private static func open(_ url: URL) {
+        handingOver = true
         // Draait die al? Dan alleen naar voren halen en deze kopie sluiten (geen tweede Fusebox die dubbel logt/bijwerkt)
         let target = url.resolvingSymlinksInPath().path
         if let running = NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")

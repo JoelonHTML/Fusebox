@@ -113,7 +113,9 @@ enum Startup {
 struct DiskItem: Identifiable, Sendable, Equatable {
     let url: URL, title: String
     var bytes: Int64?       // nil = nog niet gemeten
+    var inside: [Child] = []   // grootste mappen erin (hoogstens 3), zodat je ziet wát er zo groot is
     var id: String { url.path }
+    struct Child: Sendable, Equatable { let name: String, bytes: Int64 }
 }
 
 enum DiskScan {
@@ -156,31 +158,83 @@ enum DiskScan {
     /// async zonder actor: loopt buiten de hoofdthread.
     /// Zelfde, maar hoogstens `within` seconden: macOS kan het openen van een beschermde map laten wachten op een
     /// toestemmingsvraag. Dan nil ("niet bekeken") en door met de volgende; die ene draad blijft wachten tot macOS antwoordt.
-    static func size(_ url: URL, skip: Set<String>, within: Double) async -> Int64? {
+    static func measure(_ url: URL, skip: Set<String>, within: Double) async -> (total: Int64, children: [DiskItem.Child])? {
         let once = OSAllocatedUnfairLock(initialState: false)
-        return await withCheckedContinuation { (c: CheckedContinuation<Int64?, Never>) in
-            func finish(_ v: Int64?) { if once.withLock({ let first = !$0; $0 = true; return first }) { c.resume(returning: v) } }
-            Task.detached(priority: .utility) { finish(await size(url, skip: skip)) }
+        return await withCheckedContinuation { (c: CheckedContinuation<(total: Int64, children: [DiskItem.Child])?, Never>) in
+            func finish(_ v: (total: Int64, children: [DiskItem.Child])?) { if once.withLock({ let first = !$0; $0 = true; return first }) { c.resume(returning: v) } }
+            Task.detached(priority: .utility) { finish(await measure(url, skip: skip)) }
             Task.detached { try? await Task.sleep(for: .seconds(within)); finish(nil) }
         }
     }
 
-    static func size(_ url: URL, skip: Set<String>) async -> Int64 {
+    static func size(_ url: URL, skip: Set<String>) async -> Int64 { await measure(url, skip: skip).total }
+
+    /// Totaal plus per map direct erin (in dezelfde ronde, dus niets extra's te lezen).
+    static func measure(_ url: URL, skip: Set<String>) async -> (total: Int64, children: [DiskItem.Child]) {
         let keys: [URLResourceKey] = [.totalFileAllocatedSizeKey, .fileAllocatedSizeKey]
         func one(_ u: URL) -> Int64 {
             let v = try? u.resourceValues(forKeys: Set(keys))
             return Int64(v?.totalFileAllocatedSize ?? v?.fileAllocatedSize ?? 0)
         }
-        var total = one(url)
-        guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }) else { return total }
+        var total = one(url), per: [String: Int64] = [:]
+        let base = url.standardizedFileURL.pathComponents.count
+        guard let e = FileManager.default.enumerator(at: url, includingPropertiesForKeys: keys, options: [], errorHandler: { _, _ in true }) else { return (total, []) }
         var n = 0
         while let u = e.nextObject() as? URL {
             if skip.contains(u.path) { e.skipDescendants(); continue }
-            total += one(u)
+            let b = one(u)
+            total += b
+            let c = u.standardizedFileURL.pathComponents
+            if c.count > base { per[c[base], default: 0] += b }
             n += 1
             if n % 2000 == 0, Task.isCancelled { break }
         }
-        return total
+        let kids = per.sorted { $0.value > $1.value }.prefix(3).filter { $0.value > 100_000_000 }.map { DiskItem.Child(name: $0.key, bytes: $0.value) }
+        return (total, Array(kids))
+    }
+
+    // MARK: Advies: wat is het en kan het weg?
+
+    enum Verdict: Sendable { case safe, careful, keep, unknown }
+
+    /// Bekende mappen in gewone taal. `name` is het laatste deel van het pad (of een submap-naam).
+    static func advice(_ rel: String) -> (what: String, verdict: Verdict)? {
+        let name = (rel as NSString).lastPathComponent
+        let table: [String: (String, Verdict)] = [
+            "Library/Developer": ("Xcode: build files, simulators and device support. Clear in Xcode or delete DerivedData; old simulators: Xcode › Settings › Components", .careful),
+            "DerivedData": ("Xcode build files. Safe to delete; Xcode rebuilds them", .safe),
+            "CoreSimulator": ("iPhone/iPad simulators from Xcode. Remove old ones in Xcode › Settings › Components", .careful),
+            "iOS DeviceSupport": ("Debug files for every iPhone you connected to Xcode. Old versions can go", .safe),
+            "Archives": ("Xcode app archives (builds you exported). Keep the ones you still need", .careful),
+            "Library/Caches": ("Caches of your apps. Safe to delete; apps rebuild them (first start is a bit slower)", .safe),
+            "Caches": ("Cache files. Safe to delete; they are rebuilt", .safe),
+            "Library/Logs": ("Log files of apps and macOS. Safe to delete", .safe),
+            "Library/Application Support": ("Data and settings of your apps. Keep it; look inside for an app you no longer use", .keep),
+            "Library/Containers": ("Data of App Store apps. Keep it; delete an app to remove its data", .keep),
+            ".Trash": ("Trash. Empty it to get the space back", .safe),
+            "Downloads": ("Your downloads. Often old installers and zips that can go", .careful),
+            "Movies": ("Your videos. Keep, or move to an external drive", .keep),
+            "Music": ("Your music. Keep, or move to an external drive", .keep),
+            "Pictures": ("Your photos. Keep, or move the Photos library to an external drive", .keep),
+            "Desktop": ("Files on your desktop. Your own files", .keep),
+            "Documents": ("Your documents. Your own files", .keep),
+            "node_modules": ("JavaScript packages. Safe to delete; `npm install` brings them back", .safe),
+            ".npm": ("npm download cache. Safe to delete", .safe),
+            ".gradle": ("Gradle cache (Android/Java builds). Safe to delete; it downloads again", .safe),
+            ".android": ("Android SDK settings and emulators. Delete old emulators in Android Studio", .careful),
+            ".m2": ("Maven cache (Java). Safe to delete; it downloads again", .safe),
+            ".cargo": ("Rust packages and tools. The registry cache can go", .careful),
+            ".cache": ("Cache of command-line tools. Safe to delete", .safe),
+            ".docker": ("Docker settings. The big data is in Docker itself: clean up there", .careful),
+            ".claude": ("Claude Code: your sessions and history. Keep it unless you don't need old conversations", .keep),
+            ".vscode": ("VS Code extensions. Remove unused extensions in VS Code", .careful),
+            "Library/Mobile Documents": ("iCloud Drive files on this Mac. Remove downloads with \"Remove Download\" in Finder", .careful),
+            "Library/Mail": ("Your Mail messages and attachments", .keep),
+            "MobileSync": ("iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups", .careful),
+            "Library/Application Support/MobileSync": ("iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups", .careful),
+        ]
+        if let a = table[rel] ?? table[name] { return (a.0, a.1) }
+        return nil
     }
 
     /// Grootste eerst, lege en ongemeten weg.
@@ -212,6 +266,8 @@ enum DiskScan {
                      && Startup.friendlyName(program: nil, label: "com.google.keystone.agent") == "Google Keystone Agent"
                      && Startup.friendlyName(program: nil, label: "solo") == "solo", "vriendelijke naam")
         let u = URL(fileURLWithPath: "/a")
+        precondition(advice("Library/Caches")?.verdict == .safe && advice("Library/Application Support")?.verdict == .keep
+                     && advice("DerivedData")?.verdict == .safe && advice("dev") == nil, "map-advies")
         let t = top([DiskItem(url: u, title: "a", bytes: 5), DiskItem(url: u, title: "b", bytes: nil), DiskItem(url: u, title: "c", bytes: 9_000_000_000),
                      DiskItem(url: u, title: "d", bytes: 0), DiskItem(url: u, title: "e", bytes: 2_500_000)], 2)
         precondition(t.map(\.title) == ["c", "e"] && bytes(Double(t[0].bytes!)) == "9.0 GB" && bytes(Double(t[1].bytes!)) == "2.5 MB", "schijf-top \(t.map(\.title))")
@@ -321,6 +377,7 @@ struct DiskSection: View {
     @MainActor private static var last: (top: [DiskItem], skipped: [DiskItem])?
     @State private var result = MainActor.assumeIsolated { DiskSection.last }
     @State private var run = 0
+    @State private var askFDA = false
     @State private var progress: (done: Int, total: Int, now: String)?
     /// Vrij en totaal (GB), één keer bij openen gelezen
     @State private var space: (free: Double, total: Double)? = {
@@ -336,7 +393,9 @@ struct DiskSection: View {
             HStack {
                 CardTitle(icon: "internaldrive", title: "What takes my disk space?", tone: low ? 1 : 0)
                 Spacer()
-                Button(result == nil ? "Find large folders" : "Check again") { run += 1 }
+                // Zonder Volledige schijftoegang tellen beschermde mappen (Foto's, Mail, Containers, delen van Caches) niet mee:
+                // dan eerst vragen, anders zijn de groottes niet representatief
+                Button(result == nil ? "Find large folders" : "Check again") { if DiskScan.fullDiskAccess { run += 1 } else { askFDA = true } }
                     .buttonStyle(Pill(color: theme.onRow())).disabled(progress != nil)
             }
             if let space { Headline(big: "\(Int(space.free)) GB free", small: "of \(Int(space.total)) GB", tone: low ? 1 : 0) }
@@ -346,18 +405,30 @@ struct DiskSection: View {
             } else if let r = result {
                 let biggest = Double(r.top.first?.bytes ?? 1)
                 ForEach(r.top) { i in
-                    HStack(spacing: 6) {
-                        Text(i.title).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
-                        Spacer(minLength: 4)
-                        Capsule().fill((theme.rowStyle == .blocks ? Color.white : theme.accent).opacity(0.7))
-                            .frame(width: 50 * max(Double(i.bytes ?? 0) / biggest, 0.04), height: 4)
-                        Text(bytes(Double(i.bytes ?? 0))).font(theme.number(11)).foregroundStyle(theme.onRow()).frame(width: 58, alignment: .trailing)
-                        Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.url]) }.buttonStyle(Pill(color: theme.onRow()))
+                    VStack(alignment: .leading, spacing: 2) {
+                        HStack(spacing: 6) {
+                            Text(i.title).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
+                            if let a = DiskScan.advice(DiskScan.rel(i.url, FileManager.default.homeDirectoryForCurrentUser)) { verdictTag(a.verdict) }
+                            Spacer(minLength: 4)
+                            Capsule().fill((theme.rowStyle == .blocks ? Color.white : theme.accent).opacity(0.7))
+                                .frame(width: 50 * max(Double(i.bytes ?? 0) / biggest, 0.04), height: 4)
+                            Text(bytes(Double(i.bytes ?? 0))).font(theme.number(11)).foregroundStyle(theme.onRow()).frame(width: 58, alignment: .trailing)
+                            Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.url]) }.buttonStyle(Pill(color: theme.onRow()))
+                        }
+                        .font(theme.label(11))
+                        // Wat is het, en wat zit er het meest in (vage mappen worden zo duidelijk)
+                        let what = DiskScan.advice(DiskScan.rel(i.url, FileManager.default.homeDirectoryForCurrentUser))?.what
+                            ?? (i.inside.isEmpty ? "Your own folder. Check what's inside before deleting anything" : nil)
+                        if let what { Text(what).font(theme.label(10)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true) }
+                        if !i.inside.isEmpty {
+                            Text("Biggest inside: " + i.inside.map { c in "\(c.name) \(bytes(Double(c.bytes)))" + (DiskScan.advice(c.name).map { " (\(label($0.verdict)))" } ?? "") }.joined(separator: " · "))
+                                .font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(2)
+                        }
                     }
-                    .font(theme.label(11))
+                    .padding(.vertical, 2)
                 }
                 if !r.skipped.isEmpty {
-                    Text("Not checked (macOS protects these): " + r.skipped.map(\.title).joined(separator: ", ") + ". Give Fusebox Full Disk Access to include them.")
+                    Text("Not counted (macOS protects these): " + r.skipped.map(\.title).joined(separator: ", ") + ". Sizes are too small without Full Disk Access.")
                         .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
@@ -366,6 +437,13 @@ struct DiskSection: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: index)
+        .alert("Give Fusebox Full Disk Access?", isPresented: $askFDA) {
+            Button("Open Settings") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_AllFiles")!) }
+            Button("Scan without") { run += 1 }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("Without it, macOS hides your Photos library, Mail, app containers and parts of the caches, so the sizes come out too small. In Privacy & Security › Full Disk Access, turn on Fusebox (or add it with +), then press Find large folders again. Fusebox only measures sizes; it never reads or deletes your files.")
+        }
         .task(id: run) {
             guard run > 0 else { return }
             let home = FileManager.default.homeDirectoryForCurrentUser
@@ -380,7 +458,8 @@ struct DiskSection: View {
                 var i = item
                 let url = i.url, s = skip.subtracting([i.url.path])
                 // Echt van de hoofdthread af: een async-functie zonder eigen actor draait anders op de hoofdthread mee (venster bevroor)
-                i.bytes = await DiskScan.size(url, skip: s, within: 15)
+                let m = await DiskScan.measure(url, skip: s, within: 15)
+                i.bytes = m?.total; i.inside = m?.children ?? []
                 if Task.isCancelled { progress = nil; return }   // pagina verlaten: half resultaat niet tonen
                 if i.bytes == nil { slow.append(i) } else { done.append(i) }
             }
@@ -389,5 +468,18 @@ struct DiskSection: View {
             result = r
             progress = nil
         }
+    }
+}
+
+
+extension DiskSection {
+    /// Klein label: kan weg / voorzichtig / houden.
+    func verdictTag(_ v: DiskScan.Verdict) -> some View {
+        let c: Color = theme.rowStyle == .blocks ? .white : v == .safe ? theme.good : v == .careful ? theme.warn : theme.secondary
+        return Text(label(v)).font(theme.label(9).weight(.semibold)).foregroundStyle(c)
+            .padding(.horizontal, 5).padding(.vertical, 1).overlay(Capsule().stroke(c.opacity(0.6), lineWidth: 1))
+    }
+    func label(_ v: DiskScan.Verdict) -> String {
+        switch v { case .safe: "can go"; case .careful: "check first"; case .keep: "keep"; case .unknown: "?" }
     }
 }
