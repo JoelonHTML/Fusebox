@@ -48,10 +48,26 @@ struct PortsContent: View {
             if loaded && snap.ports.isEmpty {
                 Text("No USB-C or MagSafe ports found on this Mac.").font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
             }
-            DockedList(groups: PortTree.build(sums, internals: internals, displays: displays), empty: showEmpty ? sums.filter { !$0.port.connected } : [], sums: sums,
+            // Mini-jack (3,5 mm): bij elke vernieuwing opnieuw gelezen (CoreAudio, verwaarloosbaar)
+            let jack = AudioJack.read()
+            DockedList(groups: PortTree.build(sums, internals: internals, displays: displays) + (jack.plugged ? [Self.jackNode(jack)] : []),
+                       empty: showEmpty ? sums.filter { !$0.port.connected } : [], emptyExtra: showEmpty && !jack.plugged ? ["Headphone jack"] : [], sums: sums,
                        wireless: wireless.groups, paired: wireless.paired)
             otherDevices
         }
+    }
+
+    /// De koptelefoonaansluiting als eigen "poort", met wat erin zit eronder.
+    static func jackNode(_ j: AudioJack) -> TNode {
+        var dev = TNode(id: "jack:dev", kind: .device, icon: j.mic ? "headset" : "headphones", title: j.mic ? "Headset" : "Headphones or speakers")
+        dev.facts = [j.inUse ? "sound plays here" : "not used for sound"]
+        dev.info = j.inUse ? nil : "Plugged in, but your Mac sends sound elsewhere. Choose it in Control Center › Sound."
+        var port = TNode(id: "jack", kind: .port, icon: "headphones", title: "Headphone jack")
+        port.facts = ["3.5 mm", j.rateKHz.map { "\(trim($0)) kHz" }].compactMap { $0 }
+        port.pairs = [RawLine(key: j.mic ? "Headset with microphone" : "Headphones or speakers", value: "connected"),
+                      RawLine(key: "Sound output", value: j.inUse ? "this jack" : "elsewhere")] + (j.rateKHz.map { [RawLine(key: "Sample rate", value: "\(trim($0)) kHz")] } ?? [])
+        port.children = [dev]
+        return port
     }
 
     @ViewBuilder private var otherDevices: some View {
@@ -352,7 +368,9 @@ private struct NodeDetails: View {
 
 /// Breed: lijst links (niet breder dan nodig), details rechts. Smal: details onder de aangeklikte regel.
 private struct DockedList: View {
-    let groups: [TNode], empty: [PortSum], sums: [PortSum]
+    let groups: [TNode], empty: [PortSum]
+    var emptyExtra: [String] = []   // lege aansluitingen die geen USB-C/MagSafe zijn (koptelefoon)
+    let sums: [PortSum]
     var wireless: [TNode] = [], paired: [TNode] = []
     @State private var sel: String?
     @Environment(\.theme) private var theme
@@ -377,8 +395,8 @@ private struct DockedList: View {
             ForEach(Array(groups.enumerated()), id: \.element.id) { i, g in
                 PortGroupList(root: g, sums: sums, sel: $sel, inline: inline).themedRow(theme, index: i)
             }
-            if !empty.isEmpty {
-                Label(empty.map(\.port.title).joined(separator: " · ") + " · empty", systemImage: "circle.dashed")
+            if !empty.isEmpty || !emptyExtra.isEmpty {
+                Label((empty.map(\.port.title) + emptyExtra).joined(separator: " · ") + " · empty", systemImage: "circle.dashed")
                     .font(theme.label(11)).foregroundStyle(theme.onRow(true).opacity(0.75)).padding(.leading, 4)
             }
             // Draadloos: hotspot/modem en Bluetooth; gekoppelde maar niet verbonden apparaten ingeklapt

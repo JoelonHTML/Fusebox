@@ -2,6 +2,7 @@ import Foundation
 import AppKit
 import Combine
 import IOKit
+import CoreAudio
 
 // MARK: - Poorten: wat zit er in welke USB-C-, Thunderbolt- en MagSafe-poort (alleen lezen, gewone gebruiker)
 //
@@ -573,6 +574,7 @@ enum Ports {
         precondition(rawValue(true as NSNumber) == "Yes" && rawValue(Data([0xAB, 1])) == "<ab01>" && rawValue(["b": 1, "a": "x"] as [String: Any]) == "{a=x, b=1}", "ruw")
         Displays.selfTest()
         Wireless.selfTest()
+        AudioJack.selfTest()
         print("poorten ok")
     }
 }
@@ -921,5 +923,64 @@ final class PortWatcher: ObservableObject {
                 self.loaded = true
             }
         }
+    }
+}
+
+// MARK: - Koptelefoonaansluiting (3,5 mm mini-jack)
+//
+// Op Apple Silicon verschijnt de ingebouwde koptelefoonuitgang als eigen geluidsapparaat (bron 'hdpn', "Externe
+// koptelefoon") zodra er iets in de jack zit; een headset met microfoon geeft daarnaast een ingebouwde invoer met
+// bron 'emic'. CoreAudio, geen toestemming nodig, een paar microseconden: gewoon bij elke vernieuwing van Docked.
+
+struct AudioJack: Hashable {
+    var plugged = false, mic = false, inUse = false
+    var name = "", rateKHz: Double?
+
+    static func read() -> AudioJack {
+        var j = AudioJack()
+        let def = value(AudioObjectID(kAudioObjectSystemObject), kAudioHardwarePropertyDefaultOutputDevice, kAudioObjectPropertyScopeGlobal) ?? 0
+        for id in devices() where value(id, kAudioDevicePropertyTransportType, kAudioObjectPropertyScopeGlobal) == kAudioDeviceTransportTypeBuiltIn {
+            if value(id, kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeOutput) == code("hdpn") {
+                j.plugged = true; j.inUse = id == def; j.name = name(id)
+                var rate = 0.0, size = UInt32(MemoryLayout<Double>.size)
+                var a = AudioObjectPropertyAddress(mSelector: kAudioDevicePropertyNominalSampleRate, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+                if AudioObjectGetPropertyData(id, &a, 0, nil, &size, &rate) == noErr, rate > 0 { j.rateKHz = rate / 1000 }
+            }
+            if value(id, kAudioDevicePropertyDataSource, kAudioDevicePropertyScopeInput) == code("emic") { j.mic = true }
+        }
+        return j
+    }
+
+    /// Wat er op de regel staat: wat er in zit, en of het geluid er nu heen gaat.
+    var facts: [String] {
+        guard plugged else { return [] }
+        return [mic ? "Headset with microphone" : "Headphones or speakers",
+                inUse ? "sound plays here" : "not used for sound",
+                rateKHz.map { "\(trim($0)) kHz" }].compactMap { $0 }
+    }
+
+    private static func code(_ s: String) -> UInt32 { s.utf8.reduce(0) { $0 << 8 | UInt32($1) } }
+    private static func value(_ id: AudioObjectID, _ sel: AudioObjectPropertySelector, _ scope: AudioObjectPropertyScope) -> UInt32? {
+        var a = AudioObjectPropertyAddress(mSelector: sel, mScope: scope, mElement: kAudioObjectPropertyElementMain)
+        var v: UInt32 = 0, size = UInt32(MemoryLayout<UInt32>.size)
+        return AudioObjectGetPropertyData(id, &a, 0, nil, &size, &v) == noErr ? v : nil
+    }
+    private static func devices() -> [AudioObjectID] {
+        var a = AudioObjectPropertyAddress(mSelector: kAudioHardwarePropertyDevices, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var size: UInt32 = 0
+        guard AudioObjectGetPropertyDataSize(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size) == noErr else { return [] }
+        var ids = [AudioObjectID](repeating: 0, count: Int(size) / MemoryLayout<AudioObjectID>.size)
+        return AudioObjectGetPropertyData(AudioObjectID(kAudioObjectSystemObject), &a, 0, nil, &size, &ids) == noErr ? ids : []
+    }
+    private static func name(_ id: AudioObjectID) -> String {
+        var a = AudioObjectPropertyAddress(mSelector: kAudioObjectPropertyName, mScope: kAudioObjectPropertyScopeGlobal, mElement: kAudioObjectPropertyElementMain)
+        var n: Unmanaged<CFString>?, size = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+        return AudioObjectGetPropertyData(id, &a, 0, nil, &size, &n) == noErr ? (n?.takeRetainedValue() as String? ?? "") : ""
+    }
+
+    static func selfTest() {
+        precondition(AudioJack().facts.isEmpty, "jack leeg")
+        precondition(AudioJack(plugged: true, mic: true, inUse: true, rateKHz: 48).facts == ["Headset with microphone", "sound plays here", "48 kHz"], "jack headset")
+        print("mini-jack ok")
     }
 }
