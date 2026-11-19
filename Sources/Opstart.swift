@@ -129,7 +129,7 @@ enum DiskScan {
                             "Library/Mail", "Library/Messages", "Library/Safari", "Library/Calendars", "Library/HomeKit"]
     /// Nooit doorlopen: cloudmappen (File Provider) kunnen bij lezen gaan downloaden.
     static let never = ["Library/CloudStorage"]
-    static let titles = [".Trash": "Trash", "Library/Application Support/MobileSync": "iPhone & iPad backups", "Music/Music": "Music library", "Movies/TV": "TV library", "Pictures/Photos Library.photoslibrary": "Photos library", "Library/Photos": "Photos data"]
+    static let titles = [".Trash": L("Trash"), "Library/Application Support/MobileSync": L("iPhone & iPad backups"), "Music/Music": L("Music library"), "Movies/TV": L("TV library"), "Pictures/Photos Library.photoslibrary": L("Photos library"), "Library/Photos": L("Photos data")]
 
     /// Volledige schijftoegang? Openen van de TCC-database faalt dan stil (geen venster).
     static var fullDiskAccess: Bool {
@@ -202,37 +202,37 @@ enum DiskScan {
     static func advice(_ rel: String) -> (what: String, verdict: Verdict)? {
         let name = (rel as NSString).lastPathComponent
         let table: [String: (String, Verdict)] = [
-            "Library/Developer": ("Xcode: build files, simulators and device support. Clear in Xcode or delete DerivedData; old simulators: Xcode › Settings › Components", .careful),
-            "DerivedData": ("Xcode build files. Safe to delete; Xcode rebuilds them", .safe),
-            "CoreSimulator": ("iPhone/iPad simulators from Xcode. Remove old ones in Xcode › Settings › Components", .careful),
-            "iOS DeviceSupport": ("Debug files for every iPhone you connected to Xcode. Old versions can go", .safe),
-            "Archives": ("Xcode app archives (builds you exported). Keep the ones you still need", .careful),
-            "Library/Caches": ("Caches of your apps. Safe to delete; apps rebuild them (first start is a bit slower)", .safe),
-            "Caches": ("Cache files. Safe to delete; they are rebuilt", .safe),
-            "Library/Logs": ("Log files of apps and macOS. Safe to delete", .safe),
-            "Library/Application Support": ("Data and settings of your apps. Keep it; look inside for an app you no longer use", .keep),
-            "Library/Containers": ("Data of App Store apps. Keep it; delete an app to remove its data", .keep),
-            ".Trash": ("Trash. Empty it to get the space back", .safe),
-            "Downloads": ("Your downloads. Often old installers and zips that can go", .careful),
-            "Movies": ("Your videos. Keep, or move to an external drive", .keep),
-            "Music": ("Your music. Keep, or move to an external drive", .keep),
-            "Pictures": ("Your photos. Keep, or move the Photos library to an external drive", .keep),
-            "Desktop": ("Files on your desktop. Your own files", .keep),
-            "Documents": ("Your documents. Your own files", .keep),
-            "node_modules": ("JavaScript packages. Safe to delete; `npm install` brings them back", .safe),
-            ".npm": ("npm download cache. Safe to delete", .safe),
-            ".gradle": ("Gradle cache (Android/Java builds). Safe to delete; it downloads again", .safe),
-            ".android": ("Android SDK settings and emulators. Delete old emulators in Android Studio", .careful),
-            ".m2": ("Maven cache (Java). Safe to delete; it downloads again", .safe),
-            ".cargo": ("Rust packages and tools. The registry cache can go", .careful),
-            ".cache": ("Cache of command-line tools. Safe to delete", .safe),
-            ".docker": ("Docker settings. The big data is in Docker itself: clean up there", .careful),
-            ".claude": ("Claude Code: your sessions and history. Keep it unless you don't need old conversations", .keep),
-            ".vscode": ("VS Code extensions. Remove unused extensions in VS Code", .careful),
-            "Library/Mobile Documents": ("iCloud Drive files on this Mac. Remove downloads with \"Remove Download\" in Finder", .careful),
-            "Library/Mail": ("Your Mail messages and attachments", .keep),
-            "MobileSync": ("iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups", .careful),
-            "Library/Application Support/MobileSync": ("iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups", .careful),
+            "Library/Developer": (L("Xcode: build files, simulators and device support. Clear in Xcode or delete DerivedData; old simulators: Xcode › Settings › Components"), .careful),
+            "DerivedData": (L("Xcode build files. Safe to delete; Xcode rebuilds them"), .safe),
+            "CoreSimulator": (L("iPhone/iPad simulators from Xcode. Remove old ones in Xcode › Settings › Components"), .careful),
+            "iOS DeviceSupport": (L("Debug files for every iPhone you connected to Xcode. Old versions can go"), .safe),
+            "Archives": (L("Xcode app archives (builds you exported). Keep the ones you still need"), .careful),
+            "Library/Caches": (L("Caches of your apps. Safe to delete; apps rebuild them (first start is a bit slower)"), .safe),
+            "Caches": (L("Cache files. Safe to delete; they are rebuilt"), .safe),
+            "Library/Logs": (L("Log files of apps and macOS. Safe to delete"), .safe),
+            "Library/Application Support": (L("Data and settings of your apps. Keep it; look inside for an app you no longer use"), .keep),
+            "Library/Containers": (L("Data of App Store apps. Keep it; delete an app to remove its data"), .keep),
+            ".Trash": (L("Trash. Empty it to get the space back"), .safe),
+            "Downloads": (L("Your downloads. Often old installers and zips that can go"), .careful),
+            "Movies": (L("Your videos. Keep, or move to an external drive"), .keep),
+            "Music": (L("Your music. Keep, or move to an external drive"), .keep),
+            "Pictures": (L("Your photos. Keep, or move the Photos library to an external drive"), .keep),
+            "Desktop": (L("Files on your desktop. Your own files"), .keep),
+            "Documents": (L("Your documents. Your own files"), .keep),
+            "node_modules": (L("JavaScript packages. Safe to delete; `npm install` brings them back"), .safe),
+            ".npm": (L("npm download cache. Safe to delete"), .safe),
+            ".gradle": (L("Gradle cache (Android/Java builds). Safe to delete; it downloads again"), .safe),
+            ".android": (L("Android SDK settings and emulators. Delete old emulators in Android Studio"), .careful),
+            ".m2": (L("Maven cache (Java). Safe to delete; it downloads again"), .safe),
+            ".cargo": (L("Rust packages and tools. The registry cache can go"), .careful),
+            ".cache": (L("Cache of command-line tools. Safe to delete"), .safe),
+            ".docker": (L("Docker settings. The big data is in Docker itself: clean up there"), .careful),
+            ".claude": (L("Claude Code: your sessions and history. Keep it unless you don't need old conversations"), .keep),
+            ".vscode": (L("VS Code extensions. Remove unused extensions in VS Code"), .careful),
+            "Library/Mobile Documents": (L("iCloud Drive files on this Mac. Remove downloads with \"Remove Download\" in Finder"), .careful),
+            "Library/Mail": (L("Your Mail messages and attachments"), .keep),
+            "MobileSync": (L("iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups"), .careful),
+            "Library/Application Support/MobileSync": (L("iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups"), .careful),
         ]
         if let a = table[rel] ?? table[name] { return (a.0, a.1) }
         return nil
@@ -290,21 +290,21 @@ struct StartupSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                CardTitle(icon: "power", title: "Startup & background items", tone: items?.contains(where: \.orphan) == true ? 1 : 0)
+                CardTitle(icon: "power", title: L("Startup & background items"), tone: items?.contains(where: \.orphan) == true ? 1 : 0)
                 Spacer()
                 Button("Login Items…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!) }
                     .buttonStyle(Pill(color: theme.onRow()))
             }
             if let items {
                 let login = Set(items.filter { $0.atLogin && !$0.orphan }.map(\.name)).count
-                Headline(big: "\(login)", small: login == 1 ? "app starts at login" : "apps start at login")
+                Headline(big: "\(login)", small: login == 1 ? L("app starts at login") : L("apps start at login"))
             }
             Text("Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items.")
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             if let items {
                 orphans(items.filter(\.orphan))
-                group("Apps that start at login", items.filter { $0.atLogin && !$0.orphan })
-                group("Background helpers", items.filter { !$0.atLogin && !$0.orphan })
+                group(L("Apps that start at login"), items.filter { $0.atLogin && !$0.orphan })
+                group(L("Background helpers"), items.filter { !$0.atLogin && !$0.orphan })
             } else {
                 ProgressView().controlSize(.small)
             }
@@ -334,7 +334,7 @@ struct StartupSection: View {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow()))
                 }
                 .font(theme.label(11))
-                .help(i.plist.path + (i.program.map { "\nMissing: " + $0 } ?? ""))
+                .help(i.plist.path + (i.program.map { "\n" + L("Missing: \($0)") } ?? ""))
             }
         }
     }
@@ -392,14 +392,14 @@ struct DiskSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                CardTitle(icon: "internaldrive", title: "What takes my disk space?", tone: low ? 1 : 0)
+                CardTitle(icon: "internaldrive", title: L("What takes my disk space?"), tone: low ? 1 : 0)
                 Spacer()
                 // Zonder Volledige schijftoegang tellen beschermde mappen (Foto's, Mail, Containers, delen van Caches) niet mee:
                 // dan eerst vragen, anders zijn de groottes niet representatief
-                Button(result == nil ? "Find large folders" : "Check again") { if DiskScan.fullDiskAccess { run += 1 } else { askFDA = true } }
+                Button(result == nil ? L("Find large folders") : L("Check again")) { if DiskScan.fullDiskAccess { run += 1 } else { askFDA = true } }
                     .buttonStyle(Pill(color: theme.onRow())).disabled(progress != nil)
             }
-            if let space { Headline(big: "\(Int(space.free)) GB free", small: "of \(Int(space.total)) GB", tone: low ? 1 : 0) }
+            if let space { Headline(big: L("\(Int(space.free)) GB free"), small: L("of \(Int(space.total)) GB"), tone: low ? 1 : 0) }
             if let p = progress {
                 ProgressView(value: Double(p.done), total: Double(max(p.total, 1))).controlSize(.small).tint(theme.rowStyle == .blocks ? .white : theme.accent)
                 Text("Checking \(p.now)…").font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.middle)
@@ -419,17 +419,17 @@ struct DiskSection: View {
                         .font(theme.label(11))
                         // Wat is het, en wat zit er het meest in (vage mappen worden zo duidelijk)
                         let what = DiskScan.advice(DiskScan.rel(i.url, FileManager.default.homeDirectoryForCurrentUser))?.what
-                            ?? (i.inside.isEmpty ? "Your own folder. Check what's inside before deleting anything" : nil)
+                            ?? (i.inside.isEmpty ? L("Your own folder. Check what's inside before deleting anything") : nil)
                         if let what { Text(what).font(theme.label(10)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true) }
                         if !i.inside.isEmpty {
-                            Text("Biggest inside: " + i.inside.map { c in "\(c.name) \(bytes(Double(c.bytes)))" + (DiskScan.advice(c.name).map { " (\(label($0.verdict)))" } ?? "") }.joined(separator: " · "))
+                            Text(L("Biggest inside: ") + i.inside.map { c in "\(c.name) \(bytes(Double(c.bytes)))" + (DiskScan.advice(c.name).map { " (\(label($0.verdict)))" } ?? "") }.joined(separator: " · "))
                                 .font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(2)
                         }
                     }
                     .padding(.vertical, 2)
                 }
                 if !r.skipped.isEmpty {
-                    Text("Not counted (macOS protects these): " + r.skipped.map(\.title).joined(separator: ", ") + ". Sizes are too small without Full Disk Access.")
+                    Text(L("Not counted (macOS protects these): \(r.skipped.map(\.title).joined(separator: ", ")). Sizes are too small without Full Disk Access."))
                         .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
@@ -481,7 +481,7 @@ extension DiskSection {
             .padding(.horizontal, 5).padding(.vertical, 1).overlay(Capsule().stroke(c.opacity(0.6), lineWidth: 1))
     }
     func label(_ v: DiskScan.Verdict) -> String {
-        switch v { case .safe: "can go"; case .careful: "check first"; case .keep: "keep"; case .unknown: "?" }
+        switch v { case .safe: L("can go"); case .careful: L("check first"); case .keep: L("keep"); case .unknown: "?" }
     }
 }
 
@@ -496,7 +496,7 @@ enum SSDHealth {
         var warn: Bool { used >= 80 || critical != 0 || spare < spareMin || mediaErrors > 0 }
         var text: String {
             let tb = writtenTB < 1 ? "\(Int((writtenTB * 1000).rounded())) GB" : writtenTB < 10 ? "\(one(writtenTB)) TB" : "\(Int(writtenTB.rounded())) TB"
-            return "Wear \(used)% · \(tb) written in total"
+            return L("Wear \(used)% · \(tb) written in total")
         }
     }
 
@@ -582,8 +582,8 @@ struct SSDHealthCard: View {
     var body: some View {
         if let info {
             VStack(alignment: .leading, spacing: 4) {
-                CardTitle(icon: "internaldrive", title: "SSD health", tone: info.warn ? 1 : 3)
-                Headline(big: info.warn ? "Check soon" : "OK", small: info.text + " · \(info.hours.formatted(.number.locale(Locale(identifier: "en_US")))) hours on", tone: info.warn ? 1 : 3)
+                CardTitle(icon: "internaldrive", title: L("SSD health"), tone: info.warn ? 1 : 3)
+                Headline(big: info.warn ? L("Check soon") : L("OK"), small: info.text + L(" · \(info.hours.formatted(.number.locale(Locale(identifier: "en_US")))) hours on"), tone: info.warn ? 1 : 3)
                 if info.warn {
                     Text("The SSD is wearing out or reports errors. Keep a recent backup.").font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
                 }

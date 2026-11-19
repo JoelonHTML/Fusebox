@@ -39,31 +39,31 @@ struct Theme: Identifiable, Equatable {
         switch rowStyle { case .lines: 15; case .plain: 10; case .cards, .blocks, .glass: 22 }
     }
 
-    static let instrument = Theme(id: "instrument", name: "Instrument",
+    static let instrument = Theme(id: "instrument", name: L("Instrument"),
         bg: Color(red: 0.122, green: 0.169, blue: 0.239), text: Color(red: 0.95, green: 0.96, blue: 0.97),
         secondary: Color(red: 0.60, green: 0.65, blue: 0.72), accent: Color(red: 0.96, green: 0.72, blue: 0.24),
         warn: Color(red: 1.0, green: 0.60, blue: 0.25), danger: Color(red: 1.0, green: 0.38, blue: 0.35), good: Color(red: 0.35, green: 0.85, blue: 0.6),
         line: Color(red: 0.17, green: 0.23, blue: 0.31), card: Color(red: 0.15, green: 0.20, blue: 0.28),
         rowStyle: .lines, design: .rounded, weight: .semibold, blocks: [], scheme: .dark)
-    static let terminal = Theme(id: "terminal", name: "Terminal",
+    static let terminal = Theme(id: "terminal", name: L("Terminal"),
         bg: Color(red: 0.04, green: 0.06, blue: 0.05), text: Color(red: 0.49, green: 0.99, blue: 0.60),
         secondary: Color(red: 0.25, green: 0.69, blue: 0.37), accent: Color(red: 0.49, green: 0.99, blue: 0.60),
         warn: Color(red: 1.0, green: 0.80, blue: 0.25), danger: Color(red: 1.0, green: 0.35, blue: 0.35), good: Color(red: 0.49, green: 0.99, blue: 0.60),
         line: Color(red: 0.11, green: 0.16, blue: 0.13), card: Color(red: 0.07, green: 0.10, blue: 0.08),
         rowStyle: .plain, design: .monospaced, weight: .regular, blocks: [], scheme: .dark)
-    static let minimal = Theme(id: "minimal", name: "Minimal light",
+    static let minimal = Theme(id: "minimal", name: L("Minimal light"),
         // Contrast op wit én op de kaartkleur minstens 4,5 : 1 (WCAG AA): grijs 6,7, oranje 5,1, rood 5,9, groen 6,0
         // Eén rustige blauwe accentkleur (zwart gaf grijze blokken, en verdween in donker); dunne scheidingslijnen
         bg: .white, text: Color(white: 0.07), secondary: Color(white: 0.36), accent: Color(red: 0.0, green: 0.42, blue: 0.85),
         warn: Color(red: 0.69, green: 0.33, blue: 0.0), danger: Color(red: 0.77, green: 0.12, blue: 0.12), good: Color(red: 0.05, green: 0.45, blue: 0.24),
         line: Color(white: 0.9), card: Color(white: 0.97),
         rowStyle: .lines, design: .default, weight: .regular, blocks: [], scheme: .light)
-    static let glass = Theme(id: "glas", name: "Glass",
+    static let glass = Theme(id: "glas", name: L("Glass"),
         bg: Color(red: 0.36, green: 0.29, blue: 0.84), text: .white, secondary: .white.opacity(0.78), accent: .white,
         warn: Color(red: 1.0, green: 0.85, blue: 0.4), danger: Color(red: 1.0, green: 0.55, blue: 0.55), good: .white,
         line: .white.opacity(0.35), card: .white.opacity(0.16),
         rowStyle: .cards, design: .rounded, weight: .semibold, blocks: [], scheme: .dark)
-    static let blocks = Theme(id: "blokken", name: "Color blocks",
+    static let blocks = Theme(id: "blokken", name: L("Color blocks"),
         bg: Color(red: 0.96, green: 0.95, blue: 0.92), text: Color(white: 0.1), secondary: Color(red: 0.42, green: 0.40, blue: 0.37),
         accent: Color(red: 0.18, green: 0.49, blue: 0.84),
         warn: Color(red: 0.95, green: 0.55, blue: 0.1), danger: Color(red: 0.85, green: 0.2, blue: 0.2), good: Color(red: 0.11, green: 0.62, blue: 0.46),
@@ -97,7 +97,7 @@ enum AppFont: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .style: "Matches style"
+        case .style: L("Matches style")
         case .sfPro: "SF Pro"
         case .rounded: "SF Rounded"
         case .mono: "SF Mono"
@@ -127,9 +127,9 @@ enum AppearanceMode: String, CaseIterable, Identifiable {
     var scheme: ColorScheme? { self == .light ? .light : self == .dark ? .dark : nil }
     var title: String {
         switch self {
-        case .system: "System"
-        case .light: "Light"
-        case .dark: "Dark"
+        case .system: L("System")
+        case .light: L("Light")
+        case .dark: L("Dark")
         }
     }
 }
@@ -356,9 +356,9 @@ enum Notify {
                 case .denied:
                     NSApp.activate()
                     let a = NSAlert()
-                    a.messageText = "Allow notifications from Fusebox?"
-                    a.informativeText = "Fusebox tells you when an update is ready and when an app keeps your Mac busy. Notifications for Fusebox are off in System Settings."
-                    a.addButton(withTitle: "Open Settings"); a.addButton(withTitle: "Not now")
+                    a.messageText = L("Allow notifications from Fusebox?")
+                    a.informativeText = L("Fusebox tells you when an update is ready and when an app keeps your Mac busy. Notifications for Fusebox are off in System Settings.")
+                    a.addButton(withTitle: L("Open Settings")); a.addButton(withTitle: L("Not now"))
                     if a.runModal() == .alertFirstButtonReturn {
                         d.set(true, forKey: "notify")
                         NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.Notifications-Settings.extension?id=\(Bundle.main.bundleIdentifier ?? "")")!)
@@ -370,7 +370,7 @@ enum Notify {
     }
     static let whatsNew = "whatsnew"   // categorie met knop "What's new" → changelog in Settings › About
     static func registerCategories() {
-        let open = UNNotificationAction(identifier: "open", title: "What's new", options: [.foreground])
+        let open = UNNotificationAction(identifier: "open", title: L("What's new"), options: [.foreground])
         UNUserNotificationCenter.current().setNotificationCategories(Set([UNNotificationCategory(identifier: whatsNew, actions: [open], intentIdentifiers: [])] + PeakAlert.registerCategories()))
     }
     static func send(title: String, body: String, category: String? = nil, userInfo: [AnyHashable: Any] = [:]) {

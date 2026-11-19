@@ -50,7 +50,7 @@ struct WifiDetail {
     let rssi: Int, noise: Int, rate: Double
     let channel: Int?, band: String?, width: String?, phy: String?
     var snr: Int? { rssi < 0 && noise < 0 ? rssi - noise : nil }
-    var word: String { rssi >= -60 ? "good" : rssi >= -70 ? "fair" : "weak" }
+    var word: String { rssi >= -60 ? L("good") : rssi >= -70 ? L("fair") : L("weak") }
 
     static func current(_ iface: String) -> WifiDetail? {
         guard let w = CWWiFiClient.shared().interface(withName: iface), w.rssiValue() != 0 else { return nil }
@@ -73,7 +73,7 @@ enum SpeedKind: String, Codable {
     var secs: Double { self == .quick ? 5 : 15 }               // per richting
     var skip: Int { self == .quick ? 2 : 3 }                     // aanloop (s) die niet meetelt
     var cap: Int64 { self == .quick ? 600_000_000 : 2_000_000_000 }   // max bytes per richting
-    var title: String { self == .quick ? "Quick" : "Full" }
+    var title: String { self == .quick ? L("Quick") : L("Full") }
 }
 
 struct SpeedResult: Codable, Equatable {
@@ -106,15 +106,15 @@ enum SpeedMath {
 
     static func stabilityText(_ cv: Double) -> String {
         let pct = "±\(Int((cv * 100).rounded()))%"
-        return cv < 0.1 ? "steady (\(pct))" : cv < 0.25 ? "varies a little (\(pct))" : "unsteady (\(pct))"
+        return cv < 0.1 ? L("steady (\(pct))") : cv < 0.25 ? L("varies a little (\(pct))") : L("unsteady (\(pct))")
     }
 
     /// Vertraging onder belasting ("bufferbloat") in gewone woorden. ok: true goed, false probleem, nil let op.
     static func loadVerdict(idle: Double, loaded: Double) -> (text: String, ok: Bool?) {
         let extra = max(0, loaded - idle), ms = "+\(Int(extra.rounded())) ms"
-        if extra < 30 { return ("Delay barely rises while the line is busy (\(ms)) → fine for calls and games", true) }
-        if extra < 100 { return ("Delay rises while the line is busy (\(ms)) → calls may stutter during big downloads", nil) }
-        return ("Delay rises a lot while the line is busy (\(ms), \"bufferbloat\") → calls and games suffer during downloads; a router with smart queueing (SQM) helps", false)
+        if extra < 30 { return (L("Delay barely rises while the line is busy (\(ms)) → fine for calls and games"), true) }
+        if extra < 100 { return (L("Delay rises while the line is busy (\(ms)) → calls may stutter during big downloads"), nil) }
+        return (L("Delay rises a lot while the line is busy (\(ms), \"bufferbloat\") → calls and games suffer during downloads; a router with smart queueing (SQM) helps"), false)
     }
 
     /// Geschat dataverbruik in bytes op basis van de vorige uitslag; nil = onbekend (dan geldt het plafond).
@@ -310,7 +310,7 @@ final class InternetStats: ObservableObject {
     func runSpeedTest(_ kind: SpeedKind) {
         guard speedTask == nil else { return }
         speedConfirm = nil; speedError = nil; speedLive = nil; speedProgress = 0
-        speedPhase = "Measuring delay…"
+        speedPhase = L("Measuring delay…")
         speedTask = Task { [weak self] in
             let probe = Self.speedSession(timeout: 5)
             defer { probe.invalidateAndCancel() }
@@ -332,7 +332,7 @@ final class InternetStats: ObservableObject {
                 self.history = Array(([r] + self.history).prefix(10))
                 if let data = try? JSONEncoder().encode(self.history) { UserDefaults.standard.set(data, forKey: "speedHistory") }
             } catch {
-                if !Task.isCancelled { self?.speedError = "Speed test failed: \(error.localizedDescription)" }
+                if !Task.isCancelled { self?.speedError = L("Speed test failed: \(error.localizedDescription)") }
             }
             if !Task.isCancelled { self?.speedPhase = nil; self?.speedLive = nil; self?.speedTask = nil }   // bij annuleren al opgeruimd
         }
@@ -354,7 +354,7 @@ final class InternetStats: ObservableObject {
         } : nil
         defer { pinger?.cancel(); meter.shutdown(sessions) }
         sessions.forEach(meter.start)
-        let start = Date(), name = upload ? "Upload" : "Download"
+        let start = Date(), name = upload ? L("Upload") : L("Download")
         var samples: [Double] = [], lastBytes: Int64 = 0, lastT = start
         while true {
             try await Task.sleep(for: .milliseconds(250))   // vaak kijken (plafond, einde), per seconde meten
@@ -367,7 +367,7 @@ final class InternetStats: ObservableObject {
                 speedLive = samples.last
             }
             speedProgress = (upload ? 0.5 : 0) + 0.5 * min(1, now.timeIntervalSince(start) / kind.secs)
-            speedPhase = "\(kind.title) · \(name) · \(kind.streams) connections · \(max(0, Int(meter.deadline.timeIntervalSince(now).rounded(.up)))) s left"
+            speedPhase = L("\(kind.title) · \(name) · \(kind.streams) connections · \(max(0, Int(meter.deadline.timeIntervalSince(now).rounded(.up)))) s left")
             if done { break }
         }
         meter.shutdown(sessions)
@@ -423,7 +423,7 @@ final class InternetStats: ObservableObject {
 
     func loadPublicIP() {
         guard ipTask == nil else { return }
-        publicIPState = "Asking Cloudflare…"
+        publicIPState = L("Asking Cloudflare…")
         ipTask = Task { [weak self] in
             let cfg = URLSessionConfiguration.ephemeral
             cfg.timeoutIntervalForRequest = 8
@@ -433,7 +433,7 @@ final class InternetStats: ObservableObject {
             guard let self, !Task.isCancelled else { return }
             self.ipTask = nil
             guard let data = result?.0, data.count < 100_000, let ip = Self.parseMeta(data) else {
-                self.publicIPState = "Couldn't reach Cloudflare"; return
+                self.publicIPState = L("Couldn't reach Cloudflare"); return
             }
             self.publicIP = ip
             self.publicIPState = nil
@@ -457,8 +457,8 @@ final class InternetStats: ObservableObject {
         let weak = !wired && ((rssi.map { $0 < -70 } ?? false) || (snr.map { $0 < 20 } ?? false))
         let rDead = router.map { $0.got == 0 } ?? false
         let iDead = internetCheck && (internet.map { $0.got == 0 } ?? false)
-        if rDead && iDead { return ("No answer from the router or the internet → check the connection", false) }
-        if iDead { return ("The router answers but the internet doesn't → problem at your provider or modem", false) }
+        if rDead && iDead { return (L("No answer from the router or the internet → check the connection"), false) }
+        if iDead { return (L("The router answers but the internet doesn't → problem at your provider or modem"), false) }
         let r = rDead ? nil : router, i = internetCheck ? internet : nil
         // Wi-Fi schommelt van zichzelf (stroombesparing van de chip): pas boven 40 ms schommeling iets zeggen, op een kabel boven 20
         let rJitter = wired ? 20.0 : 40.0
@@ -466,22 +466,23 @@ final class InternetStats: ObservableObject {
         let iBad = i.map { $0.loss >= 0.02 || ($0.avg ?? 0) > 100 || ($0.jitter ?? 0) > 30 } ?? false
         var parts: [String] = []
         if let r, rBad {
-            let what = r.loss >= 0.02 ? "\(pct(r.loss)) packet loss to the router"
-                : (r.avg ?? 0) > 30 ? "slow replies from the router (\(ms(r.avg)))" : "unsteady replies from the router (jitter \(ms(r.jitter)))"
-            parts.append(weak ? "Wi-Fi signal weak and \(what) → move closer to the router or use a cable"
-                         : wired ? "\(what.prefix(1).uppercased() + what.dropFirst()) on a cable → check the cable or restart the router"
-                         : "\(what.prefix(1).uppercased() + what.dropFirst()) → Wi-Fi interference or a busy router; restart it or use a cable")
+            let what = r.loss >= 0.02 ? L("\(pct(r.loss)) packet loss to the router")
+                : (r.avg ?? 0) > 30 ? L("slow replies from the router (\(ms(r.avg)))") : L("unsteady replies from the router (jitter \(ms(r.jitter)))")
+            let What = what.prefix(1).uppercased() + what.dropFirst()
+            parts.append(weak ? L("Wi-Fi signal weak and \(what) → move closer to the router or use a cable")
+                         : wired ? L("\(What) on a cable → check the cable or restart the router")
+                         : L("\(What) → Wi-Fi interference or a busy router; restart it or use a cable"))
         } else if let i, iBad {
-            let what = i.loss >= 0.02 ? "\(pct(i.loss)) packet loss" : (i.jitter ?? 0) > 30 ? "unsteady replies (jitter \(ms(i.jitter)))" : "slow replies (\(ms(i.avg)))"
-            parts.append("Your own network is fine, but the internet has \(what) → most likely your provider")
+            let what = i.loss >= 0.02 ? L("\(pct(i.loss)) packet loss") : (i.jitter ?? 0) > 30 ? L("unsteady replies (jitter \(ms(i.jitter)))") : L("slow replies (\(ms(i.avg)))")
+            parts.append(L("Your own network is fine, but the internet has \(what) → most likely your provider"))
         } else if weak {
-            parts.append("Wi-Fi signal is weak (\(rssi.map { "\($0) dBm" } ?? "low")) but the connection works for now; moving closer helps")
+            parts.append(L("Wi-Fi signal is weak (\(rssi.map { "\($0) dBm" } ?? L("low"))) but the connection works for now; moving closer helps"))
         }
-        if internetCheck, let dnsMs, dnsMs > 150 { parts.append("Name lookups are slow (\(ms(dnsMs))) → try another DNS server") }
+        if internetCheck, let dnsMs, dnsMs > 150 { parts.append(L("Name lookups are slow (\(ms(dnsMs))) → try another DNS server")) }
         if parts.isEmpty {
-            var good = "All good: " + (r.map { "router \(ms($0.avg))" } ?? "router doesn't answer pings")
-            if let i { good += ", internet \(ms(i.avg))" } else if !internetCheck { good += " (internet check is off in Settings)" }
-            return (good + ", no packet loss", true)
+            var good = L("All good: ") + (r.map { L("router \(ms($0.avg))") } ?? L("router doesn't answer pings"))
+            if let i { good += L(", internet \(ms(i.avg))") } else if !internetCheck { good += L(" (internet check is off in Settings)") }
+            return (good + L(", no packet loss"), true)
         }
         return (parts.joined(separator: ". "), rBad || iBad ? false : nil)
     }
@@ -498,7 +499,7 @@ final class InternetStats: ObservableObject {
         guard findTask == nil else { return }
         finding = nil
         guard let c = NetConnection.current() else {
-            finding = Finding(text: "Not connected to a network: turn on Wi-Fi or plug in a cable", ok: false, numbers: ""); return
+            finding = Finding(text: L("Not connected to a network: turn on Wi-Fi or plug in a cable"), ok: false, numbers: ""); return
         }
         findBusy = true
         findTask = Task { [weak self] in
@@ -549,36 +550,36 @@ final class InternetStats: ObservableObject {
     /// Eén oordeel in gewone woorden, met de getallen eronder. router nil = geen router bekend; got 0 = geen antwoord.
     nonisolated static func find(wired: Bool, rssi: Int?, snr: Int?, band: String?, channel: Int?,
                                  router: PingStats?, internet: PingStats, dnsMs: Double?) -> Finding {
-        func ms(_ v: Double?) -> String { v.map { $0 < 1 ? "<1 ms" : "\(Int($0.rounded())) ms" } ?? "no reply" }
-        func lost(_ s: PingStats) -> String { s.got > 0 && s.loss > 0 ? " (\(Int((s.loss * 100).rounded()))% lost)" : "" }
-        var nums = ["router " + (router.map { ms($0.avg) + lost($0) } ?? "unknown"), "internet " + ms(internet.avg) + lost(internet), "DNS " + ms(dnsMs)]
+        func ms(_ v: Double?) -> String { v.map { $0 < 1 ? "<1 ms" : "\(Int($0.rounded())) ms" } ?? L("no reply") }
+        func lost(_ s: PingStats) -> String { s.got > 0 && s.loss > 0 ? L(" (\(Int((s.loss * 100).rounded()))% lost)") : "" }
+        var nums = [L("router \(router.map { ms($0.avg) + lost($0) } ?? L("unknown"))"), L("internet \(ms(internet.avg) + lost(internet))"), "DNS " + ms(dnsMs)]
         if let rssi { nums.append("Wi-Fi \(rssi) dBm" + (snr.map { " · SNR \($0) dB" } ?? "") + (channel.map { " · ch \($0)" } ?? "") + (band.map { " (\($0))" } ?? "")) }
         func say(_ text: String, _ ok: Bool?) -> Finding { Finding(text: text, ok: ok, numbers: nums.joined(separator: ", ")) }
 
-        let local = wired ? "network" : "Wi-Fi"
+        let local = wired ? L("network") : "Wi-Fi"
         let weak = !wired && ((rssi.map { $0 < -72 } ?? false) || (snr.map { $0 < 20 } ?? false))
-        let weakText = "Weak Wi-Fi signal\(rssi.map { " (\($0) dBm)" } ?? ""): move closer to the router or use a cable"
+        let weakText = L("Weak Wi-Fi signal\(rssi.map { " (\($0) dBm)" } ?? ""): move closer to the router or use a cable")
         let rDead = router?.got == 0, iDead = internet.got == 0
-        if router == nil && iDead { return say("No router found: reconnect to your network", false) }
+        if router == nil && iDead { return say(L("No router found: reconnect to your network"), false) }
         if rDead && iDead {
-            return say(weak ? weakText : wired ? "Router not responding: check the cable, then restart the router" : "Router not responding: restart the router", false)
+            return say(weak ? weakText : wired ? L("Router not responding: check the cable, then restart the router") : L("Router not responding: restart the router"), false)
         }
         // Router negeert pings maar internet werkt: dan zegt de router-meting niets
         if let r = router, r.got > 0, r.loss >= 0.1 || (r.avg ?? 0) > 50 || (r.jitter ?? 0) > 30 {
             if weak { return say(weakText, false) }
-            if wired { return say("The cable link to your router is unstable: check the cable, then restart the router", false) }
-            return say("Your Wi-Fi is unstable despite a good signal: interference or a busy router; restart the router"
-                       + (band == "2.4 GHz" ? " or switch to 5 GHz" : ""), false)
+            if wired { return say(L("The cable link to your router is unstable: check the cable, then restart the router"), false) }
+            return say(L("Your Wi-Fi is unstable despite a good signal: interference or a busy router; restart the router")
+                       + (band == "2.4 GHz" ? L(" or switch to 5 GHz") : ""), false)
         }
-        if iDead { return say("Your \(local) is fine, but the internet doesn't answer: restart the modem, or your provider has an outage", false) }
+        if iDead { return say(L("Your \(local) is fine, but the internet doesn't answer: restart the modem, or your provider has an outage"), false) }
         if internet.loss >= 0.05 || (internet.avg ?? 0) > 100 || (internet.jitter ?? 0) > 30 {
-            let what = internet.loss >= 0.05 ? "loses data" : (internet.avg ?? 0) > 100 ? "is slow" : "is unsteady"
-            return say("Your \(local) is fine; your internet provider \(what) (router \(ms(router?.avg)), internet \(ms(internet.avg)))", false)
+            let what = internet.loss >= 0.05 ? L("loses data") : (internet.avg ?? 0) > 100 ? L("is slow") : L("is unsteady")
+            return say(L("Your \(local) is fine; your internet provider \(what) (router \(ms(router?.avg)), internet \(ms(internet.avg)))"), false)
         }
-        guard let dnsMs else { return say("Name lookups (DNS) fail: try 1.1.1.1 as DNS server in Network settings", false) }
-        if dnsMs > 300 { return say("DNS is slow (\(ms(dnsMs))): try 1.1.1.1 as DNS server in Network settings", false) }
-        if weak { return say("Everything works, but the Wi-Fi signal is weak\(rssi.map { " (\($0) dBm)" } ?? ""): moving closer to the router helps", nil) }
-        return say("No problem found: \(local), router, DNS and internet are all fine", true)
+        guard let dnsMs else { return say(L("Name lookups (DNS) fail: try 1.1.1.1 as DNS server in Network settings"), false) }
+        if dnsMs > 300 { return say(L("DNS is slow (\(ms(dnsMs))): try 1.1.1.1 as DNS server in Network settings"), false) }
+        if weak { return say(L("Everything works, but the Wi-Fi signal is weak\(rssi.map { " (\($0) dBm)" } ?? ""): moving closer to the router helps"), nil) }
+        return say(L("No problem found: \(local), router, DNS and internet are all fine"), true)
     }
 
     static func findSelfTest() {
@@ -624,16 +625,16 @@ struct InternetPanel: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
                     if let c = stats.conn {
-                        line(c.kind == "Wi-Fi" ? "wifi" : "cable.connector", "This Mac \(c.ipv4 ?? "–") on \(c.kind)"
-                             + (stats.wifi.map { " · signal \($0.word) (\($0.rssi) dBm)" } ?? ""))
+                        line(c.kind == "Wi-Fi" ? "wifi" : "cable.connector", L("This Mac \(c.ipv4 ?? "–") on \(c.kind)")
+                             + (stats.wifi.map { L(" · signal \($0.word) (\($0.rssi) dBm)") } ?? ""))
                         HStack(spacing: 16) {
-                            stat("Router", stats.router)
+                            stat(L("Router"), stats.router)
                             if !pingHost.isEmpty { stat("Internet", stats.internet) }
                         }
                         verdictLine
                         findLine
                     } else {
-                        line("wifi.slash", "Not connected to a network")
+                        line("wifi.slash", L("Not connected to a network"))
                     }
                 }
                 Spacer(minLength: 0)
@@ -660,7 +661,7 @@ struct InternetPanel: View {
     private var verdictLine: some View {
         Group {
             if stats.testing {
-                line("hourglass", "Testing the connection…")
+                line("hourglass", L("Testing the connection…"))
             } else if stats.finding != nil || stats.findBusy {
                 EmptyView()   // de grondige controle (hieronder) vervangt het snelle oordeel: geen twee tegenstrijdige regels
             } else if stats.router != nil || stats.internet != nil {
@@ -682,7 +683,7 @@ struct InternetPanel: View {
                     .foregroundStyle(theme.rowStyle == .blocks ? .white : f.ok == false ? theme.warn : f.ok == true ? theme.good : theme.onRow(true))
                 if !f.numbers.isEmpty { Text(f.numbers).font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.leading, 22).fixedSize(horizontal: false, vertical: true) }
             }
-            Button { stats.findProblem() } label: { NetPill(title: stats.finding == nil ? "Find the problem" : "Check again", icon: "stethoscope") }
+            Button { stats.findProblem() } label: { NetPill(title: stats.finding == nil ? L("Find the problem") : L("Check again"), icon: "stethoscope") }
                 .buttonStyle(.plain).help("Is it your Wi-Fi or the internet? About 6 s: pings your router and 1.1.1.1, times fresh DNS lookups and reads the Wi-Fi signal")
         }
     }
@@ -714,36 +715,36 @@ struct InternetPanel: View {
     private var details: some View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16, alignment: .top)], alignment: .leading, spacing: 12) {
             if let c = stats.conn {
-                section("Connection") {
-                    kv("Type", "\(c.kind) (\(c.iface))")
+                section(L("Connection")) {
+                    kv(L("Type"), "\(c.kind) (\(c.iface))")
                     kv("IPv4", c.ipv4 ?? "–")
-                    kv("IPv6", c.ipv6.first.map { $0 + (c.ipv6.count > 1 ? " (+\(c.ipv6.count - 1))" : "") } ?? "none")
-                    kv("Router", c.router.map(ipString) ?? "unknown")
-                    kv("DNS", c.dns.isEmpty ? "unknown" : c.dns.prefix(3).joined(separator: ", "))
-                    kv("IPv6 internet", c.ipv6Internet ? "Yes" : "No")
+                    kv("IPv6", c.ipv6.first.map { $0 + (c.ipv6.count > 1 ? " (+\(c.ipv6.count - 1))" : "") } ?? L("none"))
+                    kv(L("Router"), c.router.map(ipString) ?? L("unknown"))
+                    kv("DNS", c.dns.isEmpty ? L("unknown") : c.dns.prefix(3).joined(separator: ", "))
+                    kv(L("IPv6 internet"), c.ipv6Internet ? L("Yes") : L("No"))
                 }
             }
             if let w = stats.wifi {
                 section("Wi-Fi") {
-                    kv("Signal", "\(w.rssi) dBm (\(w.word))")
-                    if let snr = w.snr { kv("Noise", "\(w.noise) dBm · SNR \(snr) dB") }
-                    if w.rate > 0 { kv("Link speed", "\(Int(w.rate)) Mbit/s") }
-                    if let ch = w.channel { kv("Channel", ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · ")) }
-                    if let phy = w.phy { kv("Standard", phy) }
+                    kv(L("Signal"), "\(w.rssi) dBm (\(w.word))")
+                    if let snr = w.snr { kv(L("Noise"), "\(w.noise) dBm · SNR \(snr) dB") }
+                    if w.rate > 0 { kv(L("Link speed"), "\(Int(w.rate)) Mbit/s") }
+                    if let ch = w.channel { kv(L("Channel"), ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · ")) }
+                    if let phy = w.phy { kv(L("Standard"), phy) }
                 }
             }
-            section("Quality (10 pings)") {
-                kv("Router", statsText(stats.router))
+            section(L("Quality (10 pings)")) {
+                kv(L("Router"), statsText(stats.router))
                 if !pingHost.isEmpty {
                     kv("Internet", statsText(stats.internet) + (stats.internetViaTCP ? " (TCP)" : ""))
-                    kv("DNS lookup", stats.dnsMs.map { "\(msText($0)) ms" } ?? "–")
+                    kv(L("DNS lookup"), stats.dnsMs.map { "\(msText($0)) ms" } ?? "–")
                 } else {
-                    kv("Internet", "off (Settings)")
+                    kv("Internet", L("off (Settings)"))
                 }
-                Button { stats.start() } label: { NetPill(title: stats.testing ? "Testing…" : "Test again", icon: "arrow.clockwise") }
+                Button { stats.start() } label: { NetPill(title: stats.testing ? L("Testing…") : L("Test again"), icon: "arrow.clockwise") }
                     .buttonStyle(.plain).disabled(stats.testing).padding(.top, 2)
             }
-            section("Speed test") { speedTest }
+            section(L("Speed test")) { speedTest }
         }
         .padding(.top, 2)
     }
@@ -754,33 +755,33 @@ struct InternetPanel: View {
             HStack(spacing: 6) {
                 ProgressView().controlSize(.small)
                 Text(phase).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
-                Button { stats.cancelSpeedTest() } label: { NetPill(title: "Cancel", icon: "xmark") }.buttonStyle(.plain)
+                Button { stats.cancelSpeedTest() } label: { NetPill(title: L("Cancel"), icon: "xmark") }.buttonStyle(.plain)
             }
             ProgressView(value: stats.speedProgress).controlSize(.small)
-            if let live = stats.speedLive { kv("Now", mbitText(live)) }
+            if let live = stats.speedLive { kv(L("Now"), mbitText(live)) }
         } else if let kind = stats.speedConfirm {
             Text("This connection is metered (mobile data, iPhone hotspot or Low Data Mode). The \(kind.title.lowercased()) test uses \(usage(kind)) of data.")
                 .foregroundStyle(warn).fixedSize(horizontal: false, vertical: true)
             HStack(spacing: 6) {
-                Button { stats.runSpeedTest(kind) } label: { NetPill(title: "Run anyway", icon: "speedometer") }.buttonStyle(.plain)
-                Button { stats.dismissSpeedConfirm() } label: { NetPill(title: "Not now", icon: "xmark") }.buttonStyle(.plain)
+                Button { stats.runSpeedTest(kind) } label: { NetPill(title: L("Run anyway"), icon: "speedometer") }.buttonStyle(.plain)
+                Button { stats.dismissSpeedConfirm() } label: { NetPill(title: L("Not now"), icon: "xmark") }.buttonStyle(.plain)
             }
         } else {
             HStack(spacing: 6) {
-                Button { stats.requestSpeedTest(.quick) } label: { NetPill(title: "Quick", icon: "hare") }
+                Button { stats.requestSpeedTest(.quick) } label: { NetPill(title: L("Quick"), icon: "hare") }
                     .buttonStyle(.plain).help("About 10 s, 4 connections at once. The first 2 s, while the line speeds up, don't count.")
-                Button { stats.requestSpeedTest(.full) } label: { NetPill(title: "Full", icon: "gauge.with.dots.needle.67percent") }
+                Button { stats.requestSpeedTest(.full) } label: { NetPill(title: L("Full"), icon: "gauge.with.dots.needle.67percent") }
                     .buttonStyle(.plain).help("About 30 s, 6 connections: typical and top speed, delay while the line is busy (bufferbloat) and how steady it is.")
             }
             Text("Quick uses \(usage(.quick)), Full \(usage(.full)) (via Cloudflare)").font(theme.label(10)).fixedSize(horizontal: false, vertical: true)
         }
         if let e = stats.speedError { Text(e).foregroundStyle(warn).fixedSize(horizontal: false, vertical: true) }
         if let last = stats.history.first {
-            kv("Download", mbitText(last.down) + (last.downPeak.map { " · top \(mbitText($0))" } ?? ""))
-            kv("Upload", mbitText(last.up) + (last.upPeak.map { " · top \(mbitText($0))" } ?? ""))
-            kv("Delay", last.ping.map { "\(msText($0)) ms" + (last.loadedPing.map { " · busy \(msText($0)) ms" } ?? "") } ?? "–")
-            if let v = last.variation { kv("Stability", SpeedMath.stabilityText(v)) }
-            kv("Tested", last.date.formatted(date: .abbreviated, time: .shortened) + " · " + kindName(last.kind))
+            kv(L("Download"), mbitText(last.down) + (last.downPeak.map { L(" · top \(mbitText($0))") } ?? ""))
+            kv(L("Upload"), mbitText(last.up) + (last.upPeak.map { L(" · top \(mbitText($0))") } ?? ""))
+            kv(L("Delay"), last.ping.map { "\(msText($0)) ms" + (last.loadedPing.map { L(" · busy \(msText($0)) ms") } ?? "") } ?? "–")
+            if let v = last.variation { kv(L("Stability"), SpeedMath.stabilityText(v)) }
+            kv(L("Tested"), last.date.formatted(date: .abbreviated, time: .shortened) + " · " + kindName(last.kind))
             if let idle = last.ping, let busy = last.loadedPing {
                 let v = SpeedMath.loadVerdict(idle: idle, loaded: busy)
                 line(v.ok == false ? "exclamationmark.triangle" : v.ok == true ? "checkmark.circle" : "info.circle", v.text)
@@ -790,21 +791,21 @@ struct InternetPanel: View {
         }
         Divider().opacity(0.4).padding(.vertical, 2)
         if let ip = stats.publicIP {
-            kv("Public IP", ip.ip)
-            if let isp = ip.isp { kv("Provider", isp) }
-            if let place = ip.place { kv("Location", place) }
+            kv(L("Public IP"), ip.ip)
+            if let isp = ip.isp { kv(L("Provider"), isp) }
+            if let place = ip.place { kv(L("Location"), place) }
         } else {
-            Button { stats.loadPublicIP() } label: { NetPill(title: stats.publicIPState ?? "Show public IP", icon: "globe") }
+            Button { stats.loadPublicIP() } label: { NetPill(title: stats.publicIPState ?? L("Show public IP"), icon: "globe") }
                 .buttonStyle(.plain).help("Asks speed.cloudflare.com which address and provider you appear as")
         }
     }
 
     /// Geschat verbruik: op basis van de vorige uitslag, anders het plafond (beide richtingen).
     private func usage(_ kind: SpeedKind) -> String {
-        SpeedMath.estimate(kind, last: stats.history.first).map { "about \(bytes(Double($0)))" } ?? "at most \(bytes(Double(kind.cap * 2)))"
+        SpeedMath.estimate(kind, last: stats.history.first).map { L("about \(bytes(Double($0)))") } ?? L("at most \(bytes(Double(kind.cap * 2)))")
     }
 
-    private func kindName(_ k: SpeedKind?) -> String { k.map { "\($0.title) test" } ?? "single connection" }
+    private func kindName(_ k: SpeedKind?) -> String { k.map { L("\($0.title) test") } ?? L("single connection") }
 
     /// Laatste 10 metingen als staafjes (download), oudste links. Volledig = brede staaf.
     private var historyBars: some View {
@@ -823,11 +824,11 @@ struct InternetPanel: View {
 
     private func statsText(_ s: PingStats?) -> String {
         guard let s else { return stats.testing ? "…" : "–" }
-        guard s.got > 0, let avg = s.avg else { return "no answer" }
+        guard s.got > 0, let avg = s.avg else { return L("no answer") }
         var t = "\(msText(avg)) ms"
         if let lo = s.min, let hi = s.max { t += " (\(msText(lo))–\(msText(hi)))" }
-        if let j = s.jitter { t += " · jitter \(msText(j))" }
-        return t + " · \(Int((s.loss * 100).rounded()))% lost"
+        if let j = s.jitter { t += L(" · jitter \(msText(j))") }
+        return t + L(" · \(Int((s.loss * 100).rounded()))% lost")
     }
 
     private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {

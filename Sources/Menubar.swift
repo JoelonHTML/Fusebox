@@ -7,12 +7,12 @@ enum MenubarStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .text: "Text (CPU 23%)"
-        case .compact: "Compact (small symbols)"
-        case .bars: "Bars"
-        case .graph: "Graphs"
-        case .icon: "Just an icon"
-        case .off: "Don't show"
+        case .text: L("Text (CPU 23%)")
+        case .compact: L("Compact (small symbols)")
+        case .bars: L("Bars")
+        case .graph: L("Graphs")
+        case .icon: L("Just an icon")
+        case .off: L("Don't show")
         }
     }
 }
@@ -20,7 +20,7 @@ enum MenubarStyle: String, CaseIterable, Identifiable {
 enum MenuStyle: String, CaseIterable, Identifiable {
     case menu, panel
     var id: String { rawValue }
-    var title: String { self == .menu ? "Regular menu" : "Panel with live values" }
+    var title: String { self == .menu ? L("Regular menu") : L("Panel with live values") }
 }
 
 enum MenuPart: String, CaseIterable, Identifiable {
@@ -28,10 +28,10 @@ enum MenuPart: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .status: "How it's doing (one sentence)"
-        case .values: "All values"
-        case .top: "3 heaviest apps"
-        case .links: "Shortcuts"
+        case .status: L("How it's doing (one sentence)")
+        case .values: L("All values")
+        case .top: L("3 heaviest apps")
+        case .links: L("Shortcuts")
         }
     }
 }
@@ -56,7 +56,7 @@ extension Metric {
         case .io: short(s.diskRead + s.diskWrite, bits: bits)
         default:
             // Echte waarden krijgen hun eenheid erbij ("RAM 12.0 GB"), anders is het getal onduidelijk
-            row(s, [], abs: prefersAbsolute).value + (!prefersAbsolute ? "" : self == .cpu ? " cores" : self == .ram || self == .ssd ? " GB" : "")
+            row(s, [], abs: prefersAbsolute).value + (!prefersAbsolute ? "" : self == .cpu ? L(" cores") : self == .ram || self == .ssd ? " GB" : "")
         }
     }
     /// 0…1 voor staafjes en grafiekjes (internet/SSD-activiteit: 100 MB/s = vol).

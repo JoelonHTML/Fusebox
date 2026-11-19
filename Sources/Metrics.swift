@@ -13,14 +13,14 @@ enum Metric: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .cpu: "Processor (CPU)"
-        case .gpu: "Graphics chip (GPU)"
-        case .ram: "Memory (RAM)"
-        case .net: "Internet (NET)"
-        case .ssd: "Free storage (SSD)"
-        case .io: "Storage activity (read/write)"
-        case .battery: "Battery"
-        case .fan: "Fans (FAN)"
+        case .cpu: L("Processor (CPU)")
+        case .gpu: L("Graphics chip (GPU)")
+        case .ram: L("Memory (RAM)")
+        case .net: L("Internet (NET)")
+        case .ssd: L("Free storage (SSD)")
+        case .io: L("Storage activity (read/write)")
+        case .battery: L("Battery")
+        case .fan: L("Fans (FAN)")
         }
     }
     /// Korte naam (rij-label, menubalk).
@@ -52,9 +52,9 @@ enum GraphMode: String, CaseIterable, Identifiable {
     /// Tekst voor de gebruiker; rawValue is een vaste korte id (veilig om op te slaan en te delen).
     var title: String {
         switch self {
-        case .auto: "Automatic (when the window is larger)"
-        case .always: "Always"
-        case .never: "Never"
+        case .auto: L("Automatic (when the window is larger)")
+        case .always: L("Always")
+        case .never: L("Never")
         }
     }
 }
@@ -106,7 +106,7 @@ extension Metric {
         /// Laagste · gemiddelde · hoogste over de periode van de grafiek; eenheid één keer achteraan
         func spread(_ v: [Double], unit: String = "%", _ f: (Double) -> String = { "\(Int($0.rounded()))" }) -> Fact? {
             guard v.count > 1, let lo = v.min(), let hi = v.max() else { return nil }
-            return Fact(label: "Low · avg · high", value: "\(f(lo)) · \(f(v.reduce(0, +) / Double(v.count))) · \(f(hi))\(unit)")
+            return Fact(label: L("Low · avg · high"), value: "\(f(lo)) · \(f(v.reduce(0, +) / Double(v.count))) · \(f(hi))\(unit)")
         }
         func top(_ by: (AppUsage) -> Double, n: Int = 3, _ f: (AppUsage) -> String) -> [Fact?] {
             apps.sorted { by($0) > by($1) }.prefix(n).filter { by($0) > 0 }.map { Fact(label: $0.name, value: f($0), icon: $0.icon, app: AppRef(id: $0.id, name: $0.name)) }
@@ -116,51 +116,51 @@ extension Metric {
         var out: [Fact?]
         switch self {
         case .cpu:
-            out = [Fact(label: "In use", value: "\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores"),
-                   s.temp.map { Fact(label: "Hottest core", value: deg($0)) }]
+            out = [Fact(label: L("In use"), value: L("\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores")),
+                   s.temp.map { Fact(label: L("Hottest core"), value: deg($0)) }]
             out += top(\.cpu) { pct($0.cpu) }
             out.append(spread(h.map(\.cpu)))
         case .gpu:
-            out = [s.gpuTemp.map { Fact(label: "Temperature", value: deg($0)) }, spread(h.map(\.gpu))]
+            out = [s.gpuTemp.map { Fact(label: L("Temperature"), value: deg($0)) }, spread(h.map(\.gpu))]
         case .ram:
             let total = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
-            out = [Fact(label: "In use", value: "\(one(s.ramUsedGB)) of \(Int(total.rounded())) GB"),
-                   Fact(label: "Pressure", value: s.pressure >= 4 ? "critical" : s.pressure == 2 ? "high" : "normal"),
-                   Fact(label: "Swap", value: gb(s.swapGB))]
+            out = [Fact(label: L("In use"), value: L("\(one(s.ramUsedGB)) of \(Int(total.rounded())) GB")),
+                   Fact(label: L("Pressure"), value: s.pressure >= 4 ? L("critical") : s.pressure == 2 ? L("high") : L("normal")),
+                   Fact(label: L("Swap"), value: gb(s.swapGB))]
             out += top(\.memGB) { gb($0.memGB) }
             out.append(spread(h.map(\.ramUsedGB), unit: " GB", one))
         case .net:
             // Niet het grote getal herhalen: wat er in de periode doorheen ging, en de piek
-            out = [host.isEmpty || s.pingPending ? nil : Fact(label: "Response time", value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "no answer"),
+            out = [host.isEmpty || s.pingPending ? nil : Fact(label: L("Response time"), value: s.pingMs.map { "\(Int($0.rounded())) ms" } ?? L("no answer")),
                    // Welke app nu het meeste internet gebruikt (minuutgemiddelde; alleen met "netPerApp" aan)
                    top({ $0.netIn + $0.netOut }, n: 1) { let (d, u, unit) = ratePair($0.netIn, $0.netOut, bits: bits); return "↓\(d) ↑\(u) \(unit)" }.first ?? nil,
-                   Fact(label: "Downloaded", value: bytes(total(h, \.down))),
-                   Fact(label: "Uploaded", value: bytes(total(h, \.up)))]
-            if let dn = h.map(\.down).max(), let up = h.map(\.up).max() { out.append(Fact(label: "Peak", value: "↓\(rate(dn)) ↑\(rate(up))")) }
+                   Fact(label: L("Downloaded"), value: bytes(total(h, \.down))),
+                   Fact(label: L("Uploaded"), value: bytes(total(h, \.up)))]
+            if let dn = h.map(\.down).max(), let up = h.map(\.up).max() { out.append(Fact(label: L("Peak"), value: "↓\(rate(dn)) ↑\(rate(up))")) }
             out.append(LinkRate.fact.map { Fact(label: $0.0, value: $0.1) })
-            out.append(LinkRate.signal.map { Fact(label: "Wi-Fi signal", value: $0) })
+            out.append(LinkRate.signal.map { Fact(label: L("Wi-Fi signal"), value: $0) })
         case .ssd:
-            out = [Fact(label: "Free", value: "\(Int(s.diskFreeGB)) GB"),
-                   today.isEmpty ? nil : Fact(label: "Written today", value: bytes(total(today, \.diskWrite))),
-                   SSDHealth.cached.map { Fact(label: "Health", value: $0.text) },
-                   Fact(label: "Size", value: "\(Int(s.diskTotalGB)) GB")]
+            out = [Fact(label: L("Free"), value: "\(Int(s.diskFreeGB)) GB"),
+                   today.isEmpty ? nil : Fact(label: L("Written today"), value: bytes(total(today, \.diskWrite))),
+                   SSDHealth.cached.map { Fact(label: L("Health"), value: $0.text) },
+                   Fact(label: L("Size"), value: "\(Int(s.diskTotalGB)) GB")]
         case .io:
-            out = [Fact(label: "Read", value: bytes(total(h, \.diskRead))),
-                   Fact(label: "Written", value: bytes(total(h, \.diskWrite))),
-                   Fact(label: "Swap", value: gb(s.swapGB))]
-            if let r = h.map(\.diskRead).max(), let w = h.map(\.diskWrite).max() { out.append(Fact(label: "Peak", value: "R \(rate(r)) W \(rate(w))")) }
+            out = [Fact(label: L("Read"), value: bytes(total(h, \.diskRead))),
+                   Fact(label: L("Written"), value: bytes(total(h, \.diskWrite))),
+                   Fact(label: L("Swap"), value: gb(s.swapGB))]
+            if let r = h.map(\.diskRead).max(), let w = h.map(\.diskWrite).max() { out.append(Fact(label: L("Peak"), value: "R \(rate(r)) W \(rate(w))")) }
         case .battery:
             guard let b = s.battery else { return [] }
             let w = s.batteryW.map { "\(Int(Swift.abs($0).rounded())) W" }
             // Aan de lader maar niet aan het laden en niet vol: macOS houdt hem vast (oplaadlimiet / geoptimaliseerd laden)
-            out = s.charging ? [Fact(label: "Charging", value: s.batteryMinutes.map { "full in \(duration($0))" } ?? "–"), w.map { Fact(label: "Charging at", value: $0) }]
-                : s.onAC ? [ChargeLimit.fact(s) ?? (b < 99 ? Fact(label: "Charge limit", value: "holding at \(pct(b))") : nil)]
-                : [Fact(label: "On battery", value: s.batteryMinutes.map { "\(duration($0)) left" } ?? "–"), w.map { Fact(label: "Using", value: $0) }]
+            out = s.charging ? [Fact(label: L("Charging"), value: s.batteryMinutes.map { L("full in \(duration($0))") } ?? "–"), w.map { Fact(label: L("Charging at"), value: $0) }]
+                : s.onAC ? [ChargeLimit.fact(s) ?? (b < 99 ? Fact(label: L("Charge limit"), value: L("holding at \(pct(b))")) : nil)]
+                : [Fact(label: L("On battery"), value: s.batteryMinutes.map { L("\(duration($0)) left") } ?? "–"), w.map { Fact(label: L("Using"), value: $0) }]
             if s.charging { out.insert(ChargeLimit.fact(s), at: 1) }   // "Charge limit 80%" terwijl hij er naartoe laadt
-            if s.onAC { out.append(Fact(label: "Power adapter", value: s.adapterW.map { "\($0) W" } ?? "connected")) }
+            if s.onAC { out.append(Fact(label: L("Power adapter"), value: s.adapterW.map { "\($0) W" } ?? L("connected"))) }
             out.append(spread(h.compactMap(\.battery)))
         case .fan:
-            out = s.fans.count > 1 ? s.fans.indices.map { Fact(label: "Fan \($0 + 1)", value: "\(Int(s.fans[$0].rpm.rounded())) rpm") } : []
+            out = s.fans.count > 1 ? s.fans.indices.map { Fact(label: L("Fan \($0 + 1)"), value: "\(Int(s.fans[$0].rpm.rounded())) rpm") } : []
             out.append(spread(h.compactMap(\.fanRPM), unit: " rpm"))
         }
         return out.compactMap { $0 }
@@ -176,18 +176,18 @@ extension Metric {
             return MetricRowData(label: abbr, value: abs ? one(s.cpu / 100 * cores) : pct(s.cpu), unit: abs ? "/\(Int(cores))" : "",
                                  side: deg(s.temp), template: abs ? "88.8" : "100%",
                                  level: lvl(s.cpu, warnCPU, warnCPU + 10), sideLevel: lvl(s.temp ?? 0, warnTemp, warnTemp + 10),
-                                 detail: abs ? "\(pct(s.cpu)) · hottest core \(deg(s.temp))" : "\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores · hottest core \(deg(s.temp))",
+                                 detail: abs ? L("\(pct(s.cpu)) · hottest core \(deg(s.temp))") : L("\(one(s.cpu / 100 * cores)) of \(Int(cores)) cores · hottest core \(deg(s.temp))"),
                                  values: h.map(\.cpu), cores: s.cores).graph(usage: h.map(\.cpu), temp: h.map(\.temp), mode: d.string(forKey: "cpuGraph"))
         case .gpu:
             return MetricRowData(label: abbr, value: pct(s.gpu), side: deg(s.gpuTemp), level: lvl(s.gpu, 90, 98), sideLevel: lvl(s.gpuTemp ?? 0, warnTemp, warnTemp + 10),
-                                 detail: s.gpuTemp.map { "temperature \(deg($0))" } ?? "", values: h.map(\.gpu))
+                                 detail: s.gpuTemp.map { L("temperature \(deg($0))") } ?? "", values: h.map(\.gpu))
                 .graph(usage: h.map(\.gpu), temp: h.map(\.gpuTemp), mode: d.string(forKey: "gpuGraph"))
         case .ram:
             let total = Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824
-            let druk = s.pressure >= 4 ? "critical" : s.pressure == 2 ? "high" : "normal"
+            let druk = s.pressure >= 4 ? L("critical") : s.pressure == 2 ? L("high") : L("normal")
             return MetricRowData(label: abbr, value: abs ? one(s.ramUsedGB) : pct(s.ram), unit: abs ? "GB" : "", template: abs ? "88.8" : "100%",
                                  level: s.pressure >= 4 ? 2 : s.pressure == 2 ? 1 : 0,
-                                 detail: "pressure \(druk) · swap \(one(s.swapGB)) GB · " + (abs ? pct(s.ram) : "\(one(s.ramUsedGB)) of \(Int(total.rounded())) GB"),
+                                 detail: L("pressure \(druk) · swap \(one(s.swapGB)) GB · ") + (abs ? pct(s.ram) : L("\(one(s.ramUsedGB)) of \(Int(total.rounded())) GB")),
                                  values: h.map(\.ramUsedGB), top: total)
         case .net:
             // Eenheid één keer (in de eenheidskolom): "↓8 ↑120  KB/s" i.p.v. "↓8 KB/s ↑120 KB/s"
@@ -202,7 +202,7 @@ extension Metric {
                                  side: [ping, speed].compactMap { $0 }.joined(separator: " · "),
                                  template: "↓888 ↑888",
                                  sideLevel: host.isEmpty || s.pingPending || !d.bool(forKey: "netPing") ? 0 : lvl(s.pingMs ?? 9999, d.double(forKey: "warnPing"), d.double(forKey: "warnPing") + 10),
-                                 detail: host.isEmpty ? "response time check is off" : "internet response time",
+                                 detail: host.isEmpty ? L("response time check is off") : L("internet response time"),
                                  values: h.map(\.down), second: h.map(\.up), top: nil, valueSize: 24)
             row.sideIcon = LinkRate.wifiMbit() != nil ? "wifi" : "cable.connector.horizontal"   // draadloos of bedraad
             return row
@@ -210,30 +210,30 @@ extension Metric {
             let usedPct = s.diskTotalGB > 0 ? (1 - s.diskFreeGB / s.diskTotalGB) * 100 : 0
             return MetricRowData(label: abbr, value: abs ? "\(Int(s.diskFreeGB))" : pct(usedPct), unit: abs ? "GB" : "", template: abs ? "8888" : "100%",
                                  level: usedPct >= 95 ? 2 : usedPct >= 90 ? 1 : 0,
-                                 detail: abs ? "\(pct(usedPct)) full of \(Int(s.diskTotalGB)) GB" : "\(Int(s.diskFreeGB)) GB free of \(Int(s.diskTotalGB)) GB", values: h.map { $0.diskTotalGB - $0.diskFreeGB },
+                                 detail: abs ? L("\(pct(usedPct)) full of \(Int(s.diskTotalGB)) GB") : L("\(Int(s.diskFreeGB)) GB free of \(Int(s.diskTotalGB)) GB"), values: h.map { $0.diskTotalGB - $0.diskFreeGB },
                                  top: s.diskTotalGB > 0 ? s.diskTotalGB : nil, valueSize: 24)
         case .io:
             let (rd, wr, ioUnit) = ratePair(s.diskRead, s.diskWrite, bits: bits)
-            return MetricRowData(label: abbr, value: "R \(rd) W \(wr)", unit: ioUnit, template: "R 888 W 888", detail: "reading and writing to the SSD",
+            return MetricRowData(label: abbr, value: "R \(rd) W \(wr)", unit: ioUnit, template: "R 888 W 888", detail: L("reading and writing to the SSD"),
                                  values: h.map(\.diskRead), second: h.map(\.diskWrite), top: nil, valueSize: 24)
         case .battery:
-            guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: "no battery", valueSize: 24) }
-            let time = s.batteryMinutes.map { s.charging ? "full in \(duration($0))" : "\(duration($0)) left" } ?? (s.charging ? "charging" : "")
+            guard let b = s.battery else { return MetricRowData(label: abbr, value: "–", detail: L("no battery"), valueSize: 24) }
+            let time = s.batteryMinutes.map { s.charging ? L("full in \(duration($0))") : L("\(duration($0)) left") } ?? (s.charging ? L("charging") : "")
             // Naast BAT: laden → batterij met bliksem, op de accu → batterij die toont hoe vol; plus (instelling "batteryTime")
             // de schatting van macOS: op de accu hoe lang tot leeg, aan de lader hoe lang tot vol (bijv. "2:35" / "0:48").
             // Vanaf 10 uur "14h": "14:27" leest als een kloktijd
             let left = d.bool(forKey: "batteryTime") ? s.batteryMinutes.map { $0 >= 600 ? "\($0 / 60)h" : String(format: "%d:%02d", $0 / 60, $0 % 60) } : nil
             var row = MetricRowData(label: abbr, value: pct(b), side: left ?? "", level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
-                                 detail: time.isEmpty ? "on power adapter" : time, values: h.compactMap(\.battery), valueSize: 24)
+                                 detail: time.isEmpty ? L("on power adapter") : time, values: h.compactMap(\.battery), valueSize: 24)
             row.sideIcon = s.charging ? "battery.100percent.bolt" : batteryIcon(b)
             return row
         case .fan:
-            guard let rpm = s.fanRPM else { return MetricRowData(label: abbr, value: "–", detail: "no fans", valueSize: 24) }
+            guard let rpm = s.fanRPM else { return MetricRowData(label: abbr, value: "–", detail: L("no fans"), valueSize: 24) }
             let top = s.fans.map(\.max).max() ?? 0
             let forced = s.fans.contains(where: \.forced)
             return MetricRowData(label: abbr, value: Int(rpm.rounded()).formatted(.number.locale(Locale(identifier: "en_US"))), unit: "rpm",
                                  side: forced ? (d.string(forKey: "fanMode") == "max" ? "full" : "curve") : "auto", template: "8,888",
-                                 detail: s.fans.count > 1 ? "average of \(s.fans.count) fans" : "", values: h.compactMap(\.fanRPM),
+                                 detail: s.fans.count > 1 ? L("average of \(s.fans.count) fans") : "", values: h.compactMap(\.fanRPM),
                                  top: top > 0 ? top : nil, valueSize: 24)
         }
     }
@@ -255,11 +255,12 @@ enum LinkRate {
     /// "Good · −52 dBm · ch 36"
     static var signal: String? { read(); return cached.mbit != nil && cached.rssi < 0 ? signalText(cached.rssi, cached.ch) : nil }
     static func signalText(_ rssi: Int, _ ch: Int) -> String {
-        let q = rssi >= -55 ? "Excellent" : rssi >= -67 ? "Good" : rssi >= -75 ? "Fair" : "Weak"
-        return "\(q) · −\(-rssi) dBm" + (ch > 0 ? " · ch \(ch)" : "")
+        let q = rssi >= -55 ? L("Excellent") : rssi >= -67 ? L("Good") : rssi >= -75 ? L("Fair") : L("Weak")
+        return "\(q) · −\(-rssi) dBm" + (ch > 0 ? L(" · ch \(ch)") : "")
     }
     /// Regel voor de NET-feiten: ("Wi-Fi link", "286 Mbit/s"). Wat de router je Mac geeft, niet je internetsnelheid.
-    static var fact: (String, String)? { wifiMbit().map { ("Wi-Fi link", "\(Int($0.rounded())) Mbit/s") } }
+    static var fact: (String, String)? { wifiMbit().map { (L("Wi-Fi link"), "\(Int($0.rounded())) Mbit/s") } }
+
 }
 
 /// Wi-Fi-uitval via CoreWLAN-meldingen (linkDidChange), dus zonder te pollen. Geen netwerknaam, BSSID of MAC: alleen of de verbinding er is.

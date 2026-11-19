@@ -76,7 +76,7 @@ struct AppAbout: Sendable {
             a.version = [v, build.flatMap { $0 == v ? nil : "(\($0))" }].compactMap { $0 }.joined(separator: " ").ifEmpty("–")
             let arch = Set((b.executableArchitectures ?? []).map(\.intValue))
             let arm = arch.contains(NSBundleExecutableArchitectureARM64), intel = arch.contains(NSBundleExecutableArchitectureX86_64)
-            a.arch = arm && intel ? "Universal (Apple silicon + Intel)" : arm ? "Apple silicon" : intel ? "Intel (runs via Rosetta)" : nil
+            a.arch = arm && intel ? L("Universal (Apple silicon + Intel)") : arm ? "Apple silicon" : intel ? L("Intel (runs via Rosetta)") : nil
         }
         // Handtekening: wie heeft het gemaakt, en zit het in de sandbox
         var code: SecStaticCode?, info: CFDictionary?
@@ -84,7 +84,7 @@ struct AppAbout: Sendable {
            SecCodeCopySigningInformation(code, SecCSFlags(rawValue: kSecCSSigningInformation | kSecCSRequirementInformation), &info) == errSecSuccess,
            let d = info as? [String: Any] {
             let leaf = (d[kSecCodeInfoCertificates as String] as? [SecCertificate])?.first.flatMap { SecCertificateCopySubjectSummary($0) as String? }
-            a.signedBy = leaf.map(signer) ?? "Not signed by a developer"
+            a.signedBy = leaf.map(signer) ?? L("Not signed by a developer")
             a.sandboxed = (d[kSecCodeInfoEntitlementsDict as String] as? [String: Any])?["com.apple.security.app-sandbox"] as? Bool ?? false
         }
         if let item = MDItemCreateWithURL(nil, url as CFURL) {
@@ -235,9 +235,9 @@ struct AppPage: View {
     }
 
     private func status(_ app: AppUsage?) -> String {
-        let v = about?.version.map { "Version \($0) · " } ?? ""
-        guard let app else { return v + "Not running" }
-        return v + (app.started.map { "Running for \(duration(max(Int(Date().timeIntervalSince($0) / 60), 1)))" } ?? "Running")
+        let v = about?.version.map { L("Version \($0) · ") } ?? ""
+        guard let app else { return v + L("Not running") }
+        return v + (app.started.map { L("Running for \(duration(max(Int(Date().timeIntervalSince($0) / 60), 1)))") } ?? L("Running"))
     }
 
     // MARK: Nu
@@ -255,13 +255,13 @@ struct AppPage: View {
             spark("Memory", memLine, top: nil, now: mem(a.memGB))
         }
         .frame(height: 90)
-        Facts(rows: [("Processes", a.pids.isEmpty ? "–" : "\(a.pids.count)"),
-                     ("Threads", a.threads > 0 ? "\(a.threads)" : "–"),
-                     ("Disk read · write", "\(rate(a.diskRead)) · \(rate(a.diskWrite))")]
-                    + (netPerApp ? [("Network ↓ · ↑", "\(rate(a.netIn)) · \(rate(a.netOut))")] : []))
+        Facts(rows: [(L("Processes"), a.pids.isEmpty ? "–" : "\(a.pids.count)"),
+                     (L("Threads"), a.threads > 0 ? "\(a.threads)" : "–"),
+                     (L("Disk read · write"), "\(rate(a.diskRead)) · \(rate(a.diskWrite))")]
+                    + (netPerApp ? [(L("Network ↓ · ↑"), "\(rate(a.netIn)) · \(rate(a.netOut))")] : []))
     }
 
-    private func spark(_ title: String, _ v: [Double], top: Double?, now: String) -> some View {
+    private func spark(_ title: LocalizedStringKey, _ v: [Double], top: Double?, now: String) -> some View {
         DetailCard {
             VStack(alignment: .leading, spacing: 4) {
                 HStack {
@@ -300,7 +300,7 @@ struct AppPage: View {
                         Bars(values: h.hours, labels: (0..<24).map { $0 % 6 == 0 ? "\($0)" : "" }) { "\($0):00 – \($0 + 1):00 · \(duration(h.hours[$0]))" }
                         if days > 1 {
                             Text("By day of the week").font(theme.label(11)).foregroundStyle(theme.onRow(true)).padding(.top, 4)
-                            Bars(values: h.weekdays, labels: ["M", "T", "W", "T", "F", "S", "S"]) { "\(Calendar.current.weekdaySymbols[($0 + 1) % 7]) · \(duration(h.weekdays[$0]))" }
+                            Bars(values: h.weekdays, labels: (0..<7).map { Calendar.current.veryShortWeekdaySymbols[($0 + 1) % 7] }) { "\(Calendar.current.weekdaySymbols[($0 + 1) % 7]) · \(duration(h.weekdays[$0]))" }
                         }
                     }
                 }
@@ -326,16 +326,16 @@ struct AppPage: View {
         .font(theme.label(12)).foregroundStyle(theme.onRow())
     }
 
-    private var when: String { days == 1 ? "today" : "in the last \(days) days" }
+    private var when: String { days == 1 ? L("today") : L("in the last \(days) days") }
 
     /// Nieuwe kolommen (GPU, aandeel, alle open minuten) bestaan pas sinds deze versie: zeggen vanaf wanneer.
     private func collecting(_ h: Analysis.AppHistory) -> String? {
         let start = Calendar.current.date(byAdding: .day, value: 1 - days, to: Calendar.current.startOfDay(for: Date())) ?? Date()
-        guard let since = h.since else { return "GPU, energy share and full open time: collecting from now on." }
+        guard let since = h.since else { return L("GPU, energy share and full open time: collecting from now on.") }
         guard since > start.addingTimeInterval(3600) else { return nil }
         let f = DateFormatter()
         f.setLocalizedDateFormatFromTemplate(Calendar.current.isDateInToday(since) ? "HH:mm" : "d MMM")
-        return "GPU, energy share and full open time: collecting since \(Calendar.current.isDateInToday(since) ? "today " : "")\(f.string(from: since)). Before that, only minutes when \(ref.name) was among the busiest apps count."
+        return L("GPU, energy share and full open time: collecting since \(Calendar.current.isDateInToday(since) ? L("today ") : "")\(f.string(from: since)). Before that, only minutes when \(ref.name) was among the busiest apps count.")
     }
 
     // MARK: Over
@@ -345,14 +345,14 @@ struct AppPage: View {
             section("About")
             if let a = about {
                 let running = app?.runningApp
-                let arch = running?.executableArchitecture == NSBundleExecutableArchitectureX86_64 ? "Intel (running via Rosetta now)" : a.arch
-                Facts(rows: [("Bundle ID", a.bundleID ?? "–"), ("Version", a.version ?? "–"), ("Architecture", arch ?? "–"),
-                             ("Size on disk", a.size.map { bytes(Double($0)) } ?? "–"),
-                             ("Location", (p as NSString).deletingLastPathComponent.replacingOccurrences(of: NSHomeDirectory(), with: "~")),
-                             ("Signed by", a.signedBy ?? "–"), ("Sandboxed", a.sandboxed.map { $0 ? "Yes" : "No" } ?? "–"),
-                             ("Installed", a.added.map(date) ?? "–"), ("Last opened", a.lastUsed.map(date) ?? "–"),
-                             ("Opens at login", a.launchAgent ? "Yes (launch agent)" : "Unknown")]
-                      .filter { p.hasSuffix(".app") || !["Bundle ID", "Version", "Architecture", "Sandboxed"].contains($0.0) })
+                let arch = running?.executableArchitecture == NSBundleExecutableArchitectureX86_64 ? L("Intel (running via Rosetta now)") : a.arch
+                Facts(rows: [(L("Bundle ID"), a.bundleID ?? "–"), (L("Version"), a.version ?? "–"), (L("Architecture"), arch ?? "–"),
+                             (L("Size on disk"), a.size.map { bytes(Double($0)) } ?? "–"),
+                             (L("Location"), (p as NSString).deletingLastPathComponent.replacingOccurrences(of: NSHomeDirectory(), with: "~")),
+                             (L("Signed by"), a.signedBy ?? "–"), (L("Sandboxed"), a.sandboxed.map { $0 ? L("Yes") : L("No") } ?? "–"),
+                             (L("Installed"), a.added.map(date) ?? "–"), (L("Last opened"), a.lastUsed.map(date) ?? "–"),
+                             (L("Opens at login"), a.launchAgent ? L("Yes (launch agent)") : L("Unknown"))]
+                      .filter { p.hasSuffix(".app") || ![L("Bundle ID"), L("Version"), L("Architecture"), L("Sandboxed")].contains($0.0) })
                     .help("“Opens at login”: Fusebox can see launch agents, but not the Login Items list in System Settings.")
             } else {
                 DetailCard { Text("Looking it up…").font(theme.label(12)).foregroundStyle(theme.secondary) }
@@ -362,11 +362,11 @@ struct AppPage: View {
 
     // MARK: Hulpjes
 
-    private func section(_ t: String) -> some View {
+    private func section(_ t: LocalizedStringKey) -> some View {
         Text(t).font(theme.label(12).weight(.semibold)).foregroundStyle(theme.secondary).padding(.top, 4)
     }
 
-    private func stat(_ label: String, _ value: String) -> some View {
+    private func stat(_ label: LocalizedStringKey, _ value: String) -> some View {
         DetailCard {
             VStack(alignment: .leading, spacing: 2) {
                 Text(label).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1)

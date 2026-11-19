@@ -10,6 +10,7 @@ struct ProgramsView: View {
 private enum Filter: String, CaseIterable {
     case all = "All", apps = "Apps", background = "Background", macos = "macOS"
     var id: String { rawValue.lowercased() }   // opgeslagen in "procFilter"
+    var title: String { switch self { case .all: L("All"); case .apps: L("Apps"); case .background: L("Background"); case .macos: "macOS" } }
 }
 /// rawValue = id in "procSort" en "procHide" (Instellingen › Processes).
 private enum Column: String { case name, cpu, ram, disk, net, energy, gpu, threads, running }
@@ -179,7 +180,7 @@ private struct ProgramsList: View {
         HStack(spacing: 2) {
             ForEach(Filter.allCases, id: \.self) { f in
                 Button { filter = f } label: {
-                    Text(f.rawValue).font(theme.label(11))
+                    Text(f.title).font(theme.label(11))
                         .foregroundStyle(filter == f ? theme.accent : theme.secondary)
                         .padding(.horizontal, 7).padding(.vertical, 3)
                         .background(filter == f ? theme.accent.opacity(0.15) : .clear, in: .rect(cornerRadius: 6))
@@ -233,23 +234,23 @@ private struct ProgramsList: View {
         return c
     }
 
-    private func sectionTitle(_ t: String) -> some View {
+    private func sectionTitle(_ t: LocalizedStringKey) -> some View {
         Text(t).font(theme.label(11).weight(.semibold)).foregroundStyle(theme.secondary)
             .frame(maxWidth: .infinity, alignment: .leading).padding(.top, 4)
     }
 
     private var columnHeader: some View {
         HStack(spacing: 8) {
-            head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
+            head(L("Name"), .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("CPU", .cpu).frame(width: width.cpuW, alignment: .trailing)
             if cols.contains(.gpu) { head("GPU", .gpu).frame(width: Self.gpuW, alignment: .trailing).help("Share of the graphics chip's time, like Activity Monitor's % GPU") }
             head("RAM", .ram).frame(width: Self.ramW, alignment: .trailing)
-            if showNet { head("Network", .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
-            if cols.contains(.disk) { head("Disk", .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
-            if cols.contains(.energy) { head("Energy", .energy).frame(width: Self.energyW, alignment: .trailing) }
-            if cols.contains(.threads) { head("Threads", .threads).frame(width: Self.threadsW, alignment: .trailing) }
+            if showNet { head(L("Network"), .net).frame(width: Self.netW, alignment: .trailing).help("Download ↓ and upload ↑, per second") }
+            if cols.contains(.disk) { head(L("Disk"), .disk).frame(width: Self.diskW, alignment: .trailing).help("Reading + writing to the SSD, per second") }
+            if cols.contains(.energy) { head(L("Energy"), .energy).frame(width: Self.energyW, alignment: .trailing) }
+            if cols.contains(.threads) { head(L("Threads"), .threads).frame(width: Self.threadsW, alignment: .trailing) }
             if cols.contains(.threads) { Text("Proc.").font(theme.label(10)).foregroundStyle(theme.secondary).frame(width: Self.procW, alignment: .trailing) }
-            if cols.contains(.running) { head("Running", .running).frame(width: Self.runW, alignment: .trailing) }
+            if cols.contains(.running) { head(L("Running"), .running).frame(width: Self.runW, alignment: .trailing) }
             Color.clear.frame(width: Self.stopW, height: 1)
         }
     }
@@ -393,23 +394,23 @@ private struct ProgramDetails: View {
                 }
             }
             .buttonStyle(.plain).font(theme.label(11)).padding(.bottom, 4)
-            if !app.explanation.isEmpty { line("questionmark.circle", "What is this? \(app.explanation).") }
-            line("cpu", "\(app.name) is using \(pct(app.cpu)) of your processor right now (≈ \(one(app.cpu / 100 * Self.cores)) of the \(Int(Self.cores)) cores) and \(mem(app.memGB)) of memory (\(pct(app.memGB / Self.ramGB * 100)) of your \(Int(Self.ramGB.rounded())) GB).")
+            if !app.explanation.isEmpty { line("questionmark.circle", L("What is this? \(app.explanation).")) }
+            line("cpu", L("\(app.name) is using \(pct(app.cpu)) of your processor right now (≈ \(one(app.cpu / 100 * Self.cores)) of the \(Int(Self.cores)) cores) and \(mem(app.memGB)) of memory (\(pct(app.memGB / Self.ramGB * 100)) of your \(Int(Self.ramGB.rounded())) GB)."))
             if app.kind == .macos && app.pids.isEmpty {
-                line("lock", "macOS doesn't let apps see exactly which system parts these are. That's normal: this covers everything only macOS itself is allowed to measure.")
+                line("lock", L("macOS doesn't let apps see exactly which system parts these are. That's normal: this covers everything only macOS itself is allowed to measure."))
             } else if !app.pids.isEmpty {
                 line("square.stack.3d.up", parts)
             }
-            if app.energyW >= 0.05 { line("bolt", "Uses about \(one(app.energyW)) W — \(energyWord).") }
-            if app.gpu >= 0.5 { line("cube.transparent", "Uses the graphics chip \(pct(min(app.gpu, 100))) of the time.") }
+            if app.energyW >= 0.05 { line("bolt", L("Uses about \(one(app.energyW)) W — \(energyWord).")) }
+            if app.gpu >= 0.5 { line("cube.transparent", L("Uses the graphics chip \(pct(min(app.gpu, 100))) of the time.")) }
             if app.diskRead + app.diskWrite >= 1000 {
-                line("internaldrive", "Reading \(rate(app.diskRead)) and writing \(rate(app.diskWrite)) on the SSD.")
+                line("internaldrive", L("Reading \(rate(app.diskRead)) and writing \(rate(app.diskWrite)) on the SSD."))
             }
             if app.netIn + app.netOut >= 1000 {
-                line("network", "Downloading \(rate(app.netIn)) and uploading \(rate(app.netOut)) over the network.")
+                line("network", L("Downloading \(rate(app.netIn)) and uploading \(rate(app.netOut)) over the network."))
             }
-            if app.threads > 0 { line("arrow.triangle.branch", "Runs \(app.threads) threads (tasks at the same time).") }
-            if let s = app.started { line("clock", "Running for \(duration(max(Int(Date().timeIntervalSince(s) / 60), 1))).") }
+            if app.threads > 0 { line("arrow.triangle.branch", L("Runs \(app.threads) threads (tasks at the same time).")) }
+            if let s = app.started { line("clock", L("Running for \(duration(max(Int(Date().timeIntervalSince(s) / 60), 1))).")) }
             line(verdict.icon, verdict.text).foregroundStyle(verdict.color)
         }
         .font(theme.label(11)).foregroundStyle(theme.onRow(true))
@@ -424,7 +425,7 @@ private struct ProgramDetails: View {
     /// Aantal processen + tot drie namen. ponytail: geen CPU per proces (AppUsage telt ze samen op); voeg per-pid cpu toe aan AppUsage als dat nodig is.
     private var parts: String {
         let n = app.pids.count
-        guard n > 1 else { return "It's a single process." }
+        guard n > 1 else { return L("It's a single process.") }
         var seen = Set<String>(), names: [String] = []
         for pid in app.pids where names.count < 3 {
             var buf = [CChar](repeating: 0, count: 256)
@@ -433,19 +434,19 @@ private struct ProgramDetails: View {
                 if seen.insert(name).inserted { names.append(name) }
             }
         }
-        return "It consists of \(n) parts (processes)" + (names.isEmpty ? "." : ", including \(names.joined(separator: ", ")).")
+        return names.isEmpty ? L("It consists of \(n) parts (processes).") : L("It consists of \(n) parts (processes), including \(names.joined(separator: ", ")).")
     }
 
     // Drempels energie: < 1 W licht, < 5 W gemiddeld, daarboven zwaar (een Mac in rust zit rond 2–5 W totaal).
-    private var energyWord: String { app.energyW < 1 ? "light" : app.energyW < 5 ? "moderate" : "heavy" }
+    private var energyWord: String { app.energyW < 1 ? L("light") : app.energyW < 5 ? L("moderate") : L("heavy") }
 
     // Oordeel: geheugen ≥ 2 GB of ≥ 15% van het RAM = veel; achtergrond/macOS ≥ 10% CPU = zwaar; ≥ 50% CPU = zwaar voor iedereen.
     private var verdict: (text: String, icon: String, color: Color) {
         let warn = theme.rowStyle == .blocks ? Color.white : theme.warn
         let ok = theme.rowStyle == .blocks ? Color.white : theme.good
-        if app.cpu >= 50 { return ("Heavy: uses a lot of processor", "exclamationmark.triangle", warn) }
-        if app.kind != .app && app.cpu >= 10 { return ("Heavy for a background task", "exclamationmark.triangle", warn) }
-        if app.memGB >= 2 || app.memGB / Self.ramGB >= 0.15 { return ("Uses a lot of memory", "memorychip", warn) }
-        return ("Normal", "checkmark.circle", ok)
+        if app.cpu >= 50 { return (L("Heavy: uses a lot of processor"), "exclamationmark.triangle", warn) }
+        if app.kind != .app && app.cpu >= 10 { return (L("Heavy for a background task"), "exclamationmark.triangle", warn) }
+        if app.memGB >= 2 || app.memGB / Self.ramGB >= 0.15 { return (L("Uses a lot of memory"), "memorychip", warn) }
+        return (L("Normal"), "checkmark.circle", ok)
     }
 }

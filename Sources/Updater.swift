@@ -98,7 +98,7 @@ import CryptoKit
                 self.lastCheck = Date()
                 guard let r = result else {
                     let code = (response as? HTTPURLResponse)?.statusCode ?? 0
-                    self.state = userInitiated ? .failed(error?.localizedDescription ?? "GitHub answered \(code)") : .idle
+                    self.state = userInitiated ? .failed(error?.localizedDescription ?? L("GitHub answered \(code)")) : .idle
                     return
                 }
                 guard r.build > Self.currentBuild else { self.state = .upToDate; return }
@@ -117,8 +117,8 @@ import CryptoKit
         let d = UserDefaults.standard
         guard d.bool(forKey: "notify"), d.string(forKey: "notifiedUpdate") != tag else { return }
         d.set(tag, forKey: "notifiedUpdate")
-        Notify.send(title: "Fusebox \(Self.pretty(tag)) is available",
-                    body: auto ? "Installing now. Fusebox restarts in a moment." : "Open Settings › About to install it.")
+        Notify.send(title: L("Fusebox \(Self.pretty(tag)) is available"),
+                    body: auto ? L("Installing now. Fusebox restarts in a moment.") : L("Open Settings › About to install it."))
     }
 
     /// Eerste start na een update: één melding met in een paar woorden wat er nieuw is, knop naar de changelog.
@@ -134,8 +134,8 @@ import CryptoKit
             let list = Self.parseReleases(data)
             let mine = list.first { Self.buildNumber(in: $0.id) == now } ?? list.first
             let version = mine.map { Self.pretty($0.id) } ?? ""
-            Notify.send(title: "Fusebox updated\(version.isEmpty ? "" : " to \(version)")",
-                        body: mine.map { Self.summary($0.notes) }.flatMap { $0.isEmpty ? nil : $0 } ?? "See what's new in Settings › About.",
+            Notify.send(title: version.isEmpty ? L("Fusebox updated") : L("Fusebox updated to \(version)"),
+                        body: mine.map { Self.summary($0.notes) }.flatMap { $0.isEmpty ? nil : $0 } ?? L("See what's new in Settings › About."),
                         category: Notify.whatsNew)
         }.resume()
     }
@@ -179,9 +179,9 @@ import CryptoKit
         let sig = (sigResponse as? HTTPURLResponse)?.statusCode == 200 ? sigData.flatMap { String(data: $0, encoding: .utf8) } : nil
         URLSession.shared.downloadTask(with: r.zip) { tmp, _, error in
             let outcome: Result<URL, Error> = Result {
-                guard let tmp else { throw error ?? Self.err("Download failed") }
+                guard let tmp else { throw error ?? Self.err(L("Download failed")) }
                 guard let sig, let bytes = try? Data(contentsOf: tmp), bytes.count < 200_000_000,
-                      Self.signatureValid(bytes, signature: sig) else { throw Self.err("Update isn't signed by the Fusebox maker") }
+                      Self.signatureValid(bytes, signature: sig) else { throw Self.err(L("Update isn't signed by the Fusebox maker")) }
                 return try Self.unpackAndVerify(zip: tmp, expectedBuild: r.build)
             }
             Task { @MainActor in
@@ -203,7 +203,7 @@ import CryptoKit
         } catch {
             try? FileManager.default.removeItem(at: newApp.deletingLastPathComponent())
             if let b = latest?.build { UserDefaults.standard.set(b, forKey: "failedUpdateBuild") }
-            state = .failed("Couldn't replace the app: \(error.localizedDescription)")
+            state = .failed(L("Couldn't replace the app: \(error.localizedDescription)"))
             return
         }
         try? FileManager.default.removeItem(at: newApp.deletingLastPathComponent())   // lege tijdelijke map opruimen
@@ -243,8 +243,8 @@ import CryptoKit
         do {
             try run("/usr/bin/ditto", ["-x", "-k", zip.path, dir.path])
             let app = dir.appendingPathComponent("Fusebox.app")
-            guard let b = Bundle(url: app), b.bundleIdentifier == Bundle.main.bundleIdentifier else { throw err("Not a Fusebox update") }
-            guard Int(b.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") == expectedBuild else { throw err("Version mismatch") }
+            guard let b = Bundle(url: app), b.bundleIdentifier == Bundle.main.bundleIdentifier else { throw err(L("Not a Fusebox update")) }
+            guard Int(b.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") == expectedBuild else { throw err(L("Version mismatch")) }
             try run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])
             return app
         } catch {
@@ -258,7 +258,8 @@ import CryptoKit
         p.executableURL = URL(fileURLWithPath: tool)
         p.arguments = args
         try p.run(); p.waitUntilExit()
-        guard p.terminationStatus == 0 else { throw err("\((tool as NSString).lastPathComponent) failed") }
+        guard p.terminationStatus == 0 else { throw err(L("\((tool as NSString).lastPathComponent) failed"))
+ }
     }
 
     nonisolated private static func err(_ s: String) -> NSError { NSError(domain: "Fusebox", code: 1, userInfo: [NSLocalizedDescriptionKey: s]) }

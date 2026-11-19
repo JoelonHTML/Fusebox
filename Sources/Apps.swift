@@ -107,7 +107,7 @@ final class AppMonitor: ObservableObject {
 
         // Wat we niet zelf konden meten (WindowServer, kernel, root-processen) = totaal min de som
         let measuredCPU = groups.values.reduce(0) { $0 + $1.cpu }, measuredMem = groups.values.reduce(0) { $0 + $1.memGB }
-        groups["macos"] = AppUsage(id: "macos", name: "macOS itself", explanation: "Drawing the screen, the kernel and system services only macOS is allowed to measure",
+        groups["macos"] = AppUsage(id: "macos", name: "macOS itself", explanation: L("Drawing the screen, the kernel and system services only macOS is allowed to measure"),
                                    kind: .macos, pids: [], cpu: max(totalCPU - measuredCPU, 0), memGB: max(totalMemGB - measuredMem, 0),
                                    energyW: 0, icon: NSImage(systemSymbolName: "apple.logo", accessibilityDescription: nil))
         // nettop ziet ook root-processen: dat verkeer hoort bij "macOS zelf"
@@ -235,7 +235,7 @@ final class AppMonitor: ObservableObject {
             var buf = [CChar](repeating: 0, count: 256)
             let proc = proc_name(pid, &buf, UInt32(buf.count)) > 0 ? String(cString: buf) : (key as NSString).lastPathComponent
             let friendly = Self.friendly.first { proc.hasPrefix($0.key) }?.value
-            r = (friendly?.0 ?? proc, friendly?.1 ?? (system ? "Part of macOS" : "Background process"), system ? .macos : .background,
+            r = (friendly?.0 ?? proc, friendly?.1 ?? (system ? L("Part of macOS") : L("Background process")), system ? .macos : .background,
                  NSImage(systemSymbolName: system ? "gearshape" : "terminal", accessibilityDescription: nil))
         }
         names[key] = r
@@ -244,35 +244,35 @@ final class AppMonitor: ObservableObject {
 
     /// Gewone namen voor bekende macOS-processen.
     static let friendly: [String: (String, String)] = [
-        "mds": ("Spotlight (search)", "Indexes your files so searching is fast"),
-        "mdworker": ("Spotlight (search)", "Reads new files for Spotlight"),
-        "corespotlightd": ("Spotlight (search)", "Indexes content from apps"),
-        "photoanalysisd": ("Photo analysis", "Recognizes faces and objects in your photos"),
-        "photolibraryd": ("Photo library", "Manages your Photos library"),
-        "mediaanalysisd": ("Media analysis", "Analyzes photos and videos in the background"),
-        "cloudd": ("iCloud", "Syncs with iCloud"),
-        "bird": ("iCloud Drive", "Syncs your iCloud Drive files"),
-        "fileproviderd": ("iCloud Drive", "Keeps track of files in the cloud"),
-        "backupd": ("Time Machine", "Making a backup"),
-        "softwareupdated": ("Software update", "Checks for or installs updates"),
-        "coreaudiod": ("Sound", "Plays audio"),
-        "bluetoothd": ("Bluetooth", "Connects to Bluetooth devices"),
-        "nsurlsessiond": ("Background downloads", "Downloads for apps that aren't open"),
-        "trustd": ("Security", "Checks certificates"),
-        "syspolicyd": ("Security", "Checks whether apps are safe"),
-        "XProtect": ("Virus scanner", "Apple's built-in malware protection"),
-        "WindowManager": ("Window management", "Stage Manager and windows"),
-        "sharingd": ("AirDrop and sharing", "AirDrop, Handoff and sharing"),
-        "locationd": ("Location", "Determines your location for apps"),
-        "Siri": ("Siri", "Siri and suggestions"),
-        "suggestd": ("Siri suggestions", "Learns from your usage for suggestions"),
-        "logd": ("Logging", "Writes system messages to the log"),
-        "spindump": ("Hang analysis", "Investigates an app that froze"),
-        "ReportCrash": ("Crash report", "Handles an app that crashed"),
-        "Finder": ("Finder", "Files and desktop"),
-        "Dock": ("Dock", "The Dock and Mission Control"),
-        "SystemUIServer": ("Menu bar", "Icons in the menu bar"),
-        "ControlCenter": ("Control Center", "Control Center and menu bar"),
-        "NotificationCenter": ("Notification Center", "Notifications and widgets"),
+        "mds": ("Spotlight (search)", L("Indexes your files so searching is fast")),
+        "mdworker": ("Spotlight (search)", L("Reads new files for Spotlight")),
+        "corespotlightd": ("Spotlight (search)", L("Indexes content from apps")),
+        "photoanalysisd": ("Photo analysis", L("Recognizes faces and objects in your photos")),
+        "photolibraryd": ("Photo library", L("Manages your Photos library")),
+        "mediaanalysisd": ("Media analysis", L("Analyzes photos and videos in the background")),
+        "cloudd": ("iCloud", L("Syncs with iCloud")),
+        "bird": ("iCloud Drive", L("Syncs your iCloud Drive files")),
+        "fileproviderd": ("iCloud Drive", L("Keeps track of files in the cloud")),
+        "backupd": ("Time Machine", L("Making a backup")),
+        "softwareupdated": ("Software update", L("Checks for or installs updates")),
+        "coreaudiod": ("Sound", L("Plays audio")),
+        "bluetoothd": ("Bluetooth", L("Connects to Bluetooth devices")),
+        "nsurlsessiond": ("Background downloads", L("Downloads for apps that aren't open")),
+        "trustd": ("Security", L("Checks certificates")),
+        "syspolicyd": ("Security", L("Checks whether apps are safe")),
+        "XProtect": ("Virus scanner", L("Apple's built-in malware protection")),
+        "WindowManager": ("Window management", L("Stage Manager and windows")),
+        "sharingd": ("AirDrop and sharing", L("AirDrop, Handoff and sharing")),
+        "locationd": ("Location", L("Determines your location for apps")),
+        "Siri": ("Siri", L("Siri and suggestions")),
+        "suggestd": ("Siri suggestions", L("Learns from your usage for suggestions")),
+        "logd": ("Logging", L("Writes system messages to the log")),
+        "spindump": ("Hang analysis", L("Investigates an app that froze")),
+        "ReportCrash": ("Crash report", L("Handles an app that crashed")),
+        "Finder": ("Finder", L("Files and desktop")),
+        "Dock": ("Dock", L("The Dock and Mission Control")),
+        "SystemUIServer": ("Menu bar", L("Icons in the menu bar")),
+        "ControlCenter": ("Control Center", L("Control Center and menu bar")),
+        "NotificationCenter": ("Notification Center", L("Notifications and widgets")),
     ]
 }

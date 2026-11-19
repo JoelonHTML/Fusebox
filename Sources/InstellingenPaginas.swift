@@ -46,7 +46,7 @@ struct TablePreview: View {
         let t = mode.apply(Theme.resolved(themeID), system: system)
         Grid(alignment: .trailing, horizontalSpacing: 10, verticalSpacing: 4) {
             GridRow {
-                Text("Name" + (sorted == "Name" ? " ▾" : "")).foregroundStyle(sorted == "Name" ? t.text : t.secondary)
+                Text(L("Name") + (sorted == L("Name") ? " ▾" : "")).foregroundStyle(sorted == L("Name") ? t.text : t.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                 ForEach(columns.indices, id: \.self) { i in
                     Text(columns[i].title + (columns[i].title == sorted ? " ▾" : ""))
@@ -70,7 +70,7 @@ struct TablePreview: View {
     }
 }
 
-private func caption(_ s: String) -> some View { Text(s).font(.caption).foregroundStyle(.secondary) }
+private func caption(_ s: LocalizedStringKey) -> some View { Text(s).font(.caption).foregroundStyle(.secondary) }
 
 // MARK: - Processes
 
@@ -82,8 +82,8 @@ struct ProcessesSettings: View {
     @AppStorage("netPerApp") private var netPerApp = false
 
     /// id, titel in de kop, voorbeeldwaarde.
-    private static let columns = [("disk", "Disk", "1.2 MB/s"), ("net", "Network", "↓ 80 KB/s"), ("energy", "Energy", "1.3 W"),
-                                  ("gpu", "GPU", "4%"), ("threads", "Threads", "32"), ("running", "Running", "2 h")]
+    private static let columns = [("disk", L("Disk"), "1.2 MB/s"), ("net", L("Network"), "↓ 80 KB/s"), ("energy", L("Energy"), "1.3 W"),
+                                  ("gpu", "GPU", "4%"), ("threads", L("Threads"), "32"), ("running", L("Running"), "2 h")]
 
     var body: some View {
         Section("When you open Processes") {
@@ -99,7 +99,7 @@ struct ProcessesSettings: View {
             Chips(items: Self.columns.map { c in (c.1, c.0 == "net" ? $netPerApp : shown($hide, c.0)) })
             TablePreview(name: "Safari", columns: [("CPU", "12%"), ("RAM", "1.4 GB")]
                          + Self.columns.filter { $0.0 == "net" ? netPerApp : !member($hide, $0.0).wrappedValue }.map { ($0.1, $0.2) },
-                         sorted: ["cpu": "CPU", "ram": "RAM", "energy": "Energy", "gpu": "GPU", "name": "Name"][sort])
+                         sorted: ["cpu": "CPU", "ram": "RAM", "energy": L("Energy"), "gpu": "GPU", "name": L("Name")][sort])
         } header: {
             Text("Columns")
         } footer: {
@@ -126,10 +126,10 @@ struct CheckupSettings: View {
 
     /// Zelfde ids als ReportSections.Part in Analyse.swift (+ startup/disk uit Opstart.swift, drain/sleep/awake/health uit Accu.swift).
     /// Volgorde zoals op de pagina: samenvatting, Performance, Battery & power, Stability, Startup & storage, History.
-    private static let parts = [("score", "Health score"), ("tips", "Tips"),
-                                ("tops", "Top apps"), ("peaks", "Peaks"), ("busy", "Busy moments"), ("background", "macOS background"),
-                                ("battery", "Battery"), ("health", "Battery health"), ("drain", "Battery drain"), ("sleep", "Sleep drain"), ("awake", "Keeps awake"),
-                                ("crashes", "Crashes"), ("startup", "Startup items"), ("disk", "Disk space"), ("runtime", "Running time"), ("log", "Log")]
+    private static let parts = [("score", L("Health score")), ("tips", L("Tips")),
+                                ("tops", L("Top apps")), ("peaks", L("Peaks")), ("busy", L("Busy moments")), ("background", L("macOS background")),
+                                ("battery", L("Battery")), ("health", L("Battery health")), ("drain", L("Battery drain")), ("sleep", L("Sleep drain")), ("awake", L("Keeps awake")),
+                                ("crashes", L("Crashes")), ("startup", L("Startup items")), ("disk", L("Disk space")), ("runtime", L("Running time")), ("log", L("Log"))]
 
     var body: some View {
         Section("When you open Checkup") {
@@ -165,7 +165,7 @@ struct NetworkSettings: View {
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
     @AppStorage("settingsTab") private var tab: SettingsTab = .profile
 
-    private static let columns = [("mac", "MAC", "B8:27:EB:01:02:03"), ("vendor", "Vendor", "Raspberry Pi"), ("kind", "Type", "Computer")]
+    private static let columns = [("mac", "MAC", "B8:27:EB:01:02:03"), ("vendor", L("Vendor"), "Raspberry Pi"), ("kind", L("Type"), L("Computer"))]
 
     var body: some View {
         Section("Devices") {
@@ -181,7 +181,7 @@ struct NetworkSettings: View {
         }
         Section {
             Chips(items: Self.columns.map { ($0.1, shown($hide, $0.0)) })
-            TablePreview(name: "Living Room", columns: [("IP", "192.168.1.5")]
+            TablePreview(name: L("Living Room"), columns: [("IP", "192.168.1.5")]
                          + Self.columns.filter { !member($hide, $0.0).wrappedValue }.map { ($0.1, $0.2) } + [("ms", "3")])
         } header: {
             Text("Columns")

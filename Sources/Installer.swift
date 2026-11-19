@@ -19,22 +19,22 @@ enum Installer {
             let theirBuild = build(of: installed)
             if theirBuild > myBuild {
                 // De geïnstalleerde is nieuwer: die openen en deze sluiten
-                if ask("A newer Fusebox is already installed",
-                       "This copy (\(version(of: me))) is older than the one in Applications (\(version(of: installed))).",
-                       ok: "Open installed version") {
+                if ask(L("A newer Fusebox is already installed"),
+                       L("This copy (\(version(of: me))) is older than the one in Applications (\(version(of: installed)))."),
+                       ok: L("Open installed version")) {
                     open(installed)
                 }
                 return
             }
             if theirBuild == myBuild { open(installed); return }   // zelfde versie: gewoon de geïnstalleerde openen
-            guard ask("Update Fusebox?",
-                      "Replace Fusebox \(version(of: installed)) in Applications with this version (\(version(of: me))). Your settings and history stay.",
-                      ok: "Update") else { return }
+            guard ask(L("Update Fusebox?"),
+                      L("Replace Fusebox \(version(of: installed)) in Applications with this version (\(version(of: me))). Your settings and history stay."),
+                      ok: L("Update")) else { return }
             // Draaiende oude versie netjes sluiten (zelfde bundle-id, ander proces)
             for app in NSRunningApplication.runningApplications(withBundleIdentifier: Bundle.main.bundleIdentifier ?? "")
             where app.processIdentifier != ProcessInfo.processInfo.processIdentifier { app.terminate() }
             guard waitForOtherInstancesToQuit() else {
-                fail("The old Fusebox is still running. Quit it (⌘Q) and open this one again.")
+                fail(L("The old Fusebox is still running. Quit it (⌘Q) and open this one again."))
                 return
             }
             do {
@@ -43,15 +43,15 @@ enum Installer {
                 clearQuarantine(installed)
                 open(installed)
             } catch {
-                fail("Couldn't update Fusebox: \(error.localizedDescription). Drag Fusebox into Applications yourself.")
+                fail(L("Couldn't update Fusebox: \(error.localizedDescription). Drag Fusebox into Applications yourself."))
             }
             return
         }
 
         // Nog niet geïnstalleerd: aanbieden om naar Programma's te verplaatsen
-        guard ask("Move Fusebox to Applications?",
-                  "Then it's easy to find, and future updates replace it automatically.",
-                  ok: "Move to Applications") else { return }
+        guard ask(L("Move Fusebox to Applications?"),
+                  L("Then it's easy to find, and future updates replace it automatically."),
+                  ok: L("Move to Applications")) else { return }
         let target = applicationsDir().appendingPathComponent(me.lastPathComponent)
         do {
             try fm.copyItem(at: me, to: target)
@@ -59,7 +59,7 @@ enum Installer {
             if !me.path.contains("/AppTranslocation/") { try? fm.trashItem(at: me, resultingItemURL: nil) }   // origineel opruimen als dat kan
             open(target)
         } catch {
-            fail("Couldn't move Fusebox: \(error.localizedDescription). Drag it into Applications yourself.")
+            fail(L("Couldn't move Fusebox: \(error.localizedDescription). Drag it into Applications yourself."))
         }
     }
 
@@ -146,7 +146,7 @@ enum Installer {
         a.messageText = title
         a.informativeText = text
         a.addButton(withTitle: ok)
-        a.addButton(withTitle: "Not now")
+        a.addButton(withTitle: L("Not now"))
         NSApp.activate()
         return a.runModal() == .alertFirstButtonReturn
     }

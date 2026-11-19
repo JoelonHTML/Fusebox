@@ -30,6 +30,7 @@ mkdir -p "$APP/Contents/MacOS" "$APP/Contents/Resources"
 iconutil -c icns "$TMP/AppIcon.iconset" -o "$APP/Contents/Resources/AppIcon.icns"
 cp "$TMP/Fusebox" "$APP/Contents/MacOS/Fusebox"
 cp "$TMP/fusebox-fand" "$APP/Contents/Resources/fusebox-fand"
+for l in Resources/*.lproj; do rm -rf "$APP/Contents/Resources/${l:t}" && cp -R "$l" "$APP/Contents/Resources/"; done   # vertalingen (nl, de, fr, es)
 cp Resources/oui.tsv "$APP/Contents/Resources/oui.tsv"   # officiële IEEE-fabrikantenlijst (MAC → merk) voor de LAN-scanner
 rm -rf "$APP/Contents/Resources/Fonts" && cp -R Resources/Fonts "$APP/Contents/Resources/Fonts"   # Montserrat (OFL) en Ubuntu (UFL), met licenties
 # Ondertekenen met het vaste Fusebox-certificaat (eigen sleutelhanger, wachtwoord in de inlog-sleutelhanger):
@@ -49,7 +50,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
 <plist version="1.0"><dict>
   <key>CFBundleName</key><string>Fusebox</string>
   <key>CFBundleDevelopmentRegion</key><string>en</string>
-  <key>CFBundleLocalizations</key><array><string>en</string></array>
+  <key>CFBundleLocalizations</key><array><string>en</string><string>nl</string><string>de</string><string>fr</string><string>es</string></array>
   <key>CFBundleDisplayName</key><string>Fusebox</string>
   <key>CFBundleIdentifier</key><string>local.meterkast</string>
   <key>CFBundleExecutable</key><string>Fusebox</string>

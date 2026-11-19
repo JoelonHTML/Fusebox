@@ -73,7 +73,7 @@ struct PortInfo: Identifiable, Hashable {
     var liquid = false, overcurrent = 0
     var raw: [RawGroup] = []
     var isMagSafe: Bool { kind.hasPrefix("MagSafe") }
-    var title: String { isMagSafe ? kind : "\(kind) port \(number)" }
+    var title: String { isMagSafe ? kind : L("\(kind) port \(number)") }
 }
 
 struct USBDev: Identifiable, Hashable {
@@ -289,9 +289,9 @@ enum Ports {
 
     static func cableSpeedText(_ s: Int) -> String {
         switch s {
-        case 0: "USB 2.0 only (480 Mbit/s)"
+        case 0: L("USB 2.0 only (480 Mbit/s)")
         case 1: "USB 3.2 Gen 1 (5 Gbit/s)"
-        case 2: "USB 3.2 Gen 2 (10 Gbit/s; 20 Gbit/s for Thunderbolt)"
+        case 2: L("USB 3.2 Gen 2 (10 Gbit/s; 20 Gbit/s for Thunderbolt)")
         case 3: "USB4 / Thunderbolt (40 Gbit/s)"
         default: "USB4 Gen 4 (80 Gbit/s)"
         }
@@ -300,7 +300,7 @@ enum Ports {
     static func cableText(_ c: Cable, activeFlag: Bool, optical: Bool) -> String {
         var kind = c.type.replacingOccurrences(of: " Cable", with: "")
         if optical { kind = "Optical" } else if activeFlag && !c.active { kind = "Active" }
-        var parts = ["\(kind) USB-C cable"]
+        var parts = [L("\(kind) USB-C cable")]
         if let a = c.mA { parts.append("\(amp(a))" + (c.watts.map { " / \($0) W" } ?? "") + (c.epr ? " (EPR)" : "")) }
         if let s = c.speed { parts.append(cableSpeedText(s)) }
         parts.append(String(format: "e-marker %04X:%04X", c.vid, c.pid))
@@ -313,12 +313,12 @@ enum Ports {
         case "USB2": s = "USB 2.0"
         case "USB3": s = l.generation ?? "USB 3"
         case "CIO": s = "Thunderbolt / USB4"
-        case "DisplayPort": s = "DisplayPort (video)"
+        case "DisplayPort": s = L("DisplayPort (video)")
         default: s = l.generation ?? l.type
         }
-        if l.type == "CIO", let g = tb?.gbps { s += " at \(g) Gbit/s" + (tb!.width > 1 ? " (\(tb!.width) lanes)" : "") }
-        else if let r = l.rate { s += " at " + r.replacingOccurrences(of: "Gbps", with: "Gbit/s").replacingOccurrences(of: "Mbps", with: "Mbit/s") }
-        return s + (l.tunneled ? " (tunneled)" : "")
+        if l.type == "CIO", let g = tb?.gbps { s += L(" at \(g) Gbit/s") + (tb!.width > 1 ? L(" (\(tb!.width) lanes)") : "") }
+        else if let r = l.rate { s += L(" at ") + r.replacingOccurrences(of: "Gbps", with: "Gbit/s").replacingOccurrences(of: "Mbps", with: "Mbit/s") }
+        return s + (l.tunneled ? L(" (tunneled)") : "")
     }
 
     static func supportedText(_ s: [String]) -> String? {
@@ -327,7 +327,7 @@ enum Ports {
     }
 
     static func transportName(_ t: String) -> String {
-        ["CC": "CC (power talk)", "USB2": "USB 2", "USB3": "USB 3", "CIO": "Thunderbolt/USB4", "DisplayPort": "DisplayPort"][t] ?? t
+        ["CC": L("CC (power talk)"), "USB2": "USB 2", "USB3": "USB 3", "CIO": "Thunderbolt/USB4", "DisplayPort": "DisplayPort"][t] ?? t
     }
 
     /// Naam van een USB-snelheid zoals mensen hem kennen.
@@ -369,23 +369,23 @@ enum Ports {
 
     /// Wat zit erin, in gewone woorden, met het laadvermogen erachter ("Hub or dock with 4 devices · 90 W charger").
     static func headline(_ p: PortInfo, roots: [USBDev], tb: [TBDev]) -> String {
-        guard p.connected else { return "Nothing connected" }
+        guard p.connected else { return L("Nothing connected") }
         let what: String?
         if !tb.isEmpty { what = tb.map { $0.vendor.isEmpty ? $0.name : "\($0.name) (\($0.vendor))" }.joined(separator: ", ") }
         else if !roots.isEmpty {
             let n = devices(roots).count
-            what = roots.contains(where: \.hub) ? (n == 0 ? "USB hub" : "Hub or dock with \(n) device\(n == 1 ? "" : "s")")
+            what = roots.contains(where: \.hub) ? (n == 0 ? L("USB hub") : n == 1 ? L("Hub or dock with 1 device") : L("Hub or dock with \(n) devices"))
                 : "\(roots[0].name) (\(roots[0].maker))"
         }
-        else if p.links.contains(where: { $0.type == "DisplayPort" }) { what = "Display (DisplayPort)" }
+        else if p.links.contains(where: { $0.type == "DisplayPort" }) { what = L("Display (DisplayPort)") }
         else if let k = p.partnerKind, p.charger == nil || k != "charger" { what = "USB-C \(k)" }
         else { what = nil }
-        let charger = p.charger.map { "\(trim($0.maxW)) W charger" }
+        let charger = p.charger.map { L("\(trim($0.maxW)) W charger") }
         switch (what, charger) {
         case let (w?, c?): return "\(w) · \(c)"
         case let (w?, nil): return w
         case let (nil, c?): return (p.isMagSafe ? "MagSafe " : "USB-C ") + c
-        default: return "Something is connected"
+        default: return L("Something is connected")
         }
     }
 
@@ -393,25 +393,25 @@ enum Ports {
     static func dataLine(_ p: PortInfo, tb: TBLink?) -> String? {
         guard p.connected else { return nil }
         let types = Set(p.links.map(\.type))
-        let label = types.contains("CIO") ? "Thunderbolt/USB4 data active"
-            : types.contains("USB3") ? "SuperSpeed data active"
-            : types.contains("USB2") ? "USB 2 data active"
-            : types.contains("DisplayPort") ? "Video only (DisplayPort)" : "No data connection (power only)"
+        let label = types.contains("CIO") ? L("Thunderbolt/USB4 data active")
+            : types.contains("USB3") ? L("SuperSpeed data active")
+            : types.contains("USB2") ? L("USB 2 data active")
+            : types.contains("DisplayPort") ? L("Video only (DisplayPort)") : L("No data connection (power only)")
         let best = p.links.first { $0.type == "CIO" } ?? p.links.first { $0.type == "USB3" } ?? p.links.first
         return [label, best.map { linkText($0, tb: tb) }].compactMap { $0 }.joined(separator: " · ")
     }
 
     static func chargerText(_ c: Charger) -> String {
-        var s = "Charger up to \(trim(c.maxW)) W"
-        if let w = c.winning { s += " · agreed on \(w.text) (\(trim(w.watts)) W)" }
+        var s = L("Charger up to \(trim(c.maxW)) W")
+        if let w = c.winning { s += L(" · agreed on \(w.text) (\(trim(w.watts)) W)") }
         return s
     }
 
     static func nowText(_ n: PowerNow) -> String? {
         guard let mW = n.mW, mW > 0 else { return nil }
-        var s = "Drawing \(trim(Double(mW) / 1000)) W now"
+        var s = L("Drawing \(trim(Double(mW) / 1000)) W now")
         if let v = n.mV, let a = n.mA { s += " (\(volt(v)) × \(amp(a)))" }
-        s += n.full ? " · battery full" : n.charging ? " · battery charging" : " · battery not charging"
+        s += n.full ? L(" · battery full") : n.charging ? L(" · battery charging") : L(" · battery not charging")
         return s
     }
 
@@ -427,40 +427,40 @@ enum Ports {
     static func notes(_ p: PortInfo, roots: [USBDev], tb: TBLink?) -> [PortNote] {
         var out: [PortNote] = []
         func add(_ t: String, _ l: PortNote.Level, _ topic: PortNote.Topic = .port) { out.append(PortNote(text: t, level: l, topic: topic)) }
-        if p.liquid { add("Liquid or dirt detected in this port. Unplug and let it dry.", .warn) }
+        if p.liquid { add(L("Liquid or dirt detected in this port. Unplug and let it dry."), .warn) }
         if !p.unauthorized.isEmpty {
-            add("macOS is holding back \(p.unauthorized.map(transportName).joined(separator: ", ")) until you allow this accessory.", .warn)
+            add(L("macOS is holding back \(p.unauthorized.map(transportName).joined(separator: ", ")) until you allow this accessory."), .warn)
         }
-        if p.overcurrent > 0 { add("Over-current protection cut power on this port \(p.overcurrent)× (a device drew too much).", .warn) }
+        if p.overcurrent > 0 { add(L("Over-current protection cut power on this port \(p.overcurrent)× (a device drew too much)."), .warn) }
         guard p.connected else { return out }
         let types = Set(p.links.map(\.type)), c = p.cable
         // Laden
         if let w = p.charger?.winning {
             let capped = !p.isMagSafe && w.mA >= 3000 && w.mV >= 20000 && (c?.mA ?? 3000) <= 3000
             if capped {
-                add(c == nil ? "No e-marker in this cable, so charging stops at 60 W (3 A). Above 60 W needs a 5 A cable (and a charger that can)."
-                             : "This cable is rated 3 A, so charging stops at 60 W. Above 60 W needs a 5 A cable (and a charger that can).", .info, .cable)
+                add(c == nil ? L("No e-marker in this cable, so charging stops at 60 W (3 A). Above 60 W needs a 5 A cable (and a charger that can).")
+                             : L("This cable is rated 3 A, so charging stops at 60 W. Above 60 W needs a 5 A cable (and a charger that can)."), .info, .cable)
             } else if let cw = c?.watts, Double(cw) < w.watts {
-                add("The cable is rated \(cw) W but the charger agreed on \(trim(w.watts)) W. Use a cable rated for at least that.", .warn, .cable)
+                add(L("The cable is rated \(cw) W but the charger agreed on \(trim(w.watts)) W. Use a cable rated for at least that."), .warn, .cable)
             } else {
-                add("Charging OK: charger\(c == nil ? "" : " and cable") agree on up to \(trim(w.watts)) W; the Mac takes what it needs.", .good, .power)
+                add(c == nil ? L("Charging OK: charger agree on up to \(trim(w.watts)) W; the Mac takes what it needs.") : L("Charging OK: charger and cable agree on up to \(trim(w.watts)) W; the Mac takes what it needs."), .good, .power)
             }
         }
         // Data
         let measured = roots.compactMap(\.bps).max() ?? 0
         if let s = c?.speed, measured > cableMax(s, thunderbolt: false) * 1.01, !types.contains("CIO") {
-            add("The cable's e-marker says up to \(speedText(cableMax(s, thunderbolt: false))), but the link runs at \(speedText(measured)). One of the two is wrong (e-markers are often mislabelled).", .info, .cable)
+            add(L("The cable's e-marker says up to \(speedText(cableMax(s, thunderbolt: false))), but the link runs at \(speedText(measured)). One of the two is wrong (e-markers are often mislabelled)."), .info, .cable)
         }
         if types.contains("USB2"), types.isDisjoint(with: ["USB3", "CIO"]), measured >= 480e6 {
-            if c?.speed == 0 { add("This cable is USB 2 only, so data runs at 480 Mbit/s. Use a USB 3 or Thunderbolt cable if the device can go faster.", .warn, .cable) }
-            else { add("Data runs at USB 2 speed (480 Mbit/s). If this device can go faster, try a USB 3 or Thunderbolt cable.", .info, .data) }
+            if c?.speed == 0 { add(L("This cable is USB 2 only, so data runs at 480 Mbit/s. Use a USB 3 or Thunderbolt cable if the device can go faster."), .warn, .cable) }
+            else { add(L("Data runs at USB 2 speed (480 Mbit/s). If this device can go faster, try a USB 3 or Thunderbolt cable."), .info, .data) }
         }
         if types.contains("CIO"), let s = c?.speed, s <= 2 {
-            add("This cable holds Thunderbolt/USB4 back to \(speedText(cableMax(s, thunderbolt: true))) or less. A 40 Gbit/s cable is faster.", .warn, .cable)
+            add(L("This cable holds Thunderbolt/USB4 back to \(speedText(cableMax(s, thunderbolt: true))) or less. A 40 Gbit/s cable is faster."), .warn, .cable)
         }
-        if types.contains("CIO") || types.contains("USB3") { add(types.contains("CIO") ? "Thunderbolt/USB4 link is up." : "Fast data (SuperSpeed) link is up.", .good, .data) }
+        if types.contains("CIO") || types.contains("USB3") { add(types.contains("CIO") ? L("Thunderbolt/USB4 link is up.") : L("Fast data (SuperSpeed) link is up."), .good, .data) }
         if roots.contains(where: \.billboard) || devices(roots).contains(where: \.billboard) {
-            add("Billboard device present: the dock or adapter reports that an extra mode (such as video over USB-C) is not active or not supported on this connection.", .info, .devices)
+            add(L("Billboard device present: the dock or adapter reports that an extra mode (such as video over USB-C) is not active or not supported on this connection."), .info, .devices)
         }
         return out
     }
@@ -583,7 +583,7 @@ enum Ports {
 
 enum Displays {
     static let displayLinkVID = 0x17E9
-    static let displayLinkInfo = "DisplayLink sends the picture compressed over USB, and the Mac's processor does the work. Fine for office work; not for games or video (motion can stutter, some protected video won't play)."
+    static let displayLinkInfo = L("DisplayLink sends the picture compressed over USB, and the Mac's processor does the work. Fine for office work; not for games or video (motion can stutter, some protected video won't play).")
 
     struct Mode: Hashable { var w = 0, h = 0, pw = 0, ph = 0; var hz = 0.0; var native = false }
     struct Framebuffer: Hashable { var vendor = 0, model = 0; var transport: String? }
@@ -595,7 +595,7 @@ enum Displays {
     /// "4K60", "1440p75", anders "3440 × 1440 at 100 Hz".
     static func modeName(_ w: Int, _ h: Int, _ f: Double) -> String {
         let n = ["3840x2160": "4K", "4096x2160": "4K", "5120x2880": "5K", "6016x3384": "6K", "2560x1440": "1440p", "1920x1080": "1080p"]["\(w)x\(h)"]
-        return n.map { "\($0)\(Int(f.rounded()))" } ?? "\(res(w, h)) at \(hz(f))"
+        return n.map { "\($0)\(Int(f.rounded()))" } ?? L("\(res(w, h)) at \(hz(f))")
     }
 
     /// Eigen resolutie (vlag "native", anders de grootste niet-geschaalde) en de hoogste verversing daarop.
@@ -618,32 +618,32 @@ enum Displays {
 
     /// "3840 × 2160 · 27″ · looks like 2560 × 1440"
     static func facts(_ d: DisplayInfo) -> [String] {
-        [res(d.w, d.h), d.inches.map { "\(trim($0))″" }, d.lw > 0 && (d.lw, d.lh) != (d.w, d.h) ? "looks like \(res(d.lw, d.lh))" : nil].compactMap { $0 }
+        [res(d.w, d.h), d.inches.map { "\(trim($0))″" }, d.lw > 0 && (d.lw, d.lh) != (d.w, d.h) ? L("looks like \(res(d.lw, d.lh))") : nil].compactMap { $0 }
     }
 
     /// Alleen als het echt zo is: lagere verversing of minder pixels dan het scherm kan.
     static func warning(_ d: DisplayInfo) -> String? {
         if d.hz > 0, d.maxHz > d.hz + 1 {
-            return "Runs at \(hz(d.hz)) but can do \(hz(d.maxHz)). The cable, adapter or port may limit \(modeName(d.maxW, d.maxH, d.maxHz))."
+            return L("Runs at \(hz(d.hz)) but can do \(hz(d.maxHz)). The cable, adapter or port may limit \(modeName(d.maxW, d.maxH, d.maxHz)).")
         }
         if d.w > 0, d.maxW * d.maxH > d.w * d.h {
-            return "Runs at \(res(d.w, d.h)) pixels but the display has \(res(d.maxW, d.maxH)), so text looks soft. Check System Settings › Displays, the cable or the port."
+            return L("Runs at \(res(d.w, d.h)) pixels but the display has \(res(d.maxW, d.maxH)), so text looks soft. Check System Settings › Displays, the cable or the port.")
         }
         return nil
     }
 
     static func linkText(_ d: DisplayInfo) -> String {
         switch d.link {
-        case .builtIn: "Built in"
-        case .displayLink: "DisplayLink (compressed video over USB)"
-        case .native: d.transport.map { ($0 == "DP" ? "DisplayPort" : $0) + " (straight from the Mac's graphics)" } ?? "DisplayPort or HDMI (straight from the Mac's graphics)"
+        case .builtIn: L("Built in")
+        case .displayLink: L("DisplayLink (compressed video over USB)")
+        case .native: d.transport.map { L("\($0 == "DP" ? "DisplayPort" : $0) (straight from the Mac's graphics)") } ?? L("DisplayPort or HDMI (straight from the Mac's graphics)")
         }
     }
 
     /// Eén regel voor de tooltip in de kop: "Built-in: 2880 × 1864 · 60 Hz".
     static func line(_ d: DisplayInfo) -> String {
         let (w, h) = d.link == .builtIn && d.maxW > 0 ? (d.maxW, d.maxH) : (d.w, d.h)
-        return (d.link == .builtIn ? "Built-in" : d.name) + ": " + res(w, h) + (d.hz > 0 ? " · " + hz(d.hz) : "")
+        return (d.link == .builtIn ? L("Built-in") : d.name) + ": " + res(w, h) + (d.hz > 0 ? " · " + hz(d.hz) : "")
     }
 
     static func selfTest() {
@@ -724,7 +724,7 @@ enum PortReader {
         defer { IOObjectRelease(e) }
         guard let depth = Ports.int(prop(e, "Depth")), depth > 0 else { return nil }
         let n = node(e, kIOServicePlane, depth: 0)
-        var d = TBDev(id: n.id, name: Ports.str(n.props["Device Model Name"]) ?? "Thunderbolt device",
+        var d = TBDev(id: n.id, name: Ports.str(n.props["Device Model Name"]) ?? L("Thunderbolt device"),
                       vendor: Ports.str(n.props["Device Vendor Name"]) ?? "", depth: depth, raw: Ports.rawLines(n.props.filter { $0.key != "DROM" }))
         // Poort: omhoog tot een Thunderbolt-poort met "Socket ID"
         var cur = e
@@ -954,8 +954,8 @@ struct AudioJack: Hashable {
     /// Wat er op de regel staat: wat er in zit, en of het geluid er nu heen gaat.
     var facts: [String] {
         guard plugged else { return [] }
-        return [mic ? "Headset with microphone" : "Headphones or speakers",
-                inUse ? "sound plays here" : "not used for sound",
+        return [mic ? L("Headset with microphone") : L("Headphones or speakers"),
+                inUse ? L("sound plays here") : L("not used for sound"),
                 rateKHz.map { "\(trim($0)) kHz" }].compactMap { $0 }
     }
 

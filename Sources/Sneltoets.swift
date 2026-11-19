@@ -68,7 +68,7 @@ struct HotkeyRecorder: View {
 
     var body: some View {
         LabeledContent {
-            Button(recording ? "Press keys…" : code < 0 ? "Off" : label) { recording ? stop() : start() }
+            Button(recording ? L("Press keys…") : code < 0 ? L("Off") : label) { recording ? stop() : start() }
                 .monospaced()
         } label: {
             Text("Shortcut to show or hide Fusebox")

@@ -150,7 +150,7 @@ struct OverviewView: View {
         guard t >= .l else { return r }
         var r = r
         if let p = meter.peaks.peaks(m, since: Calendar.current.startOfDay(for: Date())).last {
-            r.facts.insert(Fact(label: "Last peak", value: Peaks.clock.string(from: p.at) + (p.app.map { " · \($0)" } ?? "")), at: min(1, r.facts.count))
+            r.facts.insert(Fact(label: L("Last peak"), value: Peaks.clock.string(from: p.at) + (p.app.map { " · \($0)" } ?? "")), at: min(1, r.facts.count))
         }
         if m == .battery, let f = WirelessWatcher.lowestFact() { r.facts.append(f) }
         return r
@@ -577,9 +577,9 @@ enum NumberStyle: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .roll: "Roll"
-        case .fade: "Fade"
-        case .instant: "Instant"
+        case .roll: L("Roll")
+        case .fade: L("Fade")
+        case .instant: L("Instant")
         }
     }
 }

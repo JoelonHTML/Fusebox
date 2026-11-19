@@ -25,9 +25,9 @@ enum ChargeLimit {
         guard d.bool(forKey: "chargeLimitOn"), s.battery != nil, ChargeController.supported != false else { return nil }
         let l = d.integer(forKey: "chargeLimit")
         switch ChargeController.now {
-        case .limit: return Fact(label: "Charge limit", value: "\(l)% · holding")
-        case .hot: return Fact(label: "Charging", value: "paused · battery warm")
-        case nil: return Fact(label: "Charge limit", value: "\(l)%")
+        case .limit: return Fact(label: L("Charge limit"), value: L("\(l)% · holding"))
+        case .hot: return Fact(label: L("Charging"), value: L("paused · battery warm"))
+        case nil: return Fact(label: L("Charge limit"), value: "\(l)%")
         }
     }
 
@@ -152,8 +152,8 @@ struct ChargeSettings: View {
                 Text("Charging starts again \(Int(ChargeLimit.band))% below the limit. When Fusebox quits or you turn this off, charging goes back to normal.")
                     .foregroundStyle(.secondary)
                 if let b = s.battery {
-                    Text("Now \(pct(b))" + (s.batteryTemp.map { " · \(Int($0.rounded())) °C" } ?? "")
-                         + (ChargeController.now == .limit ? " · holding" : ChargeController.now == .hot ? " · paused (warm)" : ""))
+                    Text(L("Now \(pct(b))") + (s.batteryTemp.map { " · \(Int($0.rounded())) °C" } ?? "")
+                         + (ChargeController.now == .limit ? L(" · holding") : ChargeController.now == .hot ? L(" · paused (warm)") : ""))
                         .monospacedDigit().foregroundStyle(.secondary)
                 }
             }

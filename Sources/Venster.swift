@@ -8,11 +8,11 @@ enum Page: String, CaseIterable, Identifiable {
     /// Tekst voor de gebruiker; rawValue is een vaste korte id (veilig om op te slaan en te delen).
     var title: String {
         switch self {
-        case .overview: "Live"
-        case .programs: "Processes"
-        case .analysis: "Checkup"
-        case .network: "Network"
-        case .ports: "Docked"
+        case .overview: L("Live")
+        case .programs: L("Processes")
+        case .analysis: L("Checkup")
+        case .network: L("Network")
+        case .ports: L("Docked")
         }
     }
     var icon: String {
@@ -196,7 +196,7 @@ struct RootView: View {
                 }
             }
             SettingsLink {
-                tabLabel("Settings", "gearshape").foregroundStyle(theme.secondary).contentShape(.rect)
+                tabLabel(L("Settings"), "gearshape").foregroundStyle(theme.secondary).contentShape(.rect)
                     // Low impact aan: klein blaadje bij het tandwiel (geen extra knop: de werkbalk is precies breed genoeg)
                     .overlay(alignment: .topTrailing) {
                         if low { Image(systemName: "leaf.fill").font(.system(size: 8)).foregroundStyle(theme.good).padding(3) }

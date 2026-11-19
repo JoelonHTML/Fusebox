@@ -93,8 +93,8 @@ struct NetworkView: View {
                     .progressViewStyle(.linear).frame(width: width >= .kind ? 70 : 36)
             }
             Button { draft = rangeText ?? ""; rangeOpen.toggle() } label: {
-                if width >= .kind { NetPill(title: rangeText ?? "This network", icon: "scope") }
-                else { NetPill(title: "Range", icon: "scope").labelStyle(.iconOnly) }
+                if width >= .kind { NetPill(title: rangeText ?? L("This network"), icon: "scope") }
+                else { NetPill(title: L("Range"), icon: "scope").labelStyle(.iconOnly) }
             }
             .buttonStyle(.plain)
             .help("Scan range: \(rangeText ?? "this network (found automatically)"). Click to type a range.")
@@ -110,7 +110,7 @@ struct NetworkView: View {
             .help(notifyNew ? "Notifying you when a new device shows up (while Fusebox scans). Click to turn off."
                   : "Get a notification when a new device shows up on your network (while this page scans)")
             Button { if scanner.scanStart == nil { scanner.scan() } else { scanner.stop() } } label: {
-                NetPill(title: scanner.scanStart == nil ? "Scan" : "Stop", icon: scanner.scanStart == nil ? "arrow.clockwise" : "stop.fill")
+                NetPill(title: scanner.scanStart == nil ? L("Scan") : L("Stop"), icon: scanner.scanStart == nil ? "arrow.clockwise" : "stop.fill")
             }
             .buttonStyle(.plain).help(scanner.scanStart == nil ? "Look for devices in the scan range" : "Stop scanning (keeps what was found so far)")
         }
@@ -184,9 +184,9 @@ struct NetworkView: View {
     }
 
     private func rangeNote(_ r: ClosedRange<UInt32>) -> String {
-        let n = r.count == 1 ? "1 address" : "\(r.count) addresses"
+        let n = r.count == 1 ? L("1 address") : L("\(r.count) addresses")
         guard let info = scanner.info, !(info.isLocal(r.lowerBound) && info.isLocal(r.upperBound)) else { return n }
-        return n + ". Outside your own network: Fusebox can find devices and their names, but not hardware addresses or makers (routers don't pass those on)."
+        return n + L(". Outside your own network: Fusebox can find devices and their names, but not hardware addresses or makers (routers don't pass those on).")
     }
 
     /// nil = terug naar dit netwerk. Geldig bereik bovenaan de recente lijst; daarna meteen scannen.
@@ -204,7 +204,7 @@ struct NetworkView: View {
 
     private func countText(_ all: [NetDevice]) -> String {
         let on = all.filter(\.online).count, new = all.filter(\.isNew).count, off = all.count - on
-        return "\(on) online" + (new > 0 ? " · \(new) new" : "") + (off > 0 ? " · \(off) offline" : "")
+        return L("\(on) online") + (new > 0 ? L(" · \(new) new") : "") + (off > 0 ? L(" · \(off) offline") : "")
     }
 
     private var blockedHint: some View {
@@ -225,11 +225,11 @@ struct NetworkView: View {
 
     private var columnHeader: some View {
         HStack(spacing: 8) {
-            head("Name", .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
+            head(L("Name"), .name).frame(maxWidth: .infinity, alignment: .leading).padding(.leading, 26)
             head("IP", .ip).frame(width: Self.ipW, alignment: .leading)
             if width >= .mac && !hide.contains("mac") { head("MAC", .mac).frame(width: Self.macW, alignment: .leading).help("Hardware address") }
-            if width >= .vendor && !hide.contains("vendor") { head("Vendor", .vendor).frame(width: Self.vendorW, alignment: .leading) }
-            if width >= .kind && !hide.contains("kind") { head("Type", .kind).frame(width: Self.kindW, alignment: .leading) }
+            if width >= .vendor && !hide.contains("vendor") { head(L("Vendor"), .vendor).frame(width: Self.vendorW, alignment: .leading) }
+            if width >= .kind && !hide.contains("kind") { head(L("Type"), .kind).frame(width: Self.kindW, alignment: .leading) }
             head("ms", .ms).frame(width: Self.msW, alignment: .trailing).help("Reply time in milliseconds")
         }
     }
@@ -276,7 +276,9 @@ enum NetWidth: Int, Comparable {
 private enum NetFilter: String, CaseIterable, Identifiable {
     case all, online, new, offline
     var id: String { rawValue }
-    var title: String { rawValue.prefix(1).uppercased() + rawValue.dropFirst() }
+    var title: String {
+        switch self { case .all: L("All"); case .online: L("Online"); case .new: L("New"); case .offline: L("Offline") }
+    }
     func matches(_ d: NetDevice) -> Bool {
         switch self {
         case .all: true
@@ -290,7 +292,7 @@ private enum NetFilter: String, CaseIterable, Identifiable {
 func msText(_ ms: Double?) -> String { ms.map { $0 < 1 ? "<1" : "\(Int($0.rounded()))" } ?? "–" }
 func agoText(_ d: Date) -> String {
     let s = max(0, -d.timeIntervalSinceNow)
-    return s < 3600 ? "\(max(1, Int(s / 60))) min ago" : s < 86_400 ? "\(Int(s / 3600)) h ago" : "\(Int(s / 86_400)) d ago"
+    return s < 3600 ? L("\(max(1, Int(s / 60))) min ago") : s < 86_400 ? L("\(Int(s / 3600)) h ago") : L("\(Int(s / 86_400)) d ago")
 }
 
 /// Knop-label in de stijl van de pagina (accentkleur, licht vlak).
@@ -352,7 +354,7 @@ private struct NetRow: View {
             Image(systemName: device.kind.icon).font(.system(size: 12)).frame(width: 18).foregroundStyle(theme.onRow(true))
             HStack(spacing: 5) {
                 Text(device.name).font(theme.label(12))
-                if let tag = device.isMe ? "This Mac" : device.isRouter ? "Router" : nil {
+                if let tag = device.isMe ? L("This Mac") : device.isRouter ? L("Router") : nil {
                     Text(tag).font(theme.label(10)).foregroundStyle(theme.onRow(true))
                 }
                 if device.isNew {
@@ -373,11 +375,11 @@ private struct NetRow: View {
                     .help(device.remote && device.mac == nil ? NetDevice.remoteHelp : "")
             }
             if width >= .vendor && !hide.contains("vendor") {
-                Text(device.vendor).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.vendorW, alignment: .leading)
+                Text(device.vendorTitle).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.vendorW, alignment: .leading)
                     .help(device.remote && device.mac == nil ? NetDevice.remoteHelp : "")
             }
             if width >= .kind && !hide.contains("kind") { Text(device.kind.title).font(theme.label(11)).lineLimit(1).frame(width: NetworkView.kindW, alignment: .leading) }
-            Text(device.online ? msText(device.ms) : "off")
+            Text(device.online ? msText(device.ms) : L("off"))
                 .foregroundStyle((device.loss ?? 0) > 0 && theme.rowStyle != .blocks ? theme.warn : theme.onRow())
                 .frame(width: NetworkView.msW, alignment: .trailing)
                 .help((device.loss ?? 0) > 0 ? "Some pings got no answer" : device.viaTCP ? "Measured with a TCP connection (no ping answer)" : "")
@@ -387,34 +389,34 @@ private struct NetRow: View {
     private var details: some View {
         VStack(alignment: .leading, spacing: 5) {
             if let first = device.names.first {
-                line("tag", "Name from \(first.source.lowercased() == "your name" ? "you" : first.source)"
-                     + (device.names.count > 1 ? " · also: " + device.names.dropFirst().map { "\($0.name) (\($0.source))" }.joined(separator: ", ") : ""))
+                line("tag", (first.source == "Your name" ? L("Name from you") : L("Name from \(Self.sourceTitle(first.source))"))
+                     + (device.names.count > 1 ? L(" · also: ") + device.names.dropFirst().map { "\($0.name) (\(Self.sourceTitle($0.source)))" }.joined(separator: ", ") : ""))
             } else {
-                line("tag", "No name found; this is a guess from the maker")
+                line("tag", L("No name found; this is a guess from the maker"))
             }
-            if device.ip != 0 { line("network", (device.online ? "IP address " : "Last IP address ") + ipString(device.ip)) }
+            if device.ip != 0 { line("network", device.online ? L("IP address \(ipString(device.ip))") : L("Last IP address \(ipString(device.ip))")) }
             if device.remote, device.mac == nil {
-                line("barcode", "No hardware address or maker: this address is outside your own network, and routers don't pass those on")
+                line("barcode", L("No hardware address or maker: this address is outside your own network, and routers don't pass those on"))
             } else {
-                line("barcode", device.mac.map { "Hardware address \(macString($0))" } ?? "Hardware address unknown")
+                line("barcode", device.mac.map { L("Hardware address \(macString($0))") } ?? L("Hardware address unknown"))
                 if let mac = device.mac, NetScanner.isPrivate(mac) {
-                    line("lock", "Private address: a phone or laptop that hides its real address (Wi-Fi privacy). The maker can't be seen.")
+                    line("lock", L("Private address: a phone or laptop that hides its real address (Wi-Fi privacy). The maker can't be seen."))
                 } else {
-                    line("building.2", "Made by \(device.vendor == "–" ? "an unknown maker" : device.vendor)")
+                    line("building.2", device.vendor == "–" ? L("Made by an unknown maker") : L("Made by \(device.vendor)"))
                 }
             }
-            if let m = device.model { line("info.circle", "Model: \(m)") }
-            line(device.kind.icon, "Looks like: \(device.kind.title.lowercased())")
+            if let m = device.model { line("info.circle", L("Model: \(m)")) }
+            line(device.kind.icon, L("Looks like: \(device.kind.title.lowercased())"))
             if !device.services.isEmpty {
-                chips("dot.radiowaves.left.and.right", "Offers", Array(Set(device.services.map(NetScanner.serviceTitle))).sorted().map { ($0, nil) })
+                chips("dot.radiowaves.left.and.right", L("Offers"), Array(Set(device.services.map(NetScanner.serviceTitle))).sorted().map { ($0, nil) })
             }
             if let ports = device.ports {
-                if ports.isEmpty { line("door.left.hand.closed", "No common ports open") }
-                else { chips("door.left.hand.open", "Open ports", ports.map { ("\(NetProbe.portName($0)) \($0)", NetProbe.webURL(device.ip, $0)) }) }
+                if ports.isEmpty { line("door.left.hand.closed", L("No common ports open")) }
+                else { chips("door.left.hand.open", L("Open ports"), ports.map { ("\(NetProbe.portName($0)) \($0)", NetProbe.webURL(device.ip, $0)) }) }
             }
             if device.online, !device.isMe { line("timer", latencyText) }
-            if let f = device.firstSeen { line("clock", "First seen \(f.formatted(date: .abbreviated, time: .shortened))") }
-            if let l = device.lastSeen { line("clock.arrow.circlepath", "Last seen \(l.formatted(date: .abbreviated, time: .shortened))") }
+            if let f = device.firstSeen { line("clock", L("First seen \(f.formatted(date: .abbreviated, time: .shortened))")) }
+            if let l = device.lastSeen { line("clock.arrow.circlepath", L("Last seen \(l.formatted(date: .abbreviated, time: .shortened))")) }
             actions.padding(.top, 3)
         }
         .font(theme.label(11)).foregroundStyle(theme.onRow(true))
@@ -423,31 +425,31 @@ private struct NetRow: View {
     }
 
     private var latencyText: String {
-        guard let ms = device.ms else { return "Doesn't answer (many phones and TVs sleep or ignore pings; that's normal)" }
-        if device.viaTCP { return "Answers in \(msText(ms)) ms (via a TCP connection; it ignores pings)" }
-        guard let loss = device.loss else { return "Answers in \(msText(ms)) ms" }
+        guard let ms = device.ms else { return L("Doesn't answer (many phones and TVs sleep or ignore pings; that's normal)") }
+        if device.viaTCP { return L("Answers in \(msText(ms)) ms (via a TCP connection; it ignores pings)") }
+        guard let loss = device.loss else { return L("Answers in \(msText(ms)) ms") }
         let lost = Int((loss * 3).rounded())
-        return "Answers in \(msText(ms)) ms · " + (lost == 0 ? "no packet loss (3 pings)" : "\(lost) of 3 pings lost")
+        return L("Answers in \(msText(ms)) ms · ") + (lost == 0 ? L("no packet loss (3 pings)") : L("\(lost) of 3 pings lost"))
     }
 
     private var actions: some View {
         HStack(spacing: 6) {
             if device.online, !device.isMe, device.ip != 0 {
                 Button { scanner.checkPorts(device.ip) } label: {
-                    NetPill(title: device.checkingPorts ? "Checking…" : device.ports == nil ? "Check ports" : "Check again", icon: "door.left.hand.open")
+                    NetPill(title: device.checkingPorts ? L("Checking…") : device.ports == nil ? L("Check ports") : L("Check again"), icon: "door.left.hand.open")
                 }
                 .buttonStyle(.plain).disabled(device.checkingPorts).help("Try \(NetProbe.ports.count) common ports (web, file sharing, printing, …)")
             }
             if let mac = device.mac, !device.isMe, !NetScanner.isPrivate(mac) {
                 Button {
-                    Task { feedback = await scanner.wake(mac) ? "Wake-up packet sent" : "Couldn't send the wake-up packet" }
-                } label: { NetPill(title: "Wake on LAN", icon: "power") }
+                    Task { feedback = await scanner.wake(mac) ? L("Wake-up packet sent") : L("Couldn't send the wake-up packet") }
+                } label: { NetPill(title: L("Wake on LAN"), icon: "power") }
                 .buttonStyle(.plain).help("Send a wake-up packet; works for computers and NAS that have Wake on LAN turned on")
             }
             if device.mac != nil {
-                Button(action: onRename) { NetPill(title: "Rename…", icon: "pencil") }.buttonStyle(.plain)
+                Button(action: onRename) { NetPill(title: L("Rename…"), icon: "pencil") }.buttonStyle(.plain)
                 if !device.isMe {
-                    Button { scanner.forget(device) } label: { NetPill(title: "Forget", icon: "trash") }
+                    Button { scanner.forget(device) } label: { NetPill(title: L("Forget"), icon: "trash") }
                         .buttonStyle(.plain).help("Remove from the remembered devices")
                 }
             }
@@ -476,6 +478,11 @@ private struct NetRow: View {
         } icon: { Image(systemName: icon).frame(width: 14) }
     }
 
+    /// Bron van een naam in beeld; de bron zelf blijft Engels (wordt vergeleken in remember()).
+    static func sourceTitle(_ s: String) -> String {
+        switch s { case "Remembered": L("Remembered"); case "This Mac": L("This Mac"); case "Your name": L("Your name"); default: s }
+    }
+
     private func line(_ icon: String, _ text: String) -> some View {
         Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon).frame(width: 14) }
     }
@@ -487,31 +494,31 @@ enum DeviceKind: String {
     case phone, computer, tv, speaker, printer, router, nas, smartHome, console, unknown
     var title: String {
         switch self {
-        case .phone: "Phone or tablet"
-        case .computer: "Computer"
-        case .tv: "TV / streaming"
-        case .speaker: "Speaker"
-        case .printer: "Printer"
-        case .router: "Router / Wi-Fi"
-        case .nas: "Storage (NAS)"
-        case .smartHome: "Smart home"
-        case .console: "Game console"
-        case .unknown: "Unknown"
+        case .phone: L("Phone or tablet")
+        case .computer: L("Computer")
+        case .tv: L("TV / streaming")
+        case .speaker: L("Speaker")
+        case .printer: L("Printer")
+        case .router: L("Router / Wi-Fi")
+        case .nas: L("Storage (NAS)")
+        case .smartHome: L("Smart home")
+        case .console: L("Game console")
+        case .unknown: L("Unknown")
         }
     }
     /// Voor namen als "Sonos speaker".
     var noun: String {
         switch self {
-        case .phone: "phone"
-        case .computer: "computer"
+        case .phone: L("phone")
+        case .computer: L("computer")
         case .tv: "TV"
-        case .speaker: "speaker"
-        case .printer: "printer"
-        case .router: "router"
+        case .speaker: L("speaker")
+        case .printer: L("printer")
+        case .router: L("router")
         case .nas: "NAS"
-        case .smartHome: "smart device"
-        case .console: "console"
-        case .unknown: "device"
+        case .smartHome: L("smart device")
+        case .console: L("console")
+        case .unknown: L("device")
         }
     }
     var icon: String {
@@ -548,7 +555,9 @@ struct NetDevice: Identifiable {
     var isNew = false
     var remote = false                   // buiten het eigen subnet: geen ARP, dus geen MAC/maker
 
-    static let remoteHelp = "Outside your own network: routers don't pass on hardware addresses, so the MAC address and maker can't be seen"
+    static var remoteHelp: String { L("Outside your own network: routers don't pass on hardware addresses, so the MAC address and maker can't be seen") }
+    /// Voor in beeld: "Private address" blijft intern Engels (guess() en zoeken), alleen de weergave vertaald.
+    var vendorTitle: String { vendor == "Private address" ? L("Private address") : vendor }
 
     /// Zoekveld: deel van naam (ook andere gevonden namen), IP, MAC, maker of model; hoofdletters maakt niet uit.
     func matches(_ query: String) -> Bool {
@@ -636,7 +645,7 @@ final class NetScanner: ObservableObject {
     private var side: [Task<Void, Never>] = []
     private var browsers: [NWBrowser] = []
     private var resolving: [NWEndpoint: NWConnection] = [:]
-    private lazy var computerName = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? "This Mac"
+    private lazy var computerName = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? L("This Mac")
 
     struct Found { var mac: [UInt8]?; var ms: Double?; var loss: Double?; var viaTCP = false }
     struct Bonjour { var name: String?; var types: Set<String> = []; var model: String? }
@@ -703,8 +712,8 @@ final class NetScanner: ObservableObject {
     }
 
     nonisolated static func fallbackName(vendor: String, kind: DeviceKind, isRouter: Bool, privateMAC: Bool) -> String {
-        if isRouter { return "Router" }
-        guard vendor != "–", !privateMAC else { return "Unknown device" }
+        if isRouter { return L("Router") }
+        guard vendor != "–", !privateMAC else { return L("Unknown device") }
         let short = vendor.count <= 16 ? vendor : String(vendor.split(separator: " ").first ?? "")
         return "\(short) \(kind.noun)"
     }
@@ -713,7 +722,7 @@ final class NetScanner: ObservableObject {
         var parts: [String] = []
         if let m = bonjour { parts.append(NetProbe.appleModel(m).map { "\($0) (\(m))" } ?? m) }
         if let m = upnp?.modelName, !parts.contains(where: { $0.localizedCaseInsensitiveContains(m) }) {
-            parts.append(m + (upnp?.manufacturer.map { " by \($0)" } ?? ""))
+            parts.append(m + (upnp?.manufacturer.map { L(" by \($0)") } ?? ""))
         }
         return parts.isEmpty ? nil : parts.joined(separator: " · ")
     }
@@ -734,7 +743,7 @@ final class NetScanner: ObservableObject {
         // Ping-tussenruimte (3 ms per adres) + TCP-zoektocht buiten het subnet (2 poorten, 64 tegelijk, ≤ 0,4 s)
         expected = range == nil ? 8 : max(8, 4 + Double(hosts.count) * 0.003 + Double(remote) / 32 * 0.4)
         scanStart = start
-        phase = "Pinging…"
+        phase = L("Pinging…")
         if !local.isEmpty { browse() }
         let ifindex = UInt16(truncatingIfNeeded: if_nametoindex(info.iface))
         work = Task { [weak self] in
@@ -757,14 +766,14 @@ final class NetScanner: ObservableObject {
             // 1b. Buiten het subnet geen ARP: wie niet op ping antwoordt, zoeken met een TCP-verbinding (SYN-ACK of RST = er is iemand)
             let quiet = hosts.filter { !local.contains($0) && f[$0] == nil }
             if !quiet.isEmpty {
-                self.phase = "Trying quiet addresses…"
+                self.phase = L("Trying quiet addresses…")
                 let knock = quiet.flatMap { ip in NetProbe.discoveryPorts.map { (ip: ip, port: $0) } }
                 let r = await Self.offMain { NetProbe.tcpProbe(knock, timeout: 0.4, batch: 64) }
                 guard !Task.isCancelled else { return }
                 for (i, a) in r where a.ms < self.found[knock[i].ip]?.ms ?? .infinity { self.found[knock[i].ip] = Found(ms: a.ms, viaTCP: true) }
             }
             // 2. Namen (mDNS, NetBIOS, DNS) en reactietijd (3 pings per apparaat) tegelijk; mDNS alleen binnen het subnet
-            self.phase = "Looking up names…"
+            self.phase = L("Looking up names…")
             let alive = Array(self.found.keys).filter { $0 != me }, near = alive.filter(local.contains)
             async let mdns = Self.offMain { near.isEmpty ? [:] : NetProbe.mdnsReverse(near, iface: me, wait: 1.5) }
             async let nb = Self.offMain { NetProbe.netbios(alive, wait: 1.5) }
@@ -789,7 +798,7 @@ final class NetScanner: ObservableObject {
                 for (ip, n) in list { self.names[ip, default: [:]][key] = String(n.prefix(64)) }
             }
             // 3. UPnP-beschrijvingen van wat op SSDP antwoordde
-            self.phase = "Asking devices…"
+            self.phase = L("Asking devices…")
             let urls = await ssdp
             let up = await Self.offMain { NetProbe.upnp(urls.filter { subnet.contains($0.key) }) }
             guard !Task.isCancelled else { return }
@@ -877,7 +886,7 @@ final class NetScanner: ObservableObject {
         // Melding alleen als het aan staat en dit niet de allereerste scan is (dan is alles "nieuw")
         if UserDefaults.standard.bool(forKey: "notifyNewDevice"), store.created < now.addingTimeInterval(-60) {
             for d in fresh.prefix(3) {
-                Notify.send(title: "New device on your network", body: "\(d.name) · \(ipString(d.ip))" + (d.vendor == "–" ? "" : " · \(d.vendor)"))
+                Notify.send(title: L("New device on your network"), body: "\(d.name) · \(ipString(d.ip))" + (d.vendor == "–" ? "" : " · \(d.vendorTitle)"))
             }
         }
     }
@@ -892,22 +901,22 @@ final class NetScanner: ObservableObject {
 
     static func serviceTitle(_ type: String) -> String {
         switch type {
-        case "_companion-link._tcp", "_device-info._tcp": "Apple device"
+        case "_companion-link._tcp", "_device-info._tcp": L("Apple device")
         case "_airplay._tcp": "AirPlay"
-        case "_raop._tcp": "AirPlay audio"
+        case "_raop._tcp": L("AirPlay audio")
         case "_googlecast._tcp": "Chromecast"
         case "_sonos._tcp": "Sonos"
         case "_spotify-connect._tcp": "Spotify Connect"
-        case "_ipp._tcp", "_printer._tcp": "Printing"
-        case "_scanner._tcp": "Scanning"
-        case "_smb._tcp", "_afpovertcp._tcp": "File sharing"
-        case "_workstation._tcp": "Computer"
-        case "_ssh._tcp", "_sftp-ssh._tcp": "Remote login (SSH)"
-        case "_rfb._tcp": "Screen sharing"
+        case "_ipp._tcp", "_printer._tcp": L("Printing")
+        case "_scanner._tcp": L("Scanning")
+        case "_smb._tcp", "_afpovertcp._tcp": L("File sharing")
+        case "_workstation._tcp": L("Computer")
+        case "_ssh._tcp", "_sftp-ssh._tcp": L("Remote login (SSH)")
+        case "_rfb._tcp": L("Screen sharing")
         case "_hap._tcp", "_hap._udp", "_homekit._tcp": "HomeKit"
-        case "_http._tcp": "Web page"
+        case "_http._tcp": L("Web page")
         case "_matter._tcp": "Matter"
-        case "_meshcop._udp": "Thread border router"
+        case "_meshcop._udp": L("Thread border router")
         default: type
         }
     }
@@ -1087,9 +1096,9 @@ final class NetScanner: ObservableObject {
         case invalid, reversed, tooLarge(Int)
         var message: String {
             switch self {
-            case .invalid: "Not a range. Try 192.168.1.0/24, 192.168.1.10-80 or a single address."
-            case .reversed: "The first address is higher than the last one."
-            case .tooLarge(let n): "That's \(n) addresses; Fusebox scans at most \(NetScanner.maxRange) at a time (a /20). Use a smaller block."
+            case .invalid: L("Not a range. Try 192.168.1.0/24, 192.168.1.10-80 or a single address.")
+            case .reversed: L("The first address is higher than the last one.")
+            case .tooLarge(let n): L("That's \(n) addresses; Fusebox scans at most \(NetScanner.maxRange) at a time (a /20). Use a smaller block.")
             }
         }
     }

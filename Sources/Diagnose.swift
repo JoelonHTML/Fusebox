@@ -102,11 +102,11 @@ enum Diag {
     struct Job { let doing: String; let procs: [String]; let names: [String] }
     /// `names` = gewone namen uit AppMonitor.friendly (zo staan ze in de apps-CSV); `procs` = procesnamen voor ps.
     static let jobs: [Job] = [
-        Job(doing: "Spotlight is indexing", procs: ["mds", "mdworker", "corespotlightd"], names: ["Spotlight (search)"]),
-        Job(doing: "iCloud is syncing", procs: ["bird", "cloudd", "fileproviderd"], names: ["iCloud", "iCloud Drive"]),
-        Job(doing: "Photos is analysing your library", procs: ["photoanalysisd", "mediaanalysisd"], names: ["Photo analysis", "Media analysis"]),
-        Job(doing: "Time Machine is making a backup", procs: ["backupd"], names: ["Time Machine"]),
-        Job(doing: "Software Update is checking or installing updates", procs: ["softwareupdated"], names: ["Software update"]),
+        Job(doing: L("Spotlight is indexing"), procs: ["mds", "mdworker", "corespotlightd"], names: ["Spotlight (search)"]),
+        Job(doing: L("iCloud is syncing"), procs: ["bird", "cloudd", "fileproviderd"], names: ["iCloud", "iCloud Drive"]),
+        Job(doing: L("Photos is analysing your library"), procs: ["photoanalysisd", "mediaanalysisd"], names: ["Photo analysis", "Media analysis"]),
+        Job(doing: L("Time Machine is making a backup"), procs: ["backupd"], names: ["Time Machine"]),
+        Job(doing: L("Software Update is checking or installing updates"), procs: ["softwareupdated"], names: ["Software update"]),
         Job(doing: coolingDown, procs: ["kernel_task"], names: []),   // kernel_task is niet te meten; zie thermalState hieronder
     ]
     static let jobCore = 25.0   // % van één kern: daarboven telt het als "bezig"
@@ -186,13 +186,14 @@ enum Diag {
         var isEmpty: Bool { crashes.isEmpty && hangs.isEmpty && resource.isEmpty && jetsam == 0 }
         /// Regels voor scherm en rapport, meeste eerst.
         var rows: [(label: String, value: String)] {
-            func list(_ d: [String: Int], _ what: String) -> [(label: String, value: String)] {
-                d.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, "\(what) \($0.value)×") }
+            func list(_ d: [String: Int], _ what: (Int) -> String) -> [(label: String, value: String)] {
+                d.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, what($0.value)) }
             }
             let loops = self.loops
-            return list(crashes, "crashed").map { ($0.label, $0.value + (loops[$0.label].map { ", \($0)× in one hour" } ?? "")) } + list(hangs, "stopped responding")
-                + (jetsam > 0 ? [("Out of memory", "macOS closed apps \(jetsam)×")] : [])
-                + list(resource, "flagged by macOS").prefix(5)
+            return list(crashes, { L("crashed \($0)×") }).map { ($0.label, $0.value + (loops[$0.label].map { L(", \($0)× in one hour") } ?? "")) }
+                + list(hangs, { L("stopped responding \($0)×") })
+                + (jetsam > 0 ? [(L("Out of memory"), L("macOS closed apps \(jetsam)×"))] : [])
+                + list(resource, { L("flagged by macOS \($0)×") }).prefix(5)
         }
     }
 
@@ -236,9 +237,9 @@ enum Diag {
         }
         guard let app = app ?? proc else { return (.none, time) }
         if event.contains("hang") || event.contains("spin") { return (.hang(app), time) }
-        if event.contains("disk writes") { return (.resource("\(app) (disk writes)"), time) }
-        if event.contains("cpu") { return (.resource("\(app) (processor)"), time) }
-        if event.contains("wakeups") { return (.resource("\(app) (wakeups)"), time) }
+        if event.contains("disk writes") { return (.resource(L("\(app) (disk writes)")), time) }
+        if event.contains("cpu") { return (.resource(L("\(app) (processor)")), time) }
+        if event.contains("wakeups") { return (.resource(L("\(app) (wakeups)")), time) }
         return (.none, time)
     }
 
@@ -296,7 +297,9 @@ enum Diag {
         var worn: Bool { (capacity.map { $0 < 80 } ?? false) || condition != nil || health != "Good" }
         /// "Good · 31 of ~1000 cycles · 103% of original capacity"
         var summary: String {
-            [condition ?? health, cycles.map { "\($0) of ~\(designCycles) cycles" }, capacity.map { "\($0)% of original capacity" }]
+            [condition ?? (health == "Good" ? L("Good") : health == "Worn" ? L("Worn") : health),
+             cycles.map { L("\($0) of ~\(String(designCycles)) cycles") }, capacity.map { L("\($0)% of original capacity") }]
+
                 .compactMap { $0 }.joined(separator: " · ")
         }
     }

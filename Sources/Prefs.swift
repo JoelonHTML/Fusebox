@@ -109,16 +109,16 @@ enum Prefs {
     }
 
     static let presets: [Preset] = [
-        Preset(id: "simple", title: "Simple", icon: "leaf", blurb: "Big, calm, with advice", values: [
+        Preset(id: "simple", title: L("Simple"), icon: "leaf", blurb: L("Big, calm, with advice"), values: [
             "theme": "liquid", "textScale": 1.15, "metrics": "cpu,ram,ssd,battery", "graphs": "never",
             "showAdvice": true, "menubarStyle": "icon"]),
-        Preset(id: "gamer", title: "Gamer", icon: "gamecontroller", blurb: "GPU and ping up front", values: [
+        Preset(id: "gamer", title: L("Gamer"), icon: "gamecontroller", blurb: L("GPU and ping up front"), values: [
             "theme": "instrument", "metrics": "cpu,gpu,ram,net", "graphs": "auto", "shortMinutes": 5,
             "menubarStyle": "compact", "menubarMetrics": "cpu,gpu", "netBits": true, "warnPing": 60.0]),
-        Preset(id: "nerd", title: "Nerd", icon: "terminal", blurb: "Everything, in real values", values: [
+        Preset(id: "nerd", title: L("Nerd"), icon: "terminal", blurb: L("Everything, in real values"), values: [
             "theme": "terminal", "metrics": "cpu,gpu,ram,net,ssd,io,battery", "absolute": "cpu,ram,ssd",
             "menubarStyle": "graph", "menubarMetrics": "cpu,ram,net"]),
-        Preset(id: "laptop", title: "Laptop", icon: "laptopcomputer", blurb: "Battery first, alert when almost empty", values: [
+        Preset(id: "laptop", title: L("Laptop"), icon: "laptopcomputer", blurb: L("Battery first, alert when almost empty"), values: [
             "theme": "minimal", "metrics": "battery,cpu,ram,ssd", "menubarStyle": "text",
             "menubarMetrics": "battery,cpu", Alert.battery.key("on"): true]),
     ]
@@ -144,8 +144,8 @@ enum Prefs {
         let p = NSOpenPanel()
         p.allowedContentTypes = [.json]
         guard p.runModal() == .OK, let url = p.url else { return nil }
-        guard let n = try? importFile(url) else { return "Fusebox can't read this file." }
-        return "\(n) settings imported"
+        guard let n = try? importFile(url) else { return L("Fusebox can't read this file.") }
+        return L("\(n) settings imported")
     }
 
     // MARK: Zelftest

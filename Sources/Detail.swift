@@ -100,11 +100,11 @@ struct MetricDetail: View {
     private func values(_ s: Sample, _ r: MetricRowData) -> (String, String, String) {
         let n = ProcessInfo.processInfo.activeProcessorCount
         switch metric {
-        case .cpu: return (pct(s.cpu), "", "\(one(s.cpu / 100 * Double(n))) of \(n) cores busy")
-        case .ram: return (one(s.ramUsedGB), "GB", "\(pct(s.ram)) of \(Int(ramTotal.rounded())) GB")
+        case .cpu: return (pct(s.cpu), "", L("\(one(s.cpu / 100 * Double(n))) of \(n) cores busy"))
+        case .ram: return (one(s.ramUsedGB), "GB", L("\(pct(s.ram)) of \(Int(ramTotal.rounded())) GB"))
         case .ssd:
             let used = s.diskTotalGB > 0 ? (1 - s.diskFreeGB / s.diskTotalGB) * 100 : 0
-            return ("\(Int(s.diskFreeGB))", "GB free", "\(pct(used)) used of \(Int(s.diskTotalGB)) GB")
+            return ("\(Int(s.diskFreeGB))", L("GB free"), L("\(pct(used)) used of \(Int(s.diskTotalGB)) GB"))
         default: return (r.value, r.unit, r.detail)
         }
     }
@@ -115,9 +115,9 @@ struct MetricDetail: View {
         let v = r.values
         let avg = v.isEmpty ? 0 : v.reduce(0, +) / Double(v.count)
         return HStack(spacing: 8) {
-            stat("Min", v.min().map(fmt) ?? "–")
-            stat("Average", v.isEmpty ? "–" : fmt(avg))
-            stat("Max", v.max().map(fmt) ?? "–")
+            stat(L("Min"), v.min().map(fmt) ?? "–")
+            stat(L("Average"), v.isEmpty ? "–" : fmt(avg))
+            stat(L("Max"), v.max().map(fmt) ?? "–")
         }
     }
 
@@ -196,29 +196,29 @@ struct MetricDetail: View {
                 }
             }
             let procs = meter.minuteApps.apps.reduce(0) { $0 + $1.pids.count }
-            facts([("Hottest core", deg(s.temp).ifEmpty("–")),
-                   ("Load average (1 · 5 · 15 min)", loadAverage),
-                   ("Running since restart", uptime),
-                   ("Processes", procs > 0 ? "\(procs)" : "–")])
-            topApps("Busiest apps (last minute)", sort: { $0.cpu > $1.cpu }) { pct($0.cpu) }
+            facts([(L("Hottest core"), deg(s.temp).ifEmpty("–")),
+                   (L("Load average (1 · 5 · 15 min)"), loadAverage),
+                   (L("Running since restart"), uptime),
+                   (L("Processes"), procs > 0 ? "\(procs)" : "–")])
+            topApps(L("Busiest apps (last minute)"), sort: { $0.cpu > $1.cpu }) { pct($0.cpu) }
         case .gpu:
-            facts([("Load", pct(s.gpu)), ("Temperature", deg(s.gpuTemp).ifEmpty("–")),
-                   ("Processor temperature", deg(s.temp).ifEmpty("–"))])
-            topApps("Most power-hungry apps (last minute)", sort: { $0.energyW > $1.energyW }) { String(format: "%.1f W", $0.energyW) }
+            facts([(L("Load"), pct(s.gpu)), (L("Temperature"), deg(s.gpuTemp).ifEmpty("–")),
+                   (L("Processor temperature"), deg(s.temp).ifEmpty("–"))])
+            topApps(L("Most power-hungry apps (last minute)"), sort: { $0.energyW > $1.energyW }) { String(format: "%.1f W", $0.energyW) }
         case .ram:
-            facts([("In use", "\(one(s.ramUsedGB)) GB · \(pct(s.ram))"),
-                   ("Free", "\(one(max(ramTotal - s.ramUsedGB, 0))) GB · \(pct(100 - s.ram))"),
-                   ("Installed", "\(Int(ramTotal.rounded())) GB"),
-                   ("Memory pressure", s.pressure >= 4 ? "Critical" : s.pressure == 2 ? "High" : "Normal"),
-                   ("Swap (memory on the SSD)", "\(one(s.swapGB)) GB")])
-            topApps("Biggest apps (last minute)", sort: { $0.memGB > $1.memGB }) { "\(one($0.memGB)) GB" }
+            facts([(L("In use"), "\(one(s.ramUsedGB)) GB · \(pct(s.ram))"),
+                   (L("Free"), "\(one(max(ramTotal - s.ramUsedGB, 0))) GB · \(pct(100 - s.ram))"),
+                   (L("Installed"), "\(Int(ramTotal.rounded())) GB"),
+                   (L("Memory pressure"), s.pressure >= 4 ? L("Critical") : s.pressure == 2 ? L("High") : L("Normal")),
+                   (L("Swap (memory on the SSD)"), "\(one(s.swapGB)) GB")])
+            topApps(L("Biggest apps (last minute)"), sort: { $0.memGB > $1.memGB }) { "\(one($0.memGB)) GB" }
         case .net:
-            facts([("Download now", rate(s.down)), ("Upload now", rate(s.up)),
-                   ("Response time", s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "–"),
-                   ("Downloaded (\(period))", bytes(total(h, \.down))),
-                   ("Uploaded (\(period))", bytes(total(h, \.up))),
-                   ("Fastest download", rate(h.map(\.down).max() ?? 0)),
-                   ("Fastest upload", rate(h.map(\.up).max() ?? 0))] + (LinkRate.fact.map { [$0] } ?? []))
+            facts([(L("Download now"), rate(s.down)), (L("Upload now"), rate(s.up)),
+                   (L("Response time"), s.pingMs.map { "\(Int($0.rounded())) ms" } ?? "–"),
+                   (L("Downloaded (\(period))"), bytes(total(h, \.down))),
+                   (L("Uploaded (\(period))"), bytes(total(h, \.up))),
+                   (L("Fastest download"), rate(h.map(\.down).max() ?? 0)),
+                   (L("Fastest upload"), rate(h.map(\.up).max() ?? 0))] + (LinkRate.fact.map { [$0] } ?? []))
         case .ssd:
             let used = max(s.diskTotalGB - s.diskFreeGB, 0), frac = s.diskTotalGB > 0 ? used / s.diskTotalGB : 0
             card {
@@ -228,28 +228,28 @@ struct MetricDetail: View {
                         .overlay(alignment: .leading) { GeometryReader { g in Capsule().fill(theme.accent).frame(width: g.size.width * frac) } }
                 }
             }
-            facts([("Size", "\(Int(s.diskTotalGB)) GB"), ("Used", "\(Int(used)) GB · \(pct(frac * 100))"),
-                   ("Free", "\(Int(s.diskFreeGB)) GB · \(pct(100 - frac * 100))"),
-                   ("Reading now", rate(s.diskRead)), ("Writing now", rate(s.diskWrite)),
-                   ("Swap", "\(one(s.swapGB)) GB")])
+            facts([(L("Size"), "\(Int(s.diskTotalGB)) GB"), (L("Used"), "\(Int(used)) GB · \(pct(frac * 100))"),
+                   (L("Free"), "\(Int(s.diskFreeGB)) GB · \(pct(100 - frac * 100))"),
+                   (L("Reading now"), rate(s.diskRead)), (L("Writing now"), rate(s.diskWrite)),
+                   (L("Swap"), "\(one(s.swapGB)) GB")])
         case .io:
-            facts([("Reading now", rate(s.diskRead)), ("Writing now", rate(s.diskWrite)),
-                   ("Read (\(period))", bytes(total(h, \.diskRead))),
-                   ("Written (\(period))", bytes(total(h, \.diskWrite))),
-                   ("Fastest read", rate(h.map(\.diskRead).max() ?? 0)),
-                   ("Fastest write", rate(h.map(\.diskWrite).max() ?? 0))])
-            topApps("Busiest on the SSD (last minute)", sort: { $0.diskRead + $0.diskWrite > $1.diskRead + $1.diskWrite }) { rate($0.diskRead + $0.diskWrite) }
+            facts([(L("Reading now"), rate(s.diskRead)), (L("Writing now"), rate(s.diskWrite)),
+                   (L("Read (\(period))"), bytes(total(h, \.diskRead))),
+                   (L("Written (\(period))"), bytes(total(h, \.diskWrite))),
+                   (L("Fastest read"), rate(h.map(\.diskRead).max() ?? 0)),
+                   (L("Fastest write"), rate(h.map(\.diskWrite).max() ?? 0))])
+            topApps(L("Busiest on the SSD (last minute)"), sort: { $0.diskRead + $0.diskWrite > $1.diskRead + $1.diskWrite }) { rate($0.diskRead + $0.diskWrite) }
         case .battery:
-            facts([("Charge", s.battery.map(pct) ?? "–"), ("Power", s.charging ? "Charging" : "On battery"),
-                   (s.charging ? "Full in" : "Time left", s.batteryMinutes.map(duration) ?? "–"),
-                   ("Health", battery?.condition ?? battery?.health ?? "–"),
-                   ("Charge cycles", battery?.cycles.map { "\($0) of ~\(battery?.designCycles ?? 1000)" } ?? "–"),
-                   ("Capacity", battery?.capacity.map { "\($0)% of new" } ?? "–")])
-            topApps("Most power-hungry apps (last minute)", sort: { $0.energyW > $1.energyW }) { String(format: "%.1f W", $0.energyW) }
+            facts([(L("Charge"), s.battery.map(pct) ?? "–"), (L("Power"), s.charging ? L("Charging") : L("On battery")),
+                   (s.charging ? L("Full in") : L("Time left"), s.batteryMinutes.map(duration) ?? "–"),
+                   (L("Health"), battery?.condition ?? battery?.health ?? "–"),
+                   (L("Charge cycles"), battery?.cycles.map { L("\($0) of ~\(battery?.designCycles ?? 1000)") } ?? "–"),
+                   (L("Capacity"), battery?.capacity.map { L("\($0)% of new") } ?? "–")])
+            topApps(L("Most power-hungry apps (last minute)"), sort: { $0.energyW > $1.energyW }) { String(format: "%.1f W", $0.energyW) }
         case .fan:
-            facts(s.fans.enumerated().map { i, f in ("Fan \(i + 1)", "\(Int(f.rpm.rounded())) rpm (\(Int(f.min))–\(Int(f.max)))") }
-                  + [("Control", s.fans.contains(where: \.forced) ? "Fusebox" : "macOS (automatic)"),
-                     ("Processor temperature", deg(s.temp).ifEmpty("–"))])
+            facts(s.fans.enumerated().map { i, f in (L("Fan \(i + 1)"), "\(Int(f.rpm.rounded())) rpm (\(Int(f.min))–\(Int(f.max)))") }
+                  + [(L("Control"), s.fans.contains(where: \.forced) ? "Fusebox" : L("macOS (automatic)")),
+                     (L("Processor temperature"), deg(s.temp).ifEmpty("–"))])
         }
     }
 
@@ -279,7 +279,8 @@ struct MetricDetail: View {
 
     private var coreText: String {
         let n = ProcessInfo.processInfo.activeProcessorCount, e = Sampler.efficiencyCores
-        return e > 0 ? "Per core · \(e) efficiency + \(n - e) performance" : "Per core · \(n) cores"
+        return e > 0 ? L("Per core · \(e) efficiency + \(n - e) performance") : L("Per core · \(n) cores")
+
     }
 
     /// Gemiddeld aantal wachtende taken over 1, 5 en 15 minuten (zoals `uptime` in Terminal).

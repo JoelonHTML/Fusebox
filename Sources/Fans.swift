@@ -18,7 +18,7 @@ enum FanCurve {
     static let quiet = "40:0,65:10,80:40,90:75,95:100"
     static let balanced = "40:0,60:20,75:50,85:80,95:100"
     static let cool = "40:10,55:35,70:65,80:90,90:100"
-    static let presets: [(name: String, value: String)] = [("Quiet", quiet), ("Balanced", balanced), ("Cool", cool)]
+    static let presets: [(name: String, value: String)] = [(L("Quiet"), quiet), (L("Balanced"), balanced), (L("Cool"), cool)]
     static let range = 40.0...100.0
 
     /// Vertrouwensgrens (instelling kan uit een import komen): 2–8 punten, °C in `range`, % 0–100, °C oplopend.
@@ -104,7 +104,7 @@ enum FanHelper {
     /// nil = gelukt, anders een zin voor de gebruiker.
     @MainActor static func install() -> String? {
         guard let src = Bundle.main.resourceURL?.appendingPathComponent("fusebox-fand").path,
-              FileManager.default.isExecutableFile(atPath: src) else { return "The helper is missing from this copy of Fusebox." }
+              FileManager.default.isExecutableFile(atPath: src) else { return L("The helper is missing from this copy of Fusebox.") }
         let plist = #"<?xml version="1.0" encoding="UTF-8"?><!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd"><plist version="1.0"><dict><key>Label</key><string>\#(label)</string><key>ProgramArguments</key><array><string>\#(binPath)</string></array><key>RunAtLoad</key><true/><key>KeepAlive</key><true/></dict></plist>"#
         return admin([
             "umask 022",
@@ -138,8 +138,8 @@ enum FanHelper {
         var err: NSDictionary?
         NSAppleScript(source: "do shell script \"\(esc)\" with administrator privileges")?.executeAndReturnError(&err)
         guard let err else { return nil }
-        if err[NSAppleScript.errorNumber] as? Int == -128 { return "Cancelled." }
-        return "Didn't work: \(err[NSAppleScript.errorMessage] as? String ?? "unknown error")"
+        if err[NSAppleScript.errorNumber] as? Int == -128 { return L("Cancelled.") }
+        return L("Didn't work: \(err[NSAppleScript.errorMessage] as? String ?? L("unknown error"))")
     }
 }
 
@@ -293,7 +293,7 @@ struct FanSettings: View {
             }
         } label: {
             Text(meter.latest.fans.count > 1 ? "Fan \(i + 1)" : "Fan")
-            Text("macOS range \(Int(f.min))–\(Int(f.max)) rpm" + (f.forced ? " · set by Fusebox" : ""))
+            Text(L("macOS range \(Int(f.min))–\(Int(f.max)) rpm") + (f.forced ? L(" · set by Fusebox") : ""))
         }
     }
 
@@ -311,7 +311,7 @@ struct HelperSection: View {
     var body: some View {
         Section {
             if installed {
-                LabeledContent("Helper", value: running == false ? "Installed, not responding" : outdated ? "Update needed" : "Installed")
+                LabeledContent("Helper", value: running == false ? L("Installed, not responding") : outdated ? L("Update needed") : L("Installed"))
                 if outdated {
                     Text("This Fusebox has a newer helper. Click Reinstall… to update it (asks for your password).")
                         .font(.caption).foregroundStyle(.orange)
@@ -418,7 +418,8 @@ struct CurveEditor: View {
 
 enum FanDust {
     static let fastPct = 60.0, calm = 20.0, needMinutes = 60
-    static let tip = "Your fan spins hard while your Mac is barely busy — the vents may be dusty. Clean them or have them cleaned."
+    static let tip = L("Your fan spins hard while your Mac is barely busy — the vents may be dusty. Clean them or have them cleaned.")
+
 
     /// Afgelopen 7 dagen samen minstens een uur verdacht? Macs zonder ventilator: nooit. Afgesloten dagen veranderen niet: één keer lezen.
     static func check(dir: URL, now: Date = Date()) -> Bool {
