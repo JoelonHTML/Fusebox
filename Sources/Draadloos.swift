@@ -97,22 +97,22 @@ enum Wireless {
     static func kind(_ minor: String, name: String, buds: Bool) -> (name: String, icon: String) {
         let m = minor.lowercased(), n = name.lowercased()
         let table: [([String], String, String)] = [
-            (["keyboard"], "Keyboard", "keyboard"), (["mouse"], "Mouse", "computermouse"),
-            (["trackpad", "touchpad"], "Trackpad", "rectangle.and.hand.point.up.left"),
-            (["headphone", "headset", "earbud"], buds ? "Earbuds" : "Headphones", buds ? "airpods" : "headphones"),
-            (["speaker", "audio"], "Speaker", "hifispeaker"), (["gamepad", "joystick", "game"], "Controller", "gamecontroller"),
-            (["phone"], "Phone", "iphone"), (["watch", "wearable"], "Watch", "applewatch"),
-            (["computer", "laptop", "desktop"], "Computer", "laptopcomputer"), (["pen", "digitizer"], "Pen", "applepencil")]
+            (["keyboard"], L("Keyboard"), "keyboard"), (["mouse"], L("Mouse"), "computermouse"),
+            (["trackpad", "touchpad"], L("Trackpad"), "rectangle.and.hand.point.up.left"),
+            (["headphone", "headset", "earbud"], buds ? L("Earbuds") : L("Headphones"), buds ? "airpods" : "headphones"),
+            (["speaker", "audio"], L("Speaker"), "hifispeaker"), (["gamepad", "joystick", "game"], L("Controller"), "gamecontroller"),
+            (["phone"], L("Phone"), "iphone"), (["watch", "wearable"], L("Watch"), "applewatch"),
+            (["computer", "laptop", "desktop"], L("Computer"), "laptopcomputer"), (["pen", "digitizer"], L("Pen"), "applepencil")]
         if let t = table.first(where: { $0.0.contains(where: m.contains) }) { return (t.1, t.2) }
         if m.isEmpty {
-            for (k, v) in [("airpods", ("Earbuds", "airpods")), ("watch", ("Watch", "applewatch")), ("iphone", ("Phone", "iphone")),
-                           ("ipad", ("Tablet", "ipad")), ("mac", ("Computer", "laptopcomputer"))] where n.contains(k) { return v }
-            if buds { return ("Earbuds", "airpods") }
+            for (k, v) in [("airpods", (L("Earbuds"), "airpods")), ("watch", (L("Watch"), "applewatch")), ("iphone", (L("Phone"), "iphone")),
+                           ("ipad", (L("Tablet"), "ipad")), ("mac", (L("Computer"), "laptopcomputer"))] where n.contains(k) { return v }
+            if buds { return (L("Earbuds"), "airpods") }
         }
-        return (m.isEmpty ? "Device" : minor, "dot.radiowaves.left.and.right")
+        return (m.isEmpty ? L("Device") : minor, "dot.radiowaves.left.and.right")
     }
 
-    static func signal(_ rssi: Int) -> String { rssi >= -60 ? "strong" : rssi >= -75 ? "fair" : "weak" }
+    static func signal(_ rssi: Int) -> String { rssi >= -60 ? L("strong") : rssi >= -75 ? L("fair") : L("weak") }
 
     /// Leegste verbonden apparaat voor de BAT-kaart: ("AirPods", "L 80% · R 75%") of ("Mouse", "64%"). Hoesje telt niet mee.
     static func lowest(_ s: BTState?) -> (name: String, value: String)? {
@@ -132,19 +132,19 @@ enum Wireless {
         let name = scName ?? "", lower = name.lowercased()
         var u = Uplink(iface: iface, metered: expensive, lowData: constrained)
         if let dev = ["iPhone", "iPad"].first(where: { lower.contains($0.lowercased()) }) {
-            (u.title, u.via, u.how) = ("Internet via \(dev) (USB)", "USB", "interface \"\(name)\"")
+            (u.title, u.via, u.how) = (L("Internet via \(dev) (USB)"), "USB", L("interface \"\(name)\""))
         } else if scType == "Bluetooth" || lower.contains("bluetooth") {
-            (u.title, u.via, u.icon, u.how) = ("Internet via Bluetooth tethering", "Bluetooth", "personalhotspot", "interface \"\(name)\"")
+            (u.title, u.via, u.icon, u.how) = (L("Internet via Bluetooth tethering"), "Bluetooth", "personalhotspot", L("interface \"\(name)\""))
         } else if type == "cellular" || scType == "WWAN" || iface.hasPrefix("pdp_ip") || iface.hasPrefix("wwan")
                     || ["modem", "lte", "4g", "5g", "cellular", "mobile broadband"].contains(where: lower.contains) {
-            (u.title, u.via, u.icon, u.how) = ("Internet via mobile modem", name.isEmpty ? "modem" : name, "antenna.radiowaves.left.and.right",
-                                               "cellular interface" + (name.isEmpty ? "" : " \"\(name)\""))
+            (u.title, u.via, u.icon, u.how) = (L("Internet via mobile modem"), name.isEmpty ? "modem" : name, "antenna.radiowaves.left.and.right",
+                                               L("cellular interface") + (name.isEmpty ? "" : " \"\(name)\""))
         } else if type == "wifi", router?.hasPrefix("172.20.10.") == true {
-            (u.title, u.via, u.how) = ("Internet via iPhone hotspot", "Wi-Fi", "router at 172.20.10.1 (Personal Hotspot address)")
+            (u.title, u.via, u.how) = (L("Internet via iPhone hotspot"), "Wi-Fi", L("router at 172.20.10.1 (Personal Hotspot address)"))
         } else if type == "wifi", expensive {
-            (u.title, u.via, u.how) = ("Internet via phone hotspot", "Wi-Fi", "macOS marks this Wi-Fi as a hotspot (metered)")
+            (u.title, u.via, u.how) = (L("Internet via phone hotspot"), "Wi-Fi", L("macOS marks this Wi-Fi as a hotspot (metered)"))
         } else if expensive {
-            (u.title, u.via, u.icon, u.how) = ("Internet via a metered connection", name.isEmpty ? iface : name, "gauge.with.dots.needle.33percent", "macOS marks it metered")
+            (u.title, u.via, u.icon, u.how) = (L("Internet via a metered connection"), name.isEmpty ? iface : name, "gauge.with.dots.needle.33percent", L("macOS marks it metered"))
         } else {
             return nil
         }
@@ -219,19 +219,19 @@ enum WirelessTree {
             let r = ratePair(down, up, bits: bits)
             groups.append(TNode(id: "uplink", kind: .port, icon: u.icon, title: u.title,
                                 main: LinkLoad(now: Double(r.0), max: nil, unit: r.2 + " ↓"),
-                                facts: [u.via, u.metered ? "metered" : nil, u.lowData ? "Low Data Mode" : nil, "↑ \(r.1) \(r.2)"].compactMap { $0 },
-                                pairs: [RawLine(key: "Interface", value: u.iface), RawLine(key: "Through", value: u.via),
-                                        RawLine(key: "Metered", value: u.metered ? "Yes: macOS and apps may hold back big downloads and backups" : "No"),
-                                        RawLine(key: "Low Data", value: u.lowData ? "On" : "Off"), RawLine(key: "Seen from", value: u.how),
-                                        RawLine(key: "Now", value: "↓ \(r.0) · ↑ \(r.1) \(r.2)")]))
+                                facts: [u.via, u.metered ? L("metered") : nil, u.lowData ? L("Low Data Mode") : nil, "↑ \(r.1) \(r.2)"].compactMap { $0 },
+                                pairs: [RawLine(key: L("Interface"), value: u.iface), RawLine(key: L("Through"), value: u.via),
+                                        RawLine(key: L("Metered"), value: u.metered ? L("Yes: macOS and apps may hold back big downloads and backups") : L("No")),
+                                        RawLine(key: L("Low Data"), value: u.lowData ? L("On") : L("Off")), RawLine(key: L("Seen from"), value: u.how),
+                                        RawLine(key: L("Now"), value: "↓ \(r.0) · ↑ \(r.1) \(r.2)")]))
         }
         guard let bt else { return (groups, []) }
         if !bt.on || !bt.connected.isEmpty {
             let n = bt.connected.count
             groups.append(TNode(id: "bt", kind: .port, icon: "antenna.radiowaves.left.and.right", title: "Bluetooth",
-                                facts: [bt.on ? "\(n) connected" : "off"],
+                                facts: [bt.on ? L("\(n) connected") : L("off")],
                                 children: bt.connected.map(device),
-                                pairs: [("State", bt.on ? "On" : "Off"), ("Chip", bt.chip), ("Firmware", bt.firmware), ("Bus", bt.transport)]
+                                pairs: [(L("State"), bt.on ? L("On") : L("Off")), (L("Chip"), bt.chip), (L("Firmware"), bt.firmware), (L("Bus"), bt.transport)]
                                     .compactMap { k, v in v.map { RawLine(key: k, value: $0) } }))
         }
         return (groups, bt.paired.map { var d = device($0); d.dim = true; d.main = nil; return d })
@@ -239,19 +239,19 @@ enum WirelessTree {
 
     private static func device(_ d: BTDevice) -> TNode {
         let k = d.kind, low = d.connected && (d.battery ?? 100) <= 10, lowish = d.connected && (d.battery ?? 100) <= 20
-        var pairs = [RawLine(key: "Type", value: k.name)]
-        pairs += d.batteries.map { RawLine(key: $0.label.isEmpty ? "Battery" : $0.label == "case" ? "Case" : $0.label == "L" ? "Left" : "Right", value: "\($0.pct)%") }
-        if let r = d.rssi { pairs.append(RawLine(key: "Signal", value: "\(r) dBm (\(Wireless.signal(r)))")) }
-        if !d.services.isEmpty { pairs.append(RawLine(key: "Profiles", value: d.services.joined(separator: ", "))) }
-        if let f = d.firmware { pairs.append(RawLine(key: "Firmware", value: f)) }
+        var pairs = [RawLine(key: L("Type"), value: k.name)]
+        pairs += d.batteries.map { RawLine(key: $0.label.isEmpty ? L("Battery") : $0.label == "case" ? L("Case") : $0.label == "L" ? L("Left") : L("Right"), value: "\($0.pct)%") }
+        if let r = d.rssi { pairs.append(RawLine(key: L("Signal"), value: "\(r) dBm (\(Wireless.signal(r)))")) }
+        if !d.services.isEmpty { pairs.append(RawLine(key: L("Profiles"), value: d.services.joined(separator: ", "))) }
+        if let f = d.firmware { pairs.append(RawLine(key: L("Firmware"), value: f)) }
         if let v = d.vendorID {
             pairs.append(RawLine(key: "IDs", value: String(format: "vendor %04X", v) + (d.vendor.map { " (\($0))" } ?? "") + (d.productID.map { String(format: " · product %04X", $0) } ?? "")))
         }
-        let facts: [String?] = d.connected ? [k.name, Wireless.batteryText(d.batteries), d.rssi.map { "signal " + Wireless.signal($0) }]
-                                           : [k.name, d.rssi != nil ? "in range" : nil]
+        let facts: [String?] = d.connected ? [k.name, Wireless.batteryText(d.batteries), d.rssi.map { L("signal \(Wireless.signal($0))") }]
+                                           : [k.name, d.rssi != nil ? L("in range") : nil]
         return TNode(id: d.id, kind: .device, icon: k.icon, title: d.name,
                      main: d.battery.map { LinkLoad(now: Double($0), max: nil, slow: lowish, unit: "%", icon: batteryIcon(Double($0))) },
-                     facts: facts.compactMap { $0 }, warn: low ? "Battery low. Charge it soon." : nil,
+                     facts: facts.compactMap { $0 }, warn: low ? L("Battery low. Charge it soon.") : nil,
                      pairs: pairs, raw: d.raw)
     }
 }

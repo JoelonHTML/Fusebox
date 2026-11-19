@@ -51,7 +51,7 @@ struct PortsContent: View {
             // Mini-jack (3,5 mm): bij elke vernieuwing opnieuw gelezen (CoreAudio, verwaarloosbaar)
             let jack = AudioJack.read()
             DockedList(groups: PortTree.build(sums, internals: internals, displays: displays) + (jack.plugged ? [Self.jackNode(jack)] : []),
-                       empty: showEmpty ? sums.filter { !$0.port.connected } : [], emptyExtra: showEmpty && !jack.plugged ? ["Headphone jack"] : [], sums: sums,
+                       empty: showEmpty ? sums.filter { !$0.port.connected } : [], emptyExtra: showEmpty && !jack.plugged ? [L("Headphone jack")] : [], sums: sums,
                        wireless: wireless.groups, paired: wireless.paired)
             otherDevices
         }
@@ -59,13 +59,13 @@ struct PortsContent: View {
 
     /// De koptelefoonaansluiting als eigen "poort", met wat erin zit eronder.
     static func jackNode(_ j: AudioJack) -> TNode {
-        var dev = TNode(id: "jack:dev", kind: .device, icon: j.mic ? "headset" : "headphones", title: j.mic ? "Headset" : "Headphones or speakers")
-        dev.facts = [j.inUse ? "sound plays here" : "not used for sound"]
-        dev.info = j.inUse ? nil : "Plugged in, but your Mac sends sound elsewhere. Choose it in Control Center › Sound."
-        var port = TNode(id: "jack", kind: .port, icon: "headphones", title: "Headphone jack")
+        var dev = TNode(id: "jack:dev", kind: .device, icon: j.mic ? "headset" : "headphones", title: j.mic ? L("Headset") : L("Headphones or speakers"))
+        dev.facts = [j.inUse ? L("sound plays here") : L("not used for sound")]
+        dev.info = j.inUse ? nil : L("Plugged in, but your Mac sends sound elsewhere. Choose it in Control Center › Sound.")
+        var port = TNode(id: "jack", kind: .port, icon: "headphones", title: L("Headphone jack"))
         port.facts = ["3.5 mm", j.rateKHz.map { "\(trim($0)) kHz" }].compactMap { $0 }
-        port.pairs = [RawLine(key: j.mic ? "Headset with microphone" : "Headphones or speakers", value: "connected"),
-                      RawLine(key: "Sound output", value: j.inUse ? "this jack" : "elsewhere")] + (j.rateKHz.map { [RawLine(key: "Sample rate", value: "\(trim($0)) kHz")] } ?? [])
+        port.pairs = [RawLine(key: j.mic ? L("Headset with microphone") : L("Headphones or speakers"), value: L("connected")),
+                      RawLine(key: L("Sound output"), value: j.inUse ? L("this jack") : L("elsewhere"))] + (j.rateKHz.map { [RawLine(key: L("Sample rate"), value: "\(trim($0)) kHz")] } ?? [])
         port.children = [dev]
         return port
     }
@@ -76,7 +76,7 @@ struct PortsContent: View {
         let sockets = Set(snap.ports.filter { !$0.isMagSafe }.map { String($0.number) })
         let otherTB = snap.tb.filter { $0.socket.map { !sockets.contains($0) } ?? true }
         if !other.isEmpty || !otherTB.isEmpty {
-            Disclosure(title: "Other devices", count: Ports.devices(other).count + otherTB.count) {
+            Disclosure(title: L("Other devices"), count: Ports.devices(other).count + otherTB.count) {
                 Text("Not linked to a specific port (built in, or behind a Thunderbolt dock).").font(theme.label(10)).foregroundStyle(theme.onRow(true))
                 DeviceTree(roots: other, tb: otherTB)
             }
@@ -113,11 +113,11 @@ private struct IntoMac: View {
                 }
             }
             NetFlow(spacing: 6) {
-                if let c = charger { stat("bolt.fill", "\(trim(c.maxW)) W", "charger") }
-                if let f = fastest { stat("arrow.left.arrow.right", speedParts(f).0 + " " + speedParts(f).1, "link") }
-                if devices > 0 { stat("point.3.connected.trianglepath.dotted", "\(devices)", devices == 1 ? "device" : "devices") }
+                if let c = charger { stat("bolt.fill", "\(trim(c.maxW)) W", L("charger")) }
+                if let f = fastest { stat("arrow.left.arrow.right", speedParts(f).0 + " " + speedParts(f).1, L("link")) }
+                if devices > 0 { stat("point.3.connected.trianglepath.dotted", "\(devices)", devices == 1 ? L("device") : L("devices")) }
                 if bt > 0 { stat("antenna.radiowaves.left.and.right", "\(bt)", "Bluetooth") }
-                if screens > 0 { stat("display.2", "\(screens)", screens == 1 ? "display" : "displays").help(displays.map(Displays.line).joined(separator: "\n")) }
+                if screens > 0 { stat("display.2", "\(screens)", screens == 1 ? L("display") : L("displays")).help(displays.map(Displays.line).joined(separator: "\n")) }
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -125,9 +125,9 @@ private struct IntoMac: View {
     }
 
     private func batteryText(_ n: PowerNow) -> String {
-        if n.full { return "battery full" }
-        if n.charging { return "charging" + (n.minutes.map { " · full in " + duration($0) } ?? "") }
-        return n.external ? "not charging" : (n.minutes.map { duration($0) + " left" } ?? "on battery")
+        if n.full { return L("battery full") }
+        if n.charging { return L("charging") + (n.minutes.map { L(" · full in \(duration($0))") } ?? "") }
+        return n.external ? L("not charging") : (n.minutes.map { L("\(duration($0)) left") } ?? L("on battery"))
     }
 
     private func stat(_ icon: String, _ value: String, _ label: String) -> some View {
@@ -183,7 +183,7 @@ enum PortTree {
             left.removeAll { $0.link == .native }
         }
         if !left.isEmpty {
-            groups.append(TNode(id: "displays", kind: .port, icon: "display.2", title: "Displays", facts: ["not linked to a port"],
+            groups.append(TNode(id: "displays", kind: .port, icon: "display.2", title: L("Displays"), facts: [L("not linked to a port")],
                                 children: left.map { display($0, portID: nil) }))
         }
         return groups
@@ -196,7 +196,7 @@ enum PortTree {
             if ids.contains(n.id) {
                 n.children += ds.map { display($0, portID: port) }
                 if displayLink {
-                    n.facts.insert("\(ds.count) display\(ds.count == 1 ? "" : "s") via DisplayLink", at: 0)
+                    n.facts.insert(ds.count == 1 ? L("1 display via DisplayLink") : L("\(ds.count) displays via DisplayLink"), at: 0)
                     n.info = [n.info, Displays.displayLinkInfo].compactMap { $0 }.joined(separator: "\n\n")
                 }
                 return true
@@ -239,13 +239,13 @@ enum PortTree {
         let slow = p.dataBps.map { now in allowed.map { now < $0 * 0.9 } ?? false } ?? false
         let types = Set(p.port.links.map(\.type))
         let kind = types.contains("CIO") ? "Thunderbolt" : types.contains("USB3") ? "USB 3" : types.contains("USB2") ? "USB 2"
-            : types.contains("DisplayPort") ? "video" : nil
+            : types.contains("DisplayPort") ? L("video") : nil
         let n = notes(p, [.port, .data])
         var node = TNode(id: "port:" + p.id, kind: .port, icon: p.port.isMagSafe ? "bolt.horizontal.fill" : "cable.connector",
                          title: p.port.title,
                          main: p.port.isMagSafe || p.dataBps == nil ? p.nowW.map { LinkLoad(now: $0, max: nil, power: true) } : LinkLoad(now: p.dataBps, max: pmax, slow: slow),
-                         facts: [kind, p.port.isMagSafe ? nil : p.nowW.map { "\(trim($0)) W in" }].compactMap { $0 },
-                         warn: n.warn ?? (slow ? "Runs slower than the port, cable and device allow. Try another cable." : nil), info: n.info, portID: p.id)
+                         facts: [kind, p.port.isMagSafe ? nil : p.nowW.map { L("\(trim($0)) W in") }].compactMap { $0 },
+                         warn: n.warn ?? (slow ? L("Runs slower than the port, cable and device allow. Try another cable.") : nil), info: n.info, portID: p.id)
         let src = source(p, internals: internals)
         node.children = p.port.isMagSafe ? [src] : [cable(p, src)]
         return node
@@ -253,18 +253,18 @@ enum PortTree {
 
     private static func cable(_ p: PortSum, _ src: TNode) -> TNode {
         let c = p.port.cable
-        var facts = [c == nil ? "no e-marker" : p.cableKind, "\(p.cableW ?? 60) W"]
-        if let l = c?.latency, (1...8).contains(l) { facts.append(l == 8 ? "over 7 m" : "~\(l) m") }
+        var facts = [c == nil ? L("no e-marker") : p.cableKind, "\(p.cableW ?? 60) W"]
+        if let l = c?.latency, (1...8).contains(l) { facts.append(l == 8 ? L("over 7 m") : "~\(l) m") }
         let data = !p.port.links.isEmpty && p.cableBps != nil
         let n = notes(p, [.cable])
-        return TNode(id: "cable:" + p.id, kind: .cable, icon: "cable.connector.horizontal", title: "Cable",
+        return TNode(id: "cable:" + p.id, kind: .cable, icon: "cable.connector.horizontal", title: L("Cable"),
                      main: data ? LinkLoad(now: p.dataBps, max: p.cableBps) : LinkLoad(now: nil, max: Double(p.cableW ?? 60), power: true),
                      facts: data ? facts : [facts[0]] + facts.dropFirst(2), warn: n.warn, info: n.info, children: [src], portID: p.id)
     }
 
     private static func source(_ p: PortSum, internals: Bool) -> TNode {
         var facts: [String] = []
-        if let now = p.nowW, p.port.charger != nil { facts.append("\(trim(now)) W to Mac") }
+        if let now = p.nowW, p.port.charger != nil { facts.append(L("\(trim(now)) W to Mac")) }
         if let w = p.port.charger?.winning { facts.append("\(volt(w.mV)) × \(amp(w.mA))") }
         if p.port.charger == nil, let r = p.roots.first, !r.hub { facts.append(r.maker) }
         var kids: [TNode]
@@ -284,20 +284,20 @@ enum PortTree {
         let slow = (d.bcd ?? 0) >= 0x300 && (d.bps ?? 0) > 0 && (d.bps ?? 0) <= 480e6
         return TNode(id: "usb:\(d.id)", kind: .device, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil, slow: slow),
                      facts: [d.maker, d.bps.map(shortSpeed)].compactMap { $0 },
-                     warn: slow ? "Runs at USB 2 speed, but it can do USB 3. Try another cable or port." : nil, usb: d)
+                     warn: slow ? L("Runs at USB 2 speed, but it can do USB 3. Try another cable or port.") : nil, usb: d)
     }
 
     /// Met "internals": de echte USB-boom. Hubs zonder iets erachter vallen weg; een hub met alleen één hub eronder wordt één regel.
     private static func usb(_ d: USBDev, via: Int) -> TNode? {
         guard d.hub else {
             var n = device(d)
-            if d.billboard { n.facts = ["mode info from the dock"]; n.dim = true; n.info = "Billboard: the dock tells the Mac which extra modes (such as video over USB-C) are not active." }
+            if d.billboard { n.facts = [L("mode info from the dock")]; n.dim = true; n.info = L("Billboard: the dock tells the Mac which extra modes (such as video over USB-C) are not active.") }
             return n
         }
         if d.leaves.isEmpty { return nil }
         if d.children.count == 1, d.children[0].hub { return usb(d.children[0], via: via + 1) }
         return TNode(id: "usb:\(d.id)", kind: .hub, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil),
-                     facts: [d.maker, via > 0 ? "\(via + 1) hubs" : nil].compactMap { $0 }, dim: true,
+                     facts: [d.maker, via > 0 ? L("\(via + 1) hubs") : nil].compactMap { $0 }, dim: true,
                      children: d.children.compactMap { usb($0, via: 0) }, usb: d)
     }
 
@@ -354,10 +354,10 @@ private struct NodeDetails: View {
                 if let m = node.main { LoadView(m: m, size: 22) }
                 if let w = node.warn { NoteBox(note: PortNote(text: w, level: .warn)) }
                 VStack(alignment: .leading, spacing: 3) { ForEach(node.pairs, id: \.self) { PortFact($0.key, $0.value) } }
-                if !node.raw.isEmpty { Disclosure(title: "All values") { RawList(lines: node.raw) } }
+                if !node.raw.isEmpty { Disclosure(title: L("All values")) { RawList(lines: node.raw) } }
             }
             else if let p {
-                Label(node.kind == .cable ? "Cable in \(p.port.title)" : node.title, systemImage: node.icon)
+                Label(node.kind == .cable ? L("Cable in \(p.port.title)") : node.title, systemImage: node.icon)
                     .font(theme.label(13).weight(.semibold))
                 PortDetails(sum: p, topics: node.kind == .cable ? [.cable] : node.kind == .port ? [.port] : [.power, .data])
             }
@@ -396,7 +396,7 @@ private struct DockedList: View {
                 PortGroupList(root: g, sums: sums, sel: $sel, inline: inline).themedRow(theme, index: i)
             }
             if !empty.isEmpty || !emptyExtra.isEmpty {
-                Label((empty.map(\.port.title) + emptyExtra).joined(separator: " · ") + " · empty", systemImage: "circle.dashed")
+                Label((empty.map(\.port.title) + emptyExtra).joined(separator: " · ") + L(" · empty"), systemImage: "circle.dashed")
                     .font(theme.label(11)).foregroundStyle(theme.onRow(true).opacity(0.75)).padding(.leading, 4)
             }
             // Draadloos: hotspot/modem en Bluetooth; gekoppelde maar niet verbonden apparaten ingeklapt
@@ -406,7 +406,7 @@ private struct DockedList: View {
                     PortGroupList(root: g, sums: sums, sel: $sel, inline: inline).themedRow(theme, index: groups.count + i)
                 }
                 if !paired.isEmpty {
-                    Disclosure(title: "Bluetooth · paired, not connected", count: paired.count) {
+                    Disclosure(title: L("Bluetooth · paired, not connected"), count: paired.count) {
                         ForEach(paired) { PortGroupList(root: $0, sums: sums, sel: $sel, inline: inline) }
                     }
                     .padding(.leading, 4)
@@ -533,10 +533,10 @@ struct PortSum: Identifiable {
     }
     var status: (text: String, level: PortNote.Level)? {
         guard port.connected else { return nil }
-        if let w = notes.first(where: { $0.level == .warn }) { return ("Check " + w.topic.noun, .warn) }
-        return ("Good", .good)
+        if let w = notes.first(where: { $0.level == .warn }) { return (L("Check \(w.topic.noun)"), .warn) }
+        return (L("Good"), .good)
     }
-    var short: String { port.isMagSafe ? "MagSafe" : "Port \(port.number)" }
+    var short: String { port.isMagSafe ? "MagSafe" : L("Port \(port.number)") }
     var chargerW: Double? { port.charger?.winning?.watts }
     var nowW: Double? { now?.mW.flatMap { $0 > 0 ? Double($0) / 1000 : nil } }
     var dataBps: Double? {
@@ -552,28 +552,28 @@ struct PortSum: Identifiable {
         if t.contains("CIO") { return "Thunderbolt / USB4" }
         if t.contains("USB3") { return (dataBps ?? 0) >= 15e9 ? "USB 3.2 Gen 2×2" : (dataBps ?? 0) >= 6e9 ? "USB 3.2 Gen 2" : "USB 3.2 Gen 1" }
         if t.contains("USB2") { return "USB 2" }
-        return t.contains("DisplayPort") ? "Video only" : "Power only"
+        return t.contains("DisplayPort") ? L("Video only") : L("Power only")
     }
     /// Wat erin zit, in één of twee woorden, met icoon.
     var what: (name: String, icon: String) {
         if let t = tb.first { return (t.name, "bolt.horizontal.fill") }
-        if roots.contains(where: \.hub) { return (port.charger != nil ? "Dock" : "Hub", "dock.rectangle") }
+        if roots.contains(where: \.hub) { return (port.charger != nil ? L("Dock") : L("Hub"), "dock.rectangle") }
         if let r = roots.first { return (r.name, deviceIcon(r)) }
-        if port.links.contains(where: { $0.type == "DisplayPort" }) { return ("Display", "display") }
-        if port.charger != nil { return (port.isMagSafe ? "MagSafe charger" : "Charger", "powerplug.fill") }
-        return (port.partnerKind?.capitalized ?? "Device", "cable.connector.horizontal")
+        if port.links.contains(where: { $0.type == "DisplayPort" }) { return (L("Display"), "display") }
+        if port.charger != nil { return (port.isMagSafe ? L("MagSafe charger") : L("Charger"), "powerplug.fill") }
+        return (port.partnerKind?.capitalized ?? L("Device"), "cable.connector.horizontal")
     }
     var cableW: Int? { port.cable?.watts }
     var cableBps: Double? { port.cable?.speed.map { Ports.cableMax($0, thunderbolt: tbLink != nil) } }
     var cableKind: String {
-        guard let c = port.cable else { return "no e-marker" }
-        return port.optical ? "optical" : (c.active || port.activeCable) ? "active" : "passive"
+        guard let c = port.cable else { return L("no e-marker") }
+        return port.optical ? L("optical") : (c.active || port.activeCable) ? L("active") : L("passive")
     }
 }
 
 extension PortNote.Topic {
     var noun: String {
-        switch self { case .port: "port"; case .power: "charger"; case .cable: "cable"; case .data: "speed"; case .devices: "devices" }
+        switch self { case .port: L("port"); case .power: L("charger"); case .cable: L("cable"); case .data: L("speed"); case .devices: L("devices") }
     }
 }
 
@@ -666,7 +666,7 @@ private struct DeviceCard: View {
             Text([dev.maker, dev.bps.map(Ports.usbSpeedName), dev.powerMA.map { "\($0) mA" }, String(format: "ID %04X:%04X", dev.vid, dev.pid)]
                     .compactMap { $0 }.joined(separator: " · "))
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
-            Disclosure(title: "All values") { RawList(lines: dev.raw) }
+            Disclosure(title: L("All values")) { RawList(lines: dev.raw) }
         }
     }
 }
@@ -682,24 +682,24 @@ private struct DisplayCard: View {
             if let w = Displays.warning(d) { NoteBox(note: PortNote(text: w, level: .warn)) }
             if d.link == .displayLink { NoteBox(note: PortNote(text: Displays.displayLinkInfo, level: .info)) }
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 220), spacing: 14, alignment: .top)], alignment: .leading, spacing: 12) {
-                PortGroup("Picture", icon: "display") {
-                    PortFact("Resolution", Displays.res(d.w, d.h) + (d.maxW == 0 ? "" : (d.maxW, d.maxH) == (d.w, d.h) ? " (native)" : " (native \(Displays.res(d.maxW, d.maxH)))"))
-                    if d.lw > 0 && (d.lw, d.lh) != (d.w, d.h) { PortFact("Looks like", Displays.res(d.lw, d.lh)) }
-                    if d.hz > 0 { PortFact("Refresh", Displays.hz(d.hz) + (d.maxHz > d.hz + 1 ? " (can do \(Displays.hz(d.maxHz)))" : "")) }
-                    PortFact("Scale", d.scale >= 2 ? "\(trim(d.scale))× (Retina)" : "1× (not Retina)")
-                    if let i = d.inches { PortFact("Size", "\(trim(i))″ (\(Int(d.mmW)) × \(Int(d.mmH)) mm)") }
-                    PortFact("HDR", d.edr > 1 ? "Up to \(trim(d.edr))× SDR brightness (EDR)" : "No")
-                    if let b = d.bits { PortFact("Color", "\(b) bits per channel") }
+                PortGroup(L("Picture"), icon: "display") {
+                    PortFact(L("Resolution"), Displays.res(d.w, d.h) + (d.maxW == 0 ? "" : (d.maxW, d.maxH) == (d.w, d.h) ? L(" (native)") : L(" (native \(Displays.res(d.maxW, d.maxH)))")))
+                    if d.lw > 0 && (d.lw, d.lh) != (d.w, d.h) { PortFact(L("Looks like"), Displays.res(d.lw, d.lh)) }
+                    if d.hz > 0 { PortFact(L("Refresh"), Displays.hz(d.hz) + (d.maxHz > d.hz + 1 ? L(" (can do \(Displays.hz(d.maxHz)))") : "")) }
+                    PortFact(L("Scale"), d.scale >= 2 ? "\(trim(d.scale))× (Retina)" : L("1× (not Retina)"))
+                    if let i = d.inches { PortFact(L("Size"), "\(trim(i))″ (\(Int(d.mmW)) × \(Int(d.mmH)) mm)") }
+                    PortFact(L("HDR"), d.edr > 1 ? L("Up to \(trim(d.edr))× SDR brightness (EDR)") : L("No"))
+                    if let b = d.bits { PortFact(L("Color"), L("\(b) bits per channel")) }
                 }
-                PortGroup("Connection", icon: "cable.connector.horizontal") {
-                    PortFact("Type", Displays.linkText(d))
+                PortGroup(L("Connection"), icon: "cable.connector.horizontal") {
+                    PortFact(L("Type"), Displays.linkText(d))
                     if let s = sum {
-                        PortFact("Port", s.port.title)
-                        if d.link == .native { ForEach(s.port.links.filter { $0.type == "DisplayPort" }, id: \.self) { PortFact("Link", Ports.linkText($0, tb: nil)) } }
+                        PortFact(L("Port"), s.port.title)
+                        if d.link == .native { ForEach(s.port.links.filter { $0.type == "DisplayPort" }, id: \.self) { PortFact(L("Link"), Ports.linkText($0, tb: nil)) } }
                     }
-                    PortFact("Role", [d.main ? "main display (menu bar)" : "extended desktop", d.mirrored ? "mirrored" : nil].compactMap { $0 }.joined(separator: ", "))
-                    if d.rotation != 0 { PortFact("Rotation", "\(d.rotation)°") }
-                    PortFact("IDs", String(format: "vendor %04X · model %04X", d.vendor, d.model))
+                    PortFact(L("Role"), [d.main ? L("main display (menu bar)") : L("extended desktop"), d.mirrored ? L("mirrored") : nil].compactMap { $0 }.joined(separator: ", "))
+                    if d.rotation != 0 { PortFact(L("Rotation"), "\(d.rotation)°") }
+                    PortFact(L("IDs"), String(format: "vendor %04X · model %04X", d.vendor, d.model))
                 }
             }
         }
@@ -726,10 +726,10 @@ private struct PortDetails: View {
                 if topics.contains(.port) { factsSection }
             }
             if topics.contains(.devices) && (!sum.roots.isEmpty || !sum.tb.isEmpty) {
-                PortGroup("Devices behind this port", icon: "point.3.connected.trianglepath.dotted") { DeviceTree(roots: sum.roots, tb: sum.tb) }
+                PortGroup(L("Devices behind this port"), icon: "point.3.connected.trianglepath.dotted") { DeviceTree(roots: sum.roots, tb: sum.tb) }
             }
             if topics.contains(.port) {
-                Disclosure(title: "All IOKit values") {
+                Disclosure(title: L("All IOKit values")) {
                     ForEach(port.raw, id: \.self) { g in
                         Text(g.title).font(theme.label(10).weight(.semibold)).padding(.top, 4)
                         RawList(lines: g.lines)
@@ -741,36 +741,36 @@ private struct PortDetails: View {
     }
 
     private var cableSection: some View {
-        PortGroup("Cable", icon: "cable.connector.horizontal") {
+        PortGroup(L("Cable"), icon: "cable.connector.horizontal") {
             if let c = port.cable {
-                PortFact("Type", port.optical ? "Optical (active)" : (c.active || port.activeCable) ? "Active (has electronics)" : "Passive (no signal electronics)")
-                if let s = c.speed { PortFact("Data", Ports.cableSpeedText(s)) }
+                PortFact(L("Type"), port.optical ? L("Optical (active)") : (c.active || port.activeCable) ? L("Active (has electronics)") : L("Passive (no signal electronics)"))
+                if let s = c.speed { PortFact(L("Data"), Ports.cableSpeedText(s)) }
                 if let a = c.mA {
-                    PortFact("Power", "\(amp(a))" + (c.mV.map { " at up to \(volt($0))" } ?? "") + (c.watts.map { " ≈ \($0) W" } ?? "") + (c.epr ? " (EPR)" : ""))
+                    PortFact(L("Power"), "\(amp(a))" + (c.mV.map { L(" at up to \(volt($0))") } ?? "") + (c.watts.map { " ≈ \($0) W" } ?? "") + (c.epr ? " (EPR)" : ""))
                 }
                 if let l = c.latency, (1...8).contains(l) {
-                    PortFact("Length", l == 8 ? "longer than about 7 m (from signal delay)" : "about \(l) m (from signal delay)")
+                    PortFact(L("Length"), l == 8 ? L("longer than about 7 m (from signal delay)") : L("about \(l) m (from signal delay)"))
                 }
-                PortFact("E-marker ID", String(format: "%04X:%04X", c.vid, c.pid) + (c.pd.map { " · " + Ports.pdText($0) } ?? ""))
+                PortFact(L("E-marker ID"), String(format: "%04X:%04X", c.vid, c.pid) + (c.pd.map { " · " + Ports.pdText($0) } ?? ""))
             } else {
                 Text("No e-marker found. A plain USB-C cable carries up to 3 A (60 W); its data speed can't be read.")
                     .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
-                if port.activeCable { PortFact("Type", "Active (has electronics)") }
+                if port.activeCable { PortFact(L("Type"), L("Active (has electronics)")) }
             }
         }
     }
 
     private var chargerSection: some View {
-        PortGroup(port.isMagSafe ? "MagSafe charger" : "Charger", icon: "bolt.fill") {
+        PortGroup(port.isMagSafe ? L("MagSafe charger") : L("Charger"), icon: "bolt.fill") {
             if let c = port.charger, let w = c.winning {
-                PortFact("Agreed", "\(w.text) = \(trim(w.watts)) W")
-                PortFact("Maximum", "\(trim(c.maxW)) W")
-                if let n = sum.now?.adapterName { PortFact("Reported as", n) }
-                if let p = sum.now, let t = Ports.nowText(p) { PortFact("Now", t.replacingOccurrences(of: "Drawing ", with: "")) }
+                PortFact(L("Agreed"), "\(w.text) = \(trim(w.watts)) W")
+                PortFact(L("Maximum"), "\(trim(c.maxW)) W")
+                if let n = sum.now?.adapterName { PortFact(L("Reported as"), n) }
+                if let p = sum.now, let t = Ports.nowText(p) { PortFact(L("Now"), t.replacingOccurrences(of: "Drawing ", with: "")) }
             }
             ForEach(Array(port.sources.enumerated()), id: \.offset) { _, src in
                 if src.options.count > 1 || src.winning != nil {
-                    Text(src.source == "USB-PD" ? "Offered profiles" : src.source).font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.top, 2)
+                    Text(src.source == "USB-PD" ? L("Offered profiles") : src.source).font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.top, 2)
                     ForEach(src.options, id: \.self) { o in
                         let on = o == src.winning
                         HStack(spacing: 6) {
@@ -781,40 +781,40 @@ private struct PortDetails: View {
                         }
                     }
                 } else if let o = src.options.first {
-                    PortFact(src.source == "TypeC" ? "Type-C current" : src.source, "\(volt(o.mV)) · \(amp(o.mA)) (\(trim(o.watts)) W)")
+                    PortFact(src.source == "TypeC" ? L("Type-C current") : src.source, "\(volt(o.mV)) · \(amp(o.mA)) (\(trim(o.watts)) W)")
                 }
             }
         }
     }
 
     private var linkSection: some View {
-        PortGroup("Measured by the Mac", icon: "gauge.with.needle") {
+        PortGroup(L("Measured by the Mac"), icon: "gauge.with.needle") {
             ForEach(port.links, id: \.self) { l in
                 PortFact(Ports.transportName(l.type), Ports.linkText(l, tb: sum.tbLink))
-                if let p = l.product { PortFact("  Device", [p, l.maker].compactMap { $0 }.joined(separator: " · ")) }
-                if let r = l.role { PortFact("  Mac is", r.lowercased()) }
+                if let p = l.product { PortFact(L("  Device"), [p, l.maker].compactMap { $0 }.joined(separator: " · ")) }
+                if let r = l.role { PortFact(L("  Mac is"), r.lowercased()) }
             }
-            if port.links.isEmpty { PortFact("Data", "No data link (power only or not set up)") }
-            if let k = port.partnerKind { PortFact("Device type", k + (port.partnerModal ? " (can switch modes)" : "")) }
-            if let v = port.partnerVID { PortFact("Device ID", String(format: "%04X", v) + (port.partnerPID.map { String(format: ":%04X", $0) } ?? "")) }
-            if let pd = port.partnerPD { PortFact("Talks", Ports.pdText(pd)) }
-            if let s = port.links.first?.security { PortFact("Accessory", s) }
+            if port.links.isEmpty { PortFact(L("Data"), L("No data link (power only or not set up)")) }
+            if let k = port.partnerKind { PortFact(L("Device type"), k + (port.partnerModal ? L(" (can switch modes)") : "")) }
+            if let v = port.partnerVID { PortFact(L("Device ID"), String(format: "%04X", v) + (port.partnerPID.map { String(format: ":%04X", $0) } ?? "")) }
+            if let pd = port.partnerPD { PortFact(L("Talks"), Ports.pdText(pd)) }
+            if let s = port.links.first?.security { PortFact(L("Accessory"), s) }
         }
     }
 
     private var factsSection: some View {
-        PortGroup("Connection", icon: "info.circle") {
+        PortGroup(L("Connection"), icon: "info.circle") {
             if port.connected {
-                PortFact("SuperSpeed", port.superSpeed ? "Yes" : "No")
-                if !port.isMagSafe { PortFact("Cable", port.optical ? "Optical" : port.activeCable ? "Active" : "Passive") }
-                if port.orientation > 0 { PortFact("Plug side", port.orientation == 1 ? "A (normal)" : "B (flipped)") }
+                PortFact(L("SuperSpeed"), port.superSpeed ? L("Yes") : L("No"))
+                if !port.isMagSafe { PortFact(L("Cable"), port.optical ? L("Optical") : port.activeCable ? L("Active") : L("Passive")) }
+                if port.orientation > 0 { PortFact(L("Plug side"), port.orientation == 1 ? L("A (normal)") : L("B (flipped)")) }
             }
-            if let n = port.plugEvents { PortFact("Plug events", "\(n)") }
-            if let s = Ports.supportedText(port.supported) { PortFact("Can do", String(s.dropFirst(9))) }
+            if let n = port.plugEvents { PortFact(L("Plug events"), "\(n)") }
+            if let s = Ports.supportedText(port.supported) { PortFact(L("Can do"), String(s.dropFirst(9))) }
             if port.connected {
-                PortFact("Active", port.active.map(Ports.transportName).joined(separator: ", ").nonEmpty ?? "–")
+                PortFact(L("Active"), port.active.map(Ports.transportName).joined(separator: ", ").nonEmpty ?? "–")
             }
-            if port.liquid { PortFact("Liquid", "Detected") }
+            if port.liquid { PortFact(L("Liquid"), L("Detected")) }
         }
     }
 }
@@ -944,10 +944,10 @@ private struct USBRow: View {
     private var detail: String {
         var parts = [dev.maker]
         if let b = dev.bps { parts.append(Ports.usbSpeedName(b)) }
-        if dev.hub { parts.append("\(dev.children.count) device\(dev.children.count == 1 ? "" : "s") on it") }
-        if hubs > 0 { parts.append("via \(hubs) hub\(hubs == 1 ? "" : "s")") }
-        if let p = dev.powerMA { parts.append("\(p) mA power budget") }
-        if dev.billboard { parts.append("billboard (mode info)") }
+        if dev.hub { parts.append(dev.children.count == 1 ? L("1 device on it") : L("\(dev.children.count) devices on it")) }
+        if hubs > 0 { parts.append(hubs == 1 ? L("via 1 hub") : L("via \(hubs) hubs")) }
+        if let p = dev.powerMA { parts.append(L("\(p) mA power budget")) }
+        if dev.billboard { parts.append(L("billboard (mode info)")) }
         parts.append(String(format: "ID %04X:%04X", dev.vid, dev.pid))
         return parts.joined(separator: " · ")
     }
@@ -962,7 +962,7 @@ private struct TBRow: View {
             HStack(spacing: 6) {
                 Image(systemName: "bolt.horizontal.fill").font(.system(size: 11)).frame(width: 16).foregroundStyle(theme.onRow(true))
                 Text(dev.name).font(theme.label(12)).lineLimit(1)
-                Text([dev.vendor, "Thunderbolt", dev.depth > 1 ? "\(dev.depth - 1) device\(dev.depth == 2 ? "" : "s") in between" : nil]
+                Text([dev.vendor, "Thunderbolt", dev.depth > 1 ? (dev.depth == 2 ? L("1 device in between") : L("\(dev.depth - 1) devices in between")) : nil]
                         .compactMap { $0?.nonEmpty }.joined(separator: " · "))
                     .font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
                 Spacer(minLength: 0)

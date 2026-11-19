@@ -12,18 +12,18 @@ enum SettingsTab: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var title: String {
         switch self {
-        case .profile: "Profile"
-        case .look: "Appearance"
-        case .live: "Live page"
+        case .profile: L("Profile")
+        case .look: L("Appearance")
+        case .live: L("Live page")
         case .processes: Page.programs.title
         case .checkup: Page.analysis.title
         case .network: Page.network.title
         case .docked: Page.ports.title
-        case .menubar: "Menu bar"
-        case .alerts: "Notifications"
-        case .fans: "Fans"
-        case .data: "Privacy"
-        case .about: "About"
+        case .menubar: L("Menu bar")
+        case .alerts: L("Notifications")
+        case .fans: L("Fans")
+        case .data: L("Privacy")
+        case .about: L("About")
         }
     }
     var icon: String {
@@ -152,7 +152,7 @@ struct LoginToggle: View {
     var body: some View {
         Toggle("Open at login", isOn: Binding(get: { on }, set: { v in
             do { try v ? SMAppService.mainApp.register() : SMAppService.mainApp.unregister(); note = nil }
-            catch { note = "Didn't work: \(error.localizedDescription)" }
+            catch { note = L("Didn't work: \(error.localizedDescription)") }
             read()
         }))
         .onAppear(perform: read)
@@ -160,7 +160,7 @@ struct LoginToggle: View {
     }
     private func read() {
         on = SMAppService.mainApp.status == .enabled
-        if SMAppService.mainApp.status == .requiresApproval { note = "Allow Fusebox in System Settings › General › Login Items." }
+        if SMAppService.mainApp.status == .requiresApproval { note = L("Allow Fusebox in System Settings › General › Login Items.") }
     }
 }
 
@@ -208,7 +208,7 @@ struct PresetCard: View {
             .contentShape(.rect)
         }
         .buttonStyle(.plain)
-        .help("Changes: " + changes)
+        .help(L("Changes: \(changes)"))
     }
 
     /// Wat dit profiel aanpast, in een paar woorden ("Liquid Glass · large text · no graphs").
@@ -216,16 +216,16 @@ struct PresetCard: View {
         let v = preset.values
         var out: [String] = []
         if let t = v["theme"] as? String { out.append(Theme.named(t).name) }
-        if let x = v["textScale"] as? Double, x > 1 { out.append(x >= 1.3 ? "extra large text" : "large text") }
+        if let x = v["textScale"] as? Double, x > 1 { out.append(x >= 1.3 ? L("extra large text") : L("large text")) }
         if let m = v["metrics"] as? String { out.append(Metric.enabled(m).map(\.abbr).joined(separator: " ")) }
-        if v["graphs"] as? String == "never" { out.append("no graphs") }
-        if v["showAdvice"] as? Bool == true { out.append("advice line") }
-        if v["absolute"] != nil { out.append("real values") }
+        if v["graphs"] as? String == "never" { out.append(L("no graphs")) }
+        if v["showAdvice"] as? Bool == true { out.append(L("advice line")) }
+        if v["absolute"] != nil { out.append(L("real values")) }
         if v["netBits"] as? Bool == true { out.append("Mbit/s") }
         if let mb = (v["menubarStyle"] as? String).flatMap(MenubarStyle.init) {
-            out.append(mb == .icon ? "menu bar icon" : "menu bar " + mb.title.split(separator: " ")[0].lowercased())
+            out.append(mb == .icon ? L("menu bar icon") : L("menu bar \(mb.title.split(separator: " ")[0].lowercased())"))
         }
-        if v[Alert.battery.key("on")] as? Bool == true { out.append("battery alert") }
+        if v[Alert.battery.key("on")] as? Bool == true { out.append(L("battery alert")) }
         return out.joined(separator: " · ")
     }
 }
@@ -243,7 +243,7 @@ struct ProfileSettings: View {
         Section("Start with a profile (you can still change everything afterwards)") {
             HStack(spacing: 8) {
                 ForEach(Prefs.presets) { p in
-                    PresetCard(preset: p) { Prefs.applyPreset(p); done("Profile \(p.title) is on") }
+                    PresetCard(preset: p) { Prefs.applyPreset(p); done(L("Profile \(p.title) is on")) }
                 }
             }
             if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
@@ -262,7 +262,8 @@ struct ProfileSettings: View {
                 .confirmationDialog("Reset all settings to default?", isPresented: $confirmReset) {
                     Button("Reset", role: .destructive) {
                         Prefs.reset(Prefs.defaults.keys.filter { $0 != "setupDone" })
-                        done("Everything is back to default")
+                        done(L("Everything is back to default"))
+
                     }
                 } message: { Text("Your logs are kept.") }
         }
@@ -291,6 +292,7 @@ struct LookSettings: View {
             NumberStylePicker()
         }
         Section {
+            LanguagePicker()
             Toggle("Always on top", isOn: $onTop)
             KeepRunningToggle()
             HotkeyRecorder()
@@ -354,7 +356,7 @@ struct LiveSettings: View {
                 ForEach([1, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 60 ? "hour" : "\($0) min").tag($0) }
             }
             .disabled(graphs == .never)
-            ForEach([("CPU graph", $cpuGraph), ("GPU graph", $gpuGraph)], id: \.0) { title, sel in
+            ForEach([(L("CPU graph"), $cpuGraph), (L("GPU graph"), $gpuGraph)], id: \.0) { title, sel in
                 LabeledContent(title) {
                     Picker(title, selection: sel) {
                         Text("Usage").tag("usage"); Text("Temperature").tag("temp"); Text("Both").tag("both")
@@ -403,7 +405,7 @@ struct LiveSettings: View {
         }
     }
 
-    private func threshold(_ title: String, _ v: Binding<Double>, _ r: ClosedRange<Double>, _ step: Double, _ unit: String) -> some View {
+    private func threshold(_ title: LocalizedStringKey, _ v: Binding<Double>, _ r: ClosedRange<Double>, _ step: Double, _ unit: String) -> some View {
         LabeledContent(title) {
             HStack { Slider(value: v, in: r, step: step); Text("\(Int(v.wrappedValue)) \(unit)").monospacedDigit().frame(width: 56, alignment: .trailing) }
         }
@@ -498,7 +500,7 @@ struct AlertSettings: View {
             LabeledContent {
                 Button("Send test notification") {
                     Notify.ask()
-                    Notify.send(title: "Fusebox update available (test)", body: "This is how Fusebox tells you about a new version.")
+                    Notify.send(title: L("Fusebox update available (test)"), body: L("This is how Fusebox tells you about a new version."))
                 }
                 .disabled(!notify)
             } label: {
@@ -555,7 +557,8 @@ struct AlertRow: View {
         s.cpu = min(limit + 2, 100); s.temp = limit + 2; s.pressure = 4
         s.diskFreeGB = limit * 0.7; s.pingMs = limit + 40; s.battery = max(limit - 2, 1)
         return alert.check([s], top: nil, limit: limit, minutes: minutes, pingOn: true)
-            ?? "Safari has been using \(Int(min(limit + 5, 100)))% processor for \(minutes) min"
+            ?? L("Safari has been using \(Int(min(limit + 5, 100)))% processor for \(minutes) min")
+
     }
 }
 
@@ -721,11 +724,11 @@ struct UpdateSection: View {
 
     private var status: String {
         switch updater.state {
-        case .idle: updater.lastCheck.map { "Last checked \($0.formatted(date: .omitted, time: .shortened))" } ?? ""
-        case .checking: "Checking…"
-        case .upToDate: "You're up to date"
-        case .available(let tag): "Fusebox \(Updater.pretty(tag)) available"
-        case .installing: "Installing…"
+        case .idle: updater.lastCheck.map { L("Last checked \($0.formatted(date: .omitted, time: .shortened))") } ?? ""
+        case .checking: L("Checking…")
+        case .upToDate: L("You're up to date")
+        case .available(let tag): L("Fusebox \(Updater.pretty(tag)) available")
+        case .installing: L("Installing…")
         case .failed(let why): why
         }
     }
@@ -833,7 +836,8 @@ struct UnitPicker: View {
         let cores = ProcessInfo.processInfo.activeProcessorCount
         let gb = Int((Double(ProcessInfo.processInfo.physicalMemory) / 1_073_741_824).rounded())
         let (unit, pctEx, realEx): (String, String, String) = switch metric {
-        case .cpu: ("cores", "23%", "\(one(0.23 * Double(cores))) /\(cores)")
+        case .cpu: (L("cores"), "23%",
+ "\(one(0.23 * Double(cores))) /\(cores)")
         case .ram: ("GB", "61%", "\(one(0.61 * Double(gb))) GB")
         default: ("GB", "40%", "300 GB")
         }

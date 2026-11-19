@@ -120,11 +120,11 @@ enum NetProbe {
 
     /// Poorten die we nakijken: poort → wat het meestal is.
     static let ports: [(port: UInt16, name: String)] = [
-        (22, "SSH"), (80, "Web"), (443, "Web (secure)"), (445, "File sharing"), (548, "File sharing (AFP)"),
-        (554, "Camera stream"), (631, "Printing"), (1883, "MQTT"), (3389, "Remote desktop"), (5000, "NAS / web"),
-        (5001, "NAS (secure)"), (8080, "Web (alt)"), (9100, "Printer"), (32400, "Plex"), (62078, "iPhone sync"),
+        (22, "SSH"), (80, "Web"), (443, L("Web (secure)")), (445, L("File sharing")), (548, L("File sharing (AFP)")),
+        (554, L("Camera stream")), (631, L("Printing")), (1883, "MQTT"), (3389, L("Remote desktop")), (5000, L("NAS / web")),
+        (5001, L("NAS (secure)")), (8080, L("Web (alt)")), (9100, L("Printer")), (32400, "Plex"), (62078, L("iPhone sync")),
     ]
-    static func portName(_ p: UInt16) -> String { ports.first { $0.port == p }?.name ?? "Port \(p)" }
+    static func portName(_ p: UInt16) -> String { ports.first { $0.port == p }?.name ?? L("Port \(String(p))") }
     /// Klikbare webpagina voor een open poort, anders nil.
     static func webURL(_ ip: UInt32, _ port: UInt16) -> URL? {
         let h = ipString(ip)

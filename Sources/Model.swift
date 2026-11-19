@@ -10,9 +10,9 @@ enum TimeRange: String, CaseIterable, Identifiable {
     /// Tekst voor de gebruiker; rawValue is een vaste korte id (veilig om op te slaan en te delen).
     var title: String {
         switch self {
-        case .fiveMin: "\(TimeRange.shortMinutes) min"
-        case .hour: "1 hour"
-        case .today: "Today"
+        case .fiveMin: L("\(TimeRange.shortMinutes) min")
+        case .hour: L("1 hour")
+        case .today: L("Today")
         }
     }
 }
@@ -360,12 +360,12 @@ final class Meter: ObservableObject {
         let cpu = last.isEmpty ? 0 : last.reduce(0) { $0 + $1.cpu } / Double(last.count)
         let temp = s.temp ?? 0
         let d = UserDefaults.standard, warnTemp = d.double(forKey: "warnTemp")
-        if s.pressure >= 4 { return ("Memory is full — close a few apps", .red) }
-        if temp >= warnTemp + 10 { return ("Your Mac is very hot — it's slowing itself down", .red) }
-        if cpu >= d.double(forKey: "warnCPU") { return ("Your Mac is busy", .orange) }
-        if s.pressure == 2 { return ("Memory is filling up", .orange) }
-        if temp >= warnTemp { return ("Your Mac is getting warm", .orange) }
-        return ("All calm", .green)
+        if s.pressure >= 4 { return (L("Memory is full — close a few apps"), .red) }
+        if temp >= warnTemp + 10 { return (L("Your Mac is very hot — it's slowing itself down"), .red) }
+        if cpu >= d.double(forKey: "warnCPU") { return (L("Your Mac is busy"), .orange) }
+        if s.pressure == 2 { return (L("Memory is filling up"), .orange) }
+        if temp >= warnTemp { return (L("Your Mac is getting warm"), .orange) }
+        return (L("All calm"), .green)
     }
 }
 
@@ -416,13 +416,13 @@ enum Alert: String, CaseIterable, Identifiable {
     func key(_ field: String) -> String { "alert.\(rawValue).\(field)" }
     var title: String {
         switch self {
-        case .cpu: "Processor busy"
-        case .heat: "Mac too hot"
-        case .mem: "Memory full"
-        case .disk: "Storage almost full"
-        case .net: "Internet slow or down"
-        case .battery: "Battery low"
-        case .app: "One app hogging"
+        case .cpu: L("Processor busy")
+        case .heat: L("Mac too hot")
+        case .mem: L("Memory full")
+        case .disk: L("Storage almost full")
+        case .net: L("Internet slow or down")
+        case .battery: L("Battery low")
+        case .app: L("One app hogging")
         }
     }
     /// Standaard: aan, grens, minuten op rij.
@@ -460,13 +460,13 @@ enum Alert: String, CaseIterable, Identifiable {
     func describe(_ limit: Double) -> String {
         let v = Int(limit)
         switch self {
-        case .cpu: return "above \(v)%"
-        case .heat: return "above \(v) °C"
-        case .mem: return limit >= 4 ? "pressure critical" : "pressure high"
-        case .disk: return "less than \(v) GB free"
-        case .net: return "above \(v) ms or offline"
-        case .battery: return "\(v)% or less"
-        case .app: return "above \(v)%"
+        case .cpu: return L("above \(v)%")
+        case .heat: return L("above \(v) °C")
+        case .mem: return limit >= 4 ? L("pressure critical") : L("pressure high")
+        case .disk: return L("less than \(v) GB free")
+        case .net: return L("above \(v) ms or offline")
+        case .battery: return L("\(v)% or less")
+        case .app: return L("above \(v)%")
         }
     }
 
@@ -478,26 +478,27 @@ enum Alert: String, CaseIterable, Identifiable {
         switch self {
         case .cpu:
             guard cpu >= limit else { return nil }
-            return "Your Mac has been at \(Int(cpu))% processor for \(minutes) min" + (top.map { " — mostly because of \($0.name)" } ?? "")
+            return L("Your Mac has been at \(Int(cpu))% processor for \(minutes) min") + (top.map { L(" — mostly because of \($0.name)") } ?? "")
         case .heat:
             let t = avg(last.compactMap(\.temp))
-            return t >= limit ? "Your Mac has been at \(Int(t)) °C for \(minutes) min and is slowing itself down" : nil
+            return t >= limit ? L("Your Mac has been at \(Int(t)) °C for \(minutes) min and is slowing itself down") : nil
         case .mem:
             guard Double(s.pressure) >= limit else { return nil }
-            return "Your memory is full" + (top.map { " — \($0.name) is using \(one($0.memGB)) GB" } ?? "")
+            return L("Your memory is full") + (top.map { L(" — \($0.name) is using \(one($0.memGB)) GB") } ?? "")
         case .disk:
-            return s.diskFreeGB > 0 && s.diskFreeGB < limit ? "Only \(Int(s.diskFreeGB)) GB free on your SSD" : nil
+            return s.diskFreeGB > 0 && s.diskFreeGB < limit ? L("Only \(Int(s.diskFreeGB)) GB free on your SSD") : nil
         case .net:
             guard pingOn else { return nil }
             let pings = last.compactMap(\.pingMs)
-            if pings.isEmpty { return "No internet for \(minutes) min" }
-            return avg(pings) >= limit ? "Internet has been slow for \(minutes) min (\(Int(avg(pings))) ms)" : nil
+            if pings.isEmpty { return L("No internet for \(minutes) min") }
+            return avg(pings) >= limit ? L("Internet has been slow for \(minutes) min (\(Int(avg(pings))) ms)") : nil
         case .battery:
             guard let b = s.battery, !s.charging, b <= limit else { return nil }
-            return "Battery at \(Int(b))% — plug in the charger"
+            return L("Battery at \(Int(b))% — plug in the charger")
         case .app:
             guard let top, top.cpu >= limit else { return nil }
-            return "\(top.name) has been using \(Int(top.cpu))% processor for \(minutes) min"
+            return L("\(top.name) has been using \(Int(top.cpu))% processor for \(minutes) min")
+
         }
     }
 

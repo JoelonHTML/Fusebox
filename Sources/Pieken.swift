@@ -11,7 +11,7 @@ import UserNotifications
 enum PeakKind: String, CaseIterable, Sendable {
     case cpu, gpu, temp, mem, io
     var title: String {
-        switch self { case .cpu: "CPU"; case .gpu: "GPU"; case .temp: "Heat"; case .mem: "Memory"; case .io: "Disk" }
+        switch self { case .cpu: "CPU"; case .gpu: "GPU"; case .temp: L("Heat"); case .mem: L("Memory"); case .io: L("Disk") }
     }
     var metric: Metric {
         switch self { case .cpu, .temp: .cpu; case .gpu: .gpu; case .mem: .ram; case .io: .io }
@@ -33,7 +33,7 @@ enum PeakKind: String, CaseIterable, Sendable {
         switch self {
         case .cpu, .gpu: pct(v)
         case .temp: deg(v)
-        case .mem: v >= 4 ? "critical" : "high"
+        case .mem: v >= 4 ? L("critical") : L("high")
         case .io: rate(v)
         }
     }
@@ -188,7 +188,7 @@ enum Peaks {
 
     /// "Peak 14:32 · 94% · Xcode"
     static func line(_ p: Peak) -> String {
-        "Peak \(clock.string(from: p.at)) · \(p.kind.format(p.top))" + (p.app.map { " · \($0)" } ?? "")
+        L("Peak \(clock.string(from: p.at)) · \(p.kind.format(p.top))") + (p.app.map { " · \($0)" } ?? "")
     }
 
     /// Per soort: "Xcode caused 4 of 6 CPU peaks today" (of "6 CPU peaks today" zonder bekende oorzaak).
@@ -196,12 +196,15 @@ enum Peaks {
         PeakKind.allCases.compactMap { k in
             let list = peaks.filter { $0.kind == k }
             guard !list.isEmpty else { return nil }
-            let n = list.count, name = n == 1 ? "\(k.title) peak" : "\(k.title) peaks"
+            let n = list.count, t = k.title
             let by = Dictionary(grouping: list.compactMap(\.app), by: { $0 }).mapValues(\.count)
             // Alleen een naam noemen als die app er echt uitspringt (minstens 2, of de enige piek)
-            guard let top = by.max(by: { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }), top.value >= 2 || n == 1 else { return "\(n) \(name) \(when)" }
-            return top.value == n ? "\(top.key) caused " + (n == 1 ? "the \(name)" : "all \(n) \(name)") + " \(when)"
-                                  : "\(top.key) caused \(top.value) of \(n) \(name) \(when)"
+            guard let top = by.max(by: { $0.value == $1.value ? $0.key > $1.key : $0.value < $1.value }), top.value >= 2 || n == 1 else {
+                return n == 1 ? L("1 \(t) peak \(when)") : L("\(n) \(t) peaks \(when)")
+            }
+            // hele zinnen (één per vorm), zodat ze te vertalen zijn
+            if top.value < n { return L("\(top.key) caused \(top.value) of \(n) \(t) peaks \(when)") }
+            return n == 1 ? L("\(top.key) caused the \(t) peak \(when)") : L("\(top.key) caused all \(n) \(t) peaks \(when)")
         }
     }
 
@@ -646,7 +649,7 @@ struct PeakTimeline: View {
 }
 
 extension Peaks {
-    static let day: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE"; return f }()
+    static let day: DateFormatter = { let f = DateFormatter(); f.locale = uiLocale; f.dateFormat = "EEE"; return f }()
 }
 
 extension AppFont {
@@ -697,19 +700,20 @@ enum PeakAlert {
 
     static func text(_ p: Peak, app: String) -> (title: String, body: String) {
         let title = switch p.kind {
-        case .cpu: "\(app) is keeping your CPU busy"
-        case .gpu: "\(app) is keeping your GPU busy"
-        case .temp: "\(app) is heating up your Mac"
-        case .mem: "\(app) is filling your memory"
-        case .io: "\(app) is keeping your disk busy"
+        case .cpu: L("\(app) is keeping your CPU busy")
+        case .gpu: L("\(app) is keeping your GPU busy")
+        case .temp: L("\(app) is heating up your Mac")
+        case .mem: L("\(app) is filling your memory")
+        case .io: L("\(app) is keeping your disk busy")
         }
-        let m = p.seconds / 60
-        return (title, "\(p.kind.title) \(p.kind.format(p.top)) for \(m) minute\(m == 1 ? "" : "s")")
+        let m = p.seconds / 60, t = p.kind.title, v = p.kind.format(p.top)
+        return (title, m == 1 ? L("\(t) \(v) for 1 minute") : L("\(t) \(v) for \(m) minutes"))
     }
 
     static func registerCategories() -> [UNNotificationCategory] {
-        let stop = UNNotificationAction(identifier: stopAction, title: "Stop app", options: [.destructive])
-        let show = UNNotificationAction(identifier: showAction, title: "Show", options: [.foreground])
+        let stop = UNNotificationAction(identifier: stopAction, title: L("Stop app"), options: [.destructive])
+        let show = UNNotificationAction(identifier: showAction, title: L("Show"), options: [.foreground])
+
         return [UNNotificationCategory(identifier: category, actions: [stop, show], intentIdentifiers: []),
                 UNNotificationCategory(identifier: categoryShow, actions: [show], intentIdentifiers: [])]
     }

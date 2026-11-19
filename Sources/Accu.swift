@@ -62,13 +62,13 @@ enum Power {
     /// Waarom de Mac wakker werd, in gewone taal. Volgorde telt: "lid … multi-touch" is het deksel.
     static func reason(_ raw: String) -> String {
         let s = raw.lowercased()
-        let rules: [(String, String)] = [("usb-c_plug", "charger connected"), ("acattach", "charger connected"), ("lid", "lid opened"),
-                                         ("pwrbtn", "power button"), ("keyboard", "keyboard"), ("multi-touch", "trackpad"),
-                                         ("hid activity", "keyboard or trackpad"), ("useractivity", "you"), ("notification", "a notification"),
-                                         ("maintenance", "Power Nap / maintenance"), ("sleepservice", "scheduled background task"),
-                                         ("wifibt", "network access (Wi-Fi/Bluetooth)"), ("bluetooth", "Bluetooth"), ("wlan", "network access (Wi-Fi)"),
-                                         ("usb", "USB device"), ("rtc", "timer")]
-        return rules.first { s.contains($0.0) }?.1 ?? (s.isEmpty ? "unknown" : "other")
+        let rules: [(String, String)] = [("usb-c_plug", L("charger connected")), ("acattach", L("charger connected")), ("lid", L("lid opened")),
+                                         ("pwrbtn", L("power button")), ("keyboard", L("keyboard")), ("multi-touch", L("trackpad")),
+                                         ("hid activity", L("keyboard or trackpad")), ("useractivity", L("you")), ("notification", L("a notification")),
+                                         ("maintenance", L("Power Nap / maintenance")), ("sleepservice", L("scheduled background task")),
+                                         ("wifibt", L("network access (Wi-Fi/Bluetooth)")), ("bluetooth", "Bluetooth"), ("wlan", L("network access (Wi-Fi)")),
+                                         ("usb", L("USB device")), ("rtc", L("timer"))]
+        return rules.first { s.contains($0.0) }?.1 ?? (s.isEmpty ? L("unknown") : L("other"))
     }
 
     // MARK: Slaap
@@ -210,9 +210,9 @@ enum Power {
 
     /// Alleen wat slaap of schermslaap tegenhoudt; vaste systeemonderdelen (powerd, WindowServer …) niet.
     static func holds(_ text: String, appName: (Int32) -> String? = { _ in nil }) -> [Hold] {
-        let what = ["PreventUserIdleDisplaySleep": "keeping the screen on", "NoDisplaySleepAssertion": "keeping the screen on",
-                    "PreventUserIdleSystemSleep": "preventing sleep", "NoIdleSleepAssertion": "preventing sleep",
-                    "PreventSystemSleep": "preventing all sleep"]
+        let what = ["PreventUserIdleDisplaySleep": L("keeping the screen on"), "NoDisplaySleepAssertion": L("keeping the screen on"),
+                    "PreventUserIdleSystemSleep": L("preventing sleep"), "NoIdleSleepAssertion": L("preventing sleep"),
+                    "PreventSystemSleep": L("preventing all sleep")]
         let system: Set<String> = ["powerd", "WindowServer", "kernel_task", "hidd", "loginwindow", "sharingd", "bluetoothd"]
         var seen = Set<String>(), out: [Hold] = []
         for a in assertions(text) {
@@ -220,7 +220,7 @@ enum Power {
             let app: String
             if let p = a.forPID { app = appName(p) ?? "pid \(p)" }
             else if a.process == "runningboardd" || system.contains(a.process) { continue }
-            else if a.process == "coreaudiod" { app = "Audio playing" }
+            else if a.process == "coreaudiod" { app = L("Audio playing") }
             else { app = appName(a.pid) ?? a.process }
             // "00:02:29" → "2m"; korter dan een minuut: geen tijd
             let p = a.age.split(separator: ":").compactMap { Int($0) }
@@ -335,7 +335,7 @@ enum BatteryHealth {
     }
 }
 
-private let when: DateFormatter = { let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE HH:mm"; return f }()
+private let when: DateFormatter = { let f = DateFormatter(); f.locale = uiLocale; f.dateFormat = "EEE HH:mm"; return f }()
 
 private struct PowerCard<Content: View>: View {
     @Environment(\.theme) private var theme
@@ -367,7 +367,7 @@ struct DrainSection: View {
     @State private var drain = MainActor.assumeIsolated { DrainSection.cache }
 
     var body: some View {
-        PowerCard(title: "What drained my battery", icon: "battery.25percent", index: index) {
+        PowerCard(title: L("What drained my battery"), icon: "battery.25percent", index: index) {
             if let d = drain {
                 if let a = d.apps.first, d.total > 0 {
                     Headline(big: "\(a.name) \(pct(a.wh / d.total * 100))", small: subtitle(d))
@@ -396,9 +396,9 @@ struct DrainSection: View {
     }
 
     private func subtitle(_ d: Power.Drain) -> String {
-        guard d.unplugged else { return "Today · on the charger now" }
+        guard d.unplugged else { return L("Today · on the charger now") }
         let pcts = d.startPct.map { s in "\(s)% → " + (d.endPct.map { "\($0)%" } ?? "?") } ?? ""
-        return "Since unplugged \(when.string(from: d.from))" + (d.to.map { " until \(when.string(from: $0))" } ?? "") + (pcts.isEmpty ? "" : " · " + pcts)
+        return L("Since unplugged \(when.string(from: d.from))") + (d.to.map { L(" until \(when.string(from: $0))") } ?? "") + (pcts.isEmpty ? "" : " · " + pcts)
     }
 }
 
@@ -410,11 +410,11 @@ struct SleepDrainSection: View {
     @State private var spans = MainActor.assumeIsolated { SleepDrainSection.cache }
 
     var body: some View {
-        PowerCard(title: "Battery use while asleep", icon: "moon.zzz", index: index, tone: spans?.contains(where: heavy) == true ? 1 : 0) {
+        PowerCard(title: L("Battery use while asleep"), icon: "moon.zzz", index: index, tone: spans?.contains(where: heavy) == true ? 1 : 0) {
             if let spans {
                 if spans.isEmpty { Text("No sleep longer than 30 minutes in the last 2 days").foregroundStyle(theme.onRow(true)) }
                 if let s = spans.last(where: { $0.lost != nil }) {
-                    Headline(big: s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? "", small: "during the last sleep on battery (\(duration(s.minutes)))", tone: heavy(s) ? 1 : 0)
+                    Headline(big: s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? "", small: L("during the last sleep on battery (\(duration(s.minutes)))"), tone: heavy(s) ? 1 : 0)
                 }
                 ForEach(spans.suffix(4).reversed()) { s in
                     VStack(alignment: .leading, spacing: 1) {
@@ -422,7 +422,7 @@ struct SleepDrainSection: View {
                             Text("\(when.string(from: s.start)) → \(when.string(from: s.end))").foregroundStyle(theme.onRow())
                             Text(duration(s.minutes)).foregroundStyle(theme.onRow(true))
                             Spacer(minLength: 4)
-                            Text(s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? "on charger").font(theme.number(11))
+                            Text(s.lost.map { $0 > 0 ? "−\($0)%" : "0%" } ?? L("on charger")).font(theme.number(11))
                                 .foregroundStyle(heavy(s) ? theme.tone(1, icon: false) : theme.onRow())
                         }
                         Text(detail(s)).font(theme.label(10)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
@@ -444,7 +444,7 @@ struct SleepDrainSection: View {
     private func detail(_ s: Power.SleepSpan) -> String {
         let n = s.darkWakes.values.reduce(0, +)
         let most = s.darkWakes.max { $0.value < $1.value }?.key
-        return "Woken by \(s.wokeBy)" + (n > 0 ? " · woke briefly \(n)×" + (most.map { ", mostly \($0)" } ?? "") : "")
+        return L("Woken by \(s.wokeBy)") + (n > 0 ? L(" · woke briefly \(n)×") + (most.map { L(", mostly \($0)") } ?? "") : "")
     }
 }
 
@@ -457,7 +457,7 @@ struct AwakeSection: View {
     @State private var run = 0
 
     var body: some View {
-        PowerCard(title: "What keeps my Mac awake", icon: holds?.contains { $0.what == "keeping the screen on" } == true ? "eye" : "cup.and.saucer", index: index, refresh: { run += 1 }) {
+        PowerCard(title: L("What keeps my Mac awake"), icon: holds?.contains { $0.what == L("keeping the screen on") } == true ? "eye" : "cup.and.saucer", index: index, refresh: { run += 1 }) {
             if let holds {
                 if holds.isEmpty { Text("Nothing: your Mac can sleep normally").foregroundStyle(theme.onRow(true)) }
                 ForEach(holds) { h in
@@ -484,12 +484,13 @@ struct BatteryHealthSection: View {
     @State private var data: (rows: [(day: String, pct: Int, cycles: Int?)], now: Diag.Battery?)?
 
     var body: some View {
-        PowerCard(title: "Battery health", icon: "heart.text.square", index: index, tone: data?.now?.worn == true ? 1 : 0) {
+        PowerCard(title: L("Battery health"), icon: "heart.text.square", index: index, tone: data?.now?.worn == true ? 1 : 0) {
             if let data {
                 let rows = data.rows
                 if let b = data.now {
                     Headline(big: b.capacity.map { "\($0)%" } ?? (b.condition ?? b.health),
-                             small: [b.capacity.map { _ in "of original capacity" }, b.cycles.map { "\($0) cycles" }].compactMap { $0 }.joined(separator: " · "),
+                             small: [b.capacity.map { _ in L("of original capacity") }, b.cycles.map { L("\($0) cycles") }]
+.compactMap { $0 }.joined(separator: " · "),
                              tone: b.worn ? 1 : 0)
                 }
                 if rows.count >= 2, let first = rows.first, let last = rows.last {
@@ -498,7 +499,8 @@ struct BatteryHealthSection: View {
                         .stroke(theme.rowStyle == .blocks ? Color.white : theme.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round, lineJoin: .round))
                         .frame(height: 28)
                     let cyc = first.cycles.flatMap { f in last.cycles.map { $0 - f } }
-                    Text("Since \(first.day): \(first.pct)% → \(last.pct)%" + (cyc.map { " · +\($0) cycles" } ?? ""))
+                    Text(L("Since \(first.day): \(first.pct)% → \(last.pct)%") + (cyc.map { L(" · +\($0) cycles") } ?? ""))
+
                         .foregroundStyle(theme.onRow(true))
                 } else {
                     Text("Recorded once a day; the trend shows after a few days").foregroundStyle(theme.onRow(true))

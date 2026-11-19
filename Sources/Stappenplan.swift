@@ -16,17 +16,17 @@ struct SetupView: View {
     @State private var meter: Meter?      // via MeterHook, zodat dit venster niet elke 2 s opnieuw tekent
 
     private let steps: [(question: String, help: String)] = [
-        ("Welcome to Fusebox", "Fusebox shows how busy your Mac is: processor, memory, storage, internet and battery.\nIn a small window, in your menu bar, or both."),
-        ("Pick a style", "This is how the Fusebox window looks. You can switch any time."),
-        ("How big should the text be?", "Pick what reads comfortably from where you sit."),
-        ("What do you want to see?", "Turn measurements on or off. Drag them to change the order."),
-        ("Percent or real values?", "Percent is quick to read. Real values tell you exactly how much."),
-        ("Show graphs when you make the window bigger?", "Graphs show the last few minutes. They only appear when there's room."),
-        ("What should the menu bar show?", "Something small next to the clock, so you can check at a glance."),
-        ("How should Fusebox start?", "Fusebox uses very little power, so it's fine to keep it running."),
-        ("Should Fusebox warn you?", "A notification when something needs attention, like your Mac getting too hot."),
-        ("Data and privacy", "Everything stays on your Mac."),
-        ("You're all set!", "Here's what you picked."),
+        (L("Welcome to Fusebox"), L("Fusebox shows how busy your Mac is: processor, memory, storage, internet and battery.\nIn a small window, in your menu bar, or both.")),
+        (L("Pick a style"), L("This is how the Fusebox window looks. You can switch any time.")),
+        (L("How big should the text be?"), L("Pick what reads comfortably from where you sit.")),
+        (L("What do you want to see?"), L("Turn measurements on or off. Drag them to change the order.")),
+        (L("Percent or real values?"), L("Percent is quick to read. Real values tell you exactly how much.")),
+        (L("Show graphs when you make the window bigger?"), L("Graphs show the last few minutes. They only appear when there's room.")),
+        (L("What should the menu bar show?"), L("Something small next to the clock, so you can check at a glance.")),
+        (L("How should Fusebox start?"), L("Fusebox uses very little power, so it's fine to keep it running.")),
+        (L("Should Fusebox warn you?"), L("A notification when something needs attention, like your Mac getting too hot.")),
+        (L("Data and privacy"), L("Everything stays on your Mac.")),
+        (L("You're all set!"), L("Here's what you picked.")),
     ]
     private var last: Int { steps.count - 1 }
 
@@ -83,7 +83,7 @@ struct SetupView: View {
                     guard let m = Prefs.importDialog() else { return }
                     message = m
                     if let meter { prefsChanged(meter, open: openWindow, dismiss: dismissWindow) }
-                    if m.hasSuffix("imported") { step = last }
+                    if m != L("Fusebox can't read this file.") { step = last }   // gelukt (werkt in elke taal)
                 }
                 .buttonStyle(.link)
                 if let message { Text(message).foregroundStyle(.secondary) }
@@ -254,7 +254,7 @@ struct TextSizeCards: View {
     @Environment(\.colorScheme) private var system
     var body: some View {
             LazyVGrid(columns: grid(3), spacing: 10) {
-                ForEach([(1.0, "Normal"), (1.15, "Large"), (1.3, "Extra large")], id: \.0) { scale, name in
+                ForEach([(1.0, L("Normal")), (1.15, L("Large")), (1.3, L("Extra large"))], id: \.0) { scale, name in
                     Card(selected: textScale == scale, action: { textScale = scale }) {
                         VStack(spacing: 4) {
                             Text("Aa").font(.system(size: 22 * scale, weight: .semibold, design: .rounded)).frame(height: 36)
@@ -297,14 +297,14 @@ private struct MetricPicker: View {
     }
     private func explain(_ m: Metric) -> String {
         switch m {
-        case .cpu: "How hard your Mac is working, and how warm it is"
-        case .gpu: "How hard the graphics chip is working"
-        case .ram: "How full the working memory is"
-        case .net: "Download and upload speed"
-        case .ssd: "How full your storage is"
-        case .io: "How much is being read from and written to storage"
-        case .battery: "Charge and time left"
-        case .fan: "How fast the fans spin"
+        case .cpu: L("How hard your Mac is working, and how warm it is")
+        case .gpu: L("How hard the graphics chip is working")
+        case .ram: L("How full the working memory is")
+        case .net: L("Download and upload speed")
+        case .ssd: L("How full your storage is")
+        case .io: L("How much is being read from and written to storage")
+        case .battery: L("Charge and time left")
+        case .fan: L("How fast the fans spin")
         }
     }
 }
@@ -328,8 +328,8 @@ struct GraphCards: View {
     @AppStorage("graphs") private var graphs: GraphMode = .auto
     var body: some View {
             LazyVGrid(columns: grid(2), spacing: 10) {
-                option("Automatic", "Graphs appear when the window is big enough", "chart.xyaxis.line", selected: graphs != .never) { graphs = .auto }
-                option("Never", "Always just the numbers", "textformat.123", selected: graphs == .never) { graphs = .never }
+                option(L("Automatic"), L("Graphs appear when the window is big enough"), "chart.xyaxis.line", selected: graphs != .never) { graphs = .auto }
+                option(L("Never"), L("Always just the numbers"), "textformat.123", selected: graphs == .never) { graphs = .never }
             }
     }
 }
@@ -439,12 +439,12 @@ private struct Summary: View {
     var body: some View {
         Section {
             if let message { Text(message) }
-            LabeledContent("Look", value: "\(Theme.named(themeID).name), \(([1.0: "normal", 1.15: "large", 1.3: "extra large"][textScale] ?? "custom")) text")
+            LabeledContent("Look", value: L("\(Theme.named(themeID).name), \(([1.0: L("normal"), 1.15: L("large"), 1.3: L("extra large")][textScale] ?? L("custom"))) text"))
             LabeledContent("Measurements", value: Metric.enabled(metrics).map(\.abbr).joined(separator: ", "))
             LabeledContent("Menu bar", value: menubar.title)
-            LabeledContent("Notifications", value: notify ? "\(Alert.allCases.filter { UserDefaults.standard.bool(forKey: $0.key("on")) }.count) kinds on" : "Off")
-            LabeledContent("Data", value: (keepDays == 0 ? "History kept forever" : "History kept \(keepDays) days")
-                           + " · internet check " + (pingHost.isEmpty ? "off" : "on"))
+            LabeledContent("Notifications", value: notify ? L("\(Alert.allCases.filter { UserDefaults.standard.bool(forKey: $0.key("on")) }.count) kinds on") : L("Off"))
+            LabeledContent("Data", value: (keepDays == 0 ? L("History kept forever") : L("History kept \(keepDays) days"))
+                           + " · " + (pingHost.isEmpty ? L("internet check off") : L("internet check on")))
         } footer: {
             // Deelknop in de voetregel: zo past de hele samenvatting zonder scrollen.
             HStack {

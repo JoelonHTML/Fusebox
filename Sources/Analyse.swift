@@ -17,11 +17,19 @@ fileprivate enum Period: String, CaseIterable, Identifiable {
         case .week: "7 days"
         }
     }
+    /// Zelfde, vertaald (voor op het scherm); `title` blijft Engels voor bestandsnamen en het gedeelde rapport.
+    var label: String {
+        switch self {
+        case .today: L("Today")
+        case .yesterday: L("Yesterday")
+        case .week: L("7 days")
+        }
+    }
     /// Dagen terug vanaf vandaag (0 = vandaag), oudste eerst.
     var offsets: [Int] { switch self { case .today: [0]; case .yesterday: [1]; case .week: Array((0...6).reversed()) } }
     var previous: [Int] { switch self { case .today: [1]; case .yesterday: [2]; case .week: Array((7...13).reversed()) } }
-    var previousName: String { switch self { case .today: "yesterday"; case .yesterday: "the day before"; case .week: "the week before" } }
-    var when: String { switch self { case .today: "today"; case .yesterday: "yesterday"; case .week: "in the last 7 days" } }
+    var previousName: String { switch self { case .today: L("yesterday"); case .yesterday: L("the day before"); case .week: L("the week before") } }
+    var when: String { switch self { case .today: L("today"); case .yesterday: L("yesterday"); case .week: L("in the last 7 days") } }
 }
 
 /// Eén minuut uit de hoofdlog (gemiddelde van de 2-secondenmetingen).
@@ -77,7 +85,7 @@ fileprivate struct Report: Sendable {
     var wifiDrops = 0, weakWifiMin = 0
     var first: Date?
     var diskFreeGB: Double?, diskTotalGB: Double?
-    var score: Int?, reason = "No measurements for this period yet"
+    var score: Int?, reason = L("No measurements for this period yet")
     var prevScore: Int?
     var apps: [AppStat] = []
     var topCPU: [AppStat] = [], topRAM: [AppStat] = [], topSeen: [AppStat] = [], topEnergy: [AppStat] = []
@@ -89,7 +97,7 @@ fileprivate struct Report: Sendable {
     var jobMinutes: [String: Int] = [:]
     var crashes: Diag.Crashes?, battery: Diag.Battery?, boot: Date?
     var dusty = false                               // ventilator hard bij weinig werk (FanDust, 7 dagen)
-    var when = "today"                              // "today" / "yesterday" / "in the last 7 days"
+    var when = L("today")                           // "today" / "yesterday" / "in the last 7 days" (vertaald)
     var uptimeDays: Int { boot.map { Int(Date().timeIntervalSince($0) / 86_400) } ?? 0 }
 }
 
@@ -335,9 +343,9 @@ enum Analysis {
             .sorted { $0.to - $0.from > $1.to - $1.from }
         r.runaways = d.runaways.sorted { $0.start > $1.start }
         r.jobMinutes = d.jobMinutes
-        let found = d.leaks.map { Event(start: $0.start, end: $0.end, icon: "memorychip", text: "\($0.app) grew from \(one($0.from)) to \(one($0.to)) GB", level: 1) }
-            + d.runaways.map { Event(start: $0.start, end: $0.end, icon: "cpu", text: "\($0.app) used a full processor core for \(mins($0.minutes))", level: 1) }
-            + d.jobs.map { Event(start: $0.start, end: $0.end, icon: "gearshape", text: "\($0.app) — passes by itself", level: 0) }
+        let found = d.leaks.map { Event(start: $0.start, end: $0.end, icon: "memorychip", text: L("\($0.app) grew from \(one($0.from)) to \(one($0.to)) GB"), level: 1) }
+            + d.runaways.map { Event(start: $0.start, end: $0.end, icon: "cpu", text: L("\($0.app) used a full processor core for \(mins($0.minutes))"), level: 1) }
+            + d.jobs.map { Event(start: $0.start, end: $0.end, icon: "gearshape", text: L("\($0.app) — passes by itself"), level: 0) }
         r.events = Array((events(m, apps: d.busyApps) + found).sorted { $0.start > $1.start }.prefix(30))
         return r
     }
@@ -349,7 +357,7 @@ enum Analysis {
     ///   - schijf < 10 % vrij (laatste meting): −1
     /// Afgerond, minimaal 1. Reden = de grootste aftrekpost (als die ≥ 0,25 is, anders "rustig").
     fileprivate static func score(_ m: [Minute]) -> (score: Int?, reason: String) {
-        guard !m.isEmpty else { return (nil, "No measurements for this period yet") }
+        guard !m.isEmpty else { return (nil, L("No measurements for this period yet")) }
         let n = Double(m.count)
         let busy = Double(m.filter { $0.cpu >= busyCPU }.count) / n
         let mem = Double(m.filter { $0.pressure >= 2 }.count) / n
@@ -357,13 +365,13 @@ enum Analysis {
         let last = m.last { $0.diskFreeGB != nil }
         let low = diskLow(free: last?.diskFreeGB, total: last?.diskTotalGB)
         let minus: [(Double, String)] = [
-            (min(busy * 20, 4), "\(pct(busy * 100)) of the time the CPU was busy (≥ 85%)"),
-            (min(mem * 15, 3), "\(pct(mem * 100)) of the time memory was (almost) full"),
-            (min(hot * 10, 2), "\(pct(hot * 100)) of the time your Mac was hot (≥ 95 °C)"),
-            (low ? 1 : 0, "your disk is almost full"),
+            (min(busy * 20, 4), L("\(pct(busy * 100)) of the time the CPU was busy (≥ 85%)")),
+            (min(mem * 15, 3), L("\(pct(mem * 100)) of the time memory was (almost) full")),
+            (min(hot * 10, 2), L("\(pct(hot * 100)) of the time your Mac was hot (≥ 95 °C)")),
+            (low ? 1 : 0, L("your disk is almost full")),
         ]
         let s = max(1, Int((10 - minus.reduce(0) { $0 + $1.0 }).rounded()))
-        guard let worst = minus.max(by: { $0.0 < $1.0 }), worst.0 >= 0.25 else { return (s, "Calm: not busy, memory and temperature fine") }
+        guard let worst = minus.max(by: { $0.0 < $1.0 }), worst.0 >= 0.25 else { return (s, L("Calm: not busy, memory and temperature fine")) }
         return (s, worst.1.prefix(1).uppercased() + worst.1.dropFirst())
     }
 
@@ -396,33 +404,33 @@ enum Analysis {
     fileprivate static func events(_ m: [Minute], apps: [Date: [String: Double]]) -> [Event] {
         func span(_ run: [Minute]) -> (Date, Date) { (run[0].time, run[run.count - 1].time.addingTimeInterval(60)) }
         var out: [Event] = busyMoments(m, apps: apps, limit: 1000).map { b in
-            Event(start: b.start, end: b.end, icon: "flame", text: "Busy: \(pct(b.cpu)) CPU" + (b.app.map { " · mostly \($0)" } ?? ""), level: 1)
+            Event(start: b.start, end: b.end, icon: "flame", text: L("Busy: \(pct(b.cpu)) CPU") + (b.app.map { L(" · mostly \($0)") } ?? ""), level: 1)
         }
         for run in runs(m, minLength: 1, gap: 360, { ($0.temp ?? 0) >= hotTemp }) {
             let (a, b) = span(run)
-            out.append(Event(start: a, end: b, icon: "thermometer.high", text: "Hot: up to \(Int(run.compactMap(\.temp).max() ?? hotTemp)) °C", level: 2))
+            out.append(Event(start: a, end: b, icon: "thermometer.high", text: L("Hot: up to \(Int(run.compactMap(\.temp).max() ?? hotTemp)) °C"), level: 2))
         }
         for run in runs(m, minLength: 1, gap: 360, { $0.pressure >= 2 }) {
             let (a, b) = span(run)
-            out.append(Event(start: a, end: b, icon: "memorychip", text: run.contains { $0.pressure >= 4 } ? "Memory full" : "Memory filling up", level: run.contains { $0.pressure >= 4 } ? 2 : 1))
+            out.append(Event(start: a, end: b, icon: "memorychip", text: run.contains { $0.pressure >= 4 } ? L("Memory full") : L("Memory filling up"), level: run.contains { $0.pressure >= 4 } ? 2 : 1))
         }
         for run in runs(m, minLength: 1, gap: 360, { $0.offline || ($0.ping ?? 0) >= slowPing }) {
             let (a, b) = span(run)
             let pings = run.compactMap(\.ping)
-            let text = run.allSatisfy(\.offline) ? "Internet down" : "Internet slow: avg. \(Int(pings.reduce(0, +) / Double(max(pings.count, 1)))) ms"
+            let text = run.allSatisfy(\.offline) ? L("Internet down") : L("Internet slow: avg. \(Int(pings.reduce(0, +) / Double(max(pings.count, 1)))) ms")
             out.append(Event(start: a, end: b, icon: "wifi.exclamationmark", text: text, level: 1))
         }
         for run in wifiDrops(m) {
             let (a, b) = span(run)
-            out.append(Event(start: a, end: b, icon: "wifi.slash", text: run.count > 1 ? "Wi-Fi dropped for \(mins(run.count))" : "Wi-Fi dropped", level: 1))
+            out.append(Event(start: a, end: b, icon: "wifi.slash", text: run.count > 1 ? L("Wi-Fi dropped for \(mins(run.count))") : L("Wi-Fi dropped"), level: 1))
         }
         for run in runs(m, minLength: 1, { !$0.wifiDrop && ($0.wifi ?? 0) < weakWifi }) {
             let (a, b) = span(run)
-            out.append(Event(start: a, end: b, icon: "wifi.exclamationmark", text: "Weak Wi-Fi: around \(Int((run.compactMap(\.wifi).reduce(0, +) / Double(run.count)).rounded())) dBm", level: 1))
+            out.append(Event(start: a, end: b, icon: "wifi.exclamationmark", text: L("Weak Wi-Fi: around \(Int((run.compactMap(\.wifi).reduce(0, +) / Double(run.count)).rounded())) dBm"), level: 1))
         }
         if let low = m.first(where: { diskLow(free: $0.diskFreeGB, total: $0.diskTotalGB) }) {
             out.append(Event(start: low.time, end: low.time.addingTimeInterval(60), icon: "internaldrive",
-                             text: "Disk almost full: \(Int(low.diskFreeGB ?? 0)) GB free", level: 2))
+                             text: L("Disk almost full: \(Int(low.diskFreeGB ?? 0)) GB free"), level: 2))
         }
         return Array(out.sorted { $0.start > $1.start }.prefix(30))
     }
@@ -434,12 +442,12 @@ enum Analysis {
         let front = NSWorkspace.shared.frontmostApplication?.processIdentifier
         func canStop(_ name: String) -> Bool { current.first { $0.name == name && $0.canStop }.map { $0.runningApp?.processIdentifier != front } ?? false }
         for l in r.leaks.prefix(2) {
-            out.append(Tip(id: "leak" + l.app, text: "\(l.app) keeps growing: +\(one(l.perHour)) GB per hour for \(l.hours) h (now \(one(l.to)) GB) — restart it to free memory.",
+            out.append(Tip(id: "leak" + l.app, text: L("\(l.app) keeps growing: +\(one(l.perHour)) GB per hour for \(l.hours) h (now \(one(l.to)) GB) — restart it to free memory."),
                            action: canStop(l.app) ? .stop(l.app) : nil))
         }
         var seen = Set<String>()
         for x in r.runaways where seen.insert(x.app).inserted && seen.count <= 2 {
-            out.append(Tip(id: "runaway" + x.app, text: "\(x.app) used a full processor core for \(mins(x.minutes)) (\(span(x.start, x.end))).",
+            out.append(Tip(id: "runaway" + x.app, text: L("\(x.app) used a full processor core for \(mins(x.minutes)) (\(span(x.start, x.end)))."),
                            action: canStop(x.app) ? .stop(x.app) : nil))
         }
         let leaking = Set(r.leaks.map(\.app))
@@ -449,55 +457,57 @@ enum Analysis {
             let stoppable = canStop(a.name)
             let text: String
             if a.mem > 2 {
-                text = "\(a.name) uses \(one(a.mem)) GB on average — " + (browsers.contains(a.name)
-                    ? "close tabs you're not using; every tab costs memory"
-                    : "close windows and documents you're not using")
+                text = browsers.contains(a.name)
+                    ? L("\(a.name) uses \(one(a.mem)) GB on average — close tabs you're not using; every tab costs memory")
+                    : L("\(a.name) uses \(one(a.mem)) GB on average — close windows and documents you're not using")
             } else if stoppable {
-                text = "\(a.name) has been running for \(duration(a.minutes)) (avg. \(one(a.cpu))% CPU, \(one(a.mem)) GB) — quit it if you're not using it"
+                text = L("\(a.name) has been running for \(duration(a.minutes)) (avg. \(one(a.cpu))% CPU, \(one(a.mem)) GB) — quit it if you're not using it")
             } else { continue }
             out.append(Tip(id: "app" + a.name, text: text, action: stoppable ? .stop(a.name) : nil))
         }
         if let c = r.crashes {
             let loops = c.loops
             for (app, n) in loops.sorted(by: { $0.value > $1.value }).prefix(2) {
-                out.append(Tip(id: "loop" + app, text: "\(app) keeps crashing and restarting (\(n)× in one hour) — that costs battery. Update or remove it.", action: nil))
+                out.append(Tip(id: "loop" + app, text: L("\(app) keeps crashing and restarting (\(n)× in one hour) — that costs battery. Update or remove it."), action: nil))
             }
             for (verb, list) in [("crashed", c.crashes.filter { loops[$0.key] == nil }), ("stopped responding", c.hangs)] {
                 for (app, n) in list.sorted(by: { $0.value > $1.value }).prefix(2) where n >= 2 {
-                    out.append(Tip(id: verb + app, text: "\(app) \(verb) \(n) times \(r.when). Update or reinstall it.", action: nil))
+                    out.append(Tip(id: verb + app, text: verb == "crashed" ? L("\(app) crashed \(n) times \(r.when). Update or reinstall it.")
+                                   : L("\(app) stopped responding \(n) times \(r.when). Update or reinstall it."), action: nil))
                 }
             }
             if c.jetsam > 0 {
-                out.append(Tip(id: "jetsam", text: "macOS closed apps \(c.jetsam == 1 ? "once" : "\(c.jetsam) times") \(r.when) because memory ran out. Quit apps you're not using, or restart your Mac.", action: nil))
+                out.append(Tip(id: "jetsam", text: c.jetsam == 1 ? L("macOS closed apps once \(r.when) because memory ran out. Quit apps you're not using, or restart your Mac.")
+                               : L("macOS closed apps \(c.jetsam) times \(r.when) because memory ran out. Quit apps you're not using, or restart your Mac."), action: nil))
             }
         }
         if let b = r.battery, b.worn {
-            let state = b.capacity.map { "Your battery holds \($0)% of its original charge" } ?? "Your battery may need attention"
-            out.append(Tip(id: "battery", text: state + (b.condition.map { " (macOS says: \($0))" } ?? "") + ". A battery service gives you longer battery life again.",
-                           action: .open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!, "Open Battery")))
+            let state = b.capacity.map { L("Your battery holds \($0)% of its original charge") } ?? L("Your battery may need attention")
+            out.append(Tip(id: "battery", text: state + (b.condition.map { L(" (macOS says: \($0))") } ?? "") + L(". A battery service gives you longer battery life again."),
+                           action: .open(URL(string: "x-apple.systempreferences:com.apple.Battery-Settings.extension")!, L("Open Battery"))))
         }
         if r.uptimeDays >= Diag.restartDays {
-            out.append(Tip(id: "uptime", text: "Not restarted for \(r.uptimeDays) days. A restart clears memory and finishes updates.\nHow to restart: click the Apple logo at the top left of the screen and choose Restart…", action: nil))
+            out.append(Tip(id: "uptime", text: L("Not restarted for \(r.uptimeDays) days. A restart clears memory and finishes updates.\nHow to restart: click the Apple logo at the top left of the screen and choose Restart…"), action: nil))
         }
         if diskLow(free: r.diskFreeGB, total: r.diskTotalGB), let free = r.diskFreeGB {
-            out.append(Tip(id: "disk", text: "Your disk is almost full (\(Int(free)) GB free) — clean up large files; macOS gets slow without free space",
-                           action: .open(URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!, "Open Storage")))
+            out.append(Tip(id: "disk", text: L("Your disk is almost full (\(Int(free)) GB free) — clean up large files; macOS gets slow without free space"),
+                           action: .open(URL(string: "x-apple.systempreferences:com.apple.settings.Storage")!, L("Open Storage"))))
         }
         if r.wifiDrops >= 3 {
-            out.append(Tip(id: "wifidrop", text: "Wi-Fi dropped \(r.wifiDrops)× \(r.when). Move closer to the router or restart it; a cable never drops.", action: nil))
+            out.append(Tip(id: "wifidrop", text: L("Wi-Fi dropped \(r.wifiDrops)× \(r.when). Move closer to the router or restart it; a cable never drops."), action: nil))
         }
         if r.weakWifiMin >= 15 {
-            out.append(Tip(id: "wifiweak", text: "Weak Wi-Fi signal for \(duration(r.weakWifiMin)) \(r.when) — move closer to the router, or add a mesh point where you work", action: nil))
+            out.append(Tip(id: "wifiweak", text: L("Weak Wi-Fi signal for \(duration(r.weakWifiMin)) \(r.when) — move closer to the router, or add a mesh point where you work"), action: nil))
         }
         if r.pressureMin >= 30 {
-            out.append(Tip(id: "mem", text: "Memory was (almost) full for \(duration(r.pressureMin)) — close apps you're not using, or restart your Mac", action: nil))
+            out.append(Tip(id: "mem", text: L("Memory was (almost) full for \(duration(r.pressureMin)) — close apps you're not using, or restart your Mac"), action: nil))
         }
         if r.hotMin >= 15 {
-            out.append(Tip(id: "hot", text: "Your Mac was hot (≥ 95 °C) for \(duration(r.hotMin)) — put it on a hard, flat surface and keep the vents clear", action: nil))
+            out.append(Tip(id: "hot", text: L("Your Mac was hot (≥ 95 °C) for \(duration(r.hotMin)) — put it on a hard, flat surface and keep the vents clear"), action: nil))
         }
         if r.dusty { out.append(Tip(id: "dust", text: FanDust.tip, action: nil)) }
-        out.append(Tip(id: "login", text: "Check which apps open automatically at login — you can turn off what you don't need there",
-                       action: .open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!, "Open Login Items")))
+        out.append(Tip(id: "login", text: L("Check which apps open automatically at login — you can turn off what you don't need there"),
+                       action: .open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!, L("Open Login Items"))))
         return out
     }
 
@@ -507,47 +517,48 @@ enum Analysis {
         let own = apps.filter { $0.kind != .macos }
         let cpuTop = own.max { $0.cpu < $1.cpu }, memTop = own.max { $0.memGB < $1.memGB }
         var why: [String] = [], app: AppUsage?
-        var job = jobs.first.map { $0 + " — this passes by itself, no action needed." }
+        var job = jobs.first.map { L("\($0) — this passes by itself, no action needed.") }
         if cpu >= busyCPU {
-            if let a = cpuTop, a.cpu >= 10 { why.append("The CPU is at \(pct(cpu)), mostly because of \(a.name) (\(pct(a.cpu)))."); app = a }
-            else if let j = job { why.append("The CPU is at \(pct(cpu)), mostly because of macOS itself: \(j)"); job = nil }
-            else { why.append("The CPU is at \(pct(cpu)), mostly because of macOS itself.") }
+            if let a = cpuTop, a.cpu >= 10 { why.append(L("The CPU is at \(pct(cpu)), mostly because of \(a.name) (\(pct(a.cpu))).")); app = a }
+            else if let j = job { why.append(L("The CPU is at \(pct(cpu)), mostly because of macOS itself: \(j)")); job = nil }
+            else { why.append(L("The CPU is at \(pct(cpu)), mostly because of macOS itself.")) }
         }
         if s.pressure >= 2 {
-            let m = memTop.map { " — \($0.name) is using \(one($0.memGB)) GB" } ?? ""
-            why.append((s.pressure >= 4 ? "Memory is full" : "Memory is filling up") + m + ".")
+            let m = memTop.map { L(" — \($0.name) is using \(one($0.memGB)) GB") } ?? ""
+            why.append((s.pressure >= 4 ? L("Memory is full") : L("Memory is filling up")) + m + ".")
             if app == nil, let a = memTop, a.memGB >= 1 { app = a }
         }
         // Wegloper die nog bezig is (laatste minuut ≤ 5 min geleden) en nog niet genoemd
         if let r = report?.runaways.first(where: { now.timeIntervalSince($0.end) < 300 }), app?.name != r.app {
-            why.append("\(r.app) has been using a full processor core for \(mins(r.minutes)).")
+            why.append(L("\(r.app) has been using a full processor core for \(mins(r.minutes))."))
             if app == nil { app = own.first { $0.name == r.app } }
         }
         if let l = report?.leaks.first(where: { now.timeIntervalSince($0.end) < 1800 }), let a = own.first(where: { $0.name == l.app }) {
-            why.append("\(l.app) grew from \(one(l.from)) to \(one(l.to)) GB in \(l.hours) h — quitting and reopening it frees that memory.")
+            why.append(L("\(l.app) grew from \(one(l.from)) to \(one(l.to)) GB in \(l.hours) h — quitting and reopening it frees that memory."))
             if app == nil { app = a }
         }
-        if let t = s.temp, t >= hotTemp { why.append("Your Mac is hot (\(Int(t)) °C) and may be slowing itself down.") }
-        if diskLow(free: s.diskFreeGB, total: s.diskTotalGB) { why.append("Your disk is almost full (\(Int(s.diskFreeGB)) GB free).") }
+        if let t = s.temp, t >= hotTemp { why.append(L("Your Mac is hot (\(Int(t)) °C) and may be slowing itself down.")) }
+        if diskLow(free: s.diskFreeGB, total: s.diskTotalGB) { why.append(L("Your disk is almost full (\(Int(s.diskFreeGB)) GB free).")) }
         if !why.isEmpty, let j = job { why.append(j); job = nil }
-        if let p = s.pingMs, p >= 100 { why.append("Internet is responding slowly (\(Int(p)) ms) — that's probably not your Mac.") }
-        if !why.isEmpty, let d = report?.uptimeDays, d >= Diag.restartDays { why.append("Your Mac hasn't been restarted for \(d) days — a restart clears memory.") }
+        if let p = s.pingMs, p >= 100 { why.append(L("Internet is responding slowly (\(Int(p)) ms) — that's probably not your Mac.")) }
+        if !why.isEmpty, let d = report?.uptimeDays, d >= Diag.restartDays { why.append(L("Your Mac hasn't been restarted for \(d) days — a restart clears memory.")) }
         if why.isEmpty {
             let t = s.temp.map { ", \(Int($0)) °C" } ?? ""
-            return ("Nothing wrong: CPU \(pct(cpu)), memory normal\(t)." + (cpuTop.map { " Biggest user: \($0.name)." } ?? "") + (job.map { " " + $0 } ?? ""), nil)
+            return (L("Nothing wrong: CPU \(pct(cpu)), memory normal\(t).") + (cpuTop.map { L(" Biggest user: \($0.name).") } ?? "") + (job.map { " " + $0 } ?? ""), nil)
         }
         return (why.prefix(2).joined(separator: " "), app?.canStop == true ? app : nil)
     }
 
     /// "Tue 14:20–14:35"
     fileprivate static func span(_ a: Date, _ b: Date) -> String {
-        let d = DateFormatter(); d.locale = Locale(identifier: "en_US_POSIX"); d.dateFormat = "EEE HH:mm"
+        let d = DateFormatter(); d.locale = uiLocale; d.dateFormat = "EEE HH:mm"
         let t = DateFormatter(); t.dateFormat = "HH:mm"
         return b.timeIntervalSince(a) <= 60 ? d.string(from: a) : "\(d.string(from: a))–\(t.string(from: b))"
     }
 
     fileprivate static func busyLabel(_ b: Busy) -> String {
-        "\(span(b.start, b.end)) · \(pct(b.cpu))" + (b.app.map { " · mostly \($0)" } ?? "")
+        "\(span(b.start, b.end)) · \(pct(b.cpu))" + (b.app.map { L(" · mostly \($0)") } ?? "")
+
     }
 
     /// "40 min", "2h 5m"
@@ -647,8 +658,8 @@ enum Analysis {
     /// Accu-invloed in gewone woorden, op het gemiddelde vermogen terwijl de app open is.
     /// < 0,5 W nauwelijks, < 2 W klein, < 6 W merkbaar, daarboven groot (een MacBook in rust zit rond 3–6 W totaal).
     static func batteryWords(avgW: Double) -> String {
-        avgW < 0.5 ? "Barely affects your battery" : avgW < 2 ? "Small effect on your battery"
-            : avgW < 6 ? "Noticeable effect on your battery" : "Big drain on your battery"
+        avgW < 0.5 ? L("Barely affects your battery") : avgW < 2 ? L("Small effect on your battery")
+            : avgW < 6 ? L("Noticeable effect on your battery") : L("Big drain on your battery")
     }
 
     // MARK: Zelftest (Meterkast --selftest)
@@ -851,7 +862,7 @@ private struct AnalysisPage: View, Equatable {
         }
         .alert("Quit \(confirm?.name ?? "")?", isPresented: Binding(get: { confirm != nil }, set: { if !$0 { confirm = nil } })) {
             Button("Stop", role: .destructive) {
-                if let a = confirm, !meter.minuteApps.stop(a) { note = "\(a.name) couldn't be stopped" } else { diagnosis = nil }
+                if let a = confirm, !meter.minuteApps.stop(a) { note = L("\(a.name) couldn't be stopped") } else { diagnosis = nil }
                 confirm = nil
             }
             Button("Cancel", role: .cancel) { confirm = nil }
@@ -879,42 +890,42 @@ private struct AnalysisPage: View, Equatable {
     private func groups(_ r: Report) -> [Group] {
         var g: [Group] = []
         if ["tops", "busy", "peaks", "background"].contains(where: shown) {
-            let top = r.topCPU.first.map { "\($0.name) busiest" } ?? "No app data yet"
-            let peaks = r.peaks.isEmpty ? "no peaks" : "\(r.peaks.count) peak" + (r.peaks.count == 1 ? "" : "s")
-            let busy = r.busy.isEmpty ? [] : ["\(r.busy.count) busy moment" + (r.busy.count == 1 ? "" : "s")]
-            g.append(Group(id: "perf", title: "Performance", icon: "gauge.with.dots.needle.67percent",
+            let top = r.topCPU.first.map { L("\($0.name) busiest") } ?? L("No app data yet")
+            let peaks = r.peaks.isEmpty ? L("no peaks") : r.peaks.count == 1 ? L("1 peak") : L("\(r.peaks.count) peaks")
+            let busy = r.busy.isEmpty ? [] : [r.busy.count == 1 ? L("1 busy moment") : L("\(r.busy.count) busy moments")]
+            g.append(Group(id: "perf", title: L("Performance"), icon: "gauge.with.dots.needle.67percent",
                            summary: ([top] + busy + [peaks]).joined(separator: " · "), warn: !r.busy.isEmpty))
         }
         if ["battery", "drain", "sleep", "awake", "health"].contains(where: shown), Power.hasBattery || shown("awake") {
             let b = r.battery
-            let lost = SleepDrainSection.cache?.last.flatMap { s in s.lost.flatMap { $0 > 0 ? "lost \($0)% while asleep" : nil } }
-            let parts = [lost, b?.capacity.map { "\($0)% capacity" }, b?.cycles.map { "\($0) cycles" }].compactMap { $0 }
-            g.append(Group(id: "power", title: Power.hasBattery ? "Battery & power" : "Power", icon: Power.hasBattery ? "battery.75percent" : "bolt",
-                           summary: parts.isEmpty ? "What uses energy and what keeps your Mac awake" : parts.joined(separator: " · "),
+            let lost = SleepDrainSection.cache?.last.flatMap { s in s.lost.flatMap { $0 > 0 ? L("lost \($0)% while asleep") : nil } }
+            let parts = [lost, b?.capacity.map { L("\($0)% capacity") }, b?.cycles.map { L("\($0) cycles") }].compactMap { $0 }
+            g.append(Group(id: "power", title: Power.hasBattery ? L("Battery & power") : L("Power"), icon: Power.hasBattery ? "battery.75percent" : "bolt",
+                           summary: parts.isEmpty ? L("What uses energy and what keeps your Mac awake") : parts.joined(separator: " · "),
                            warn: b?.worn ?? false))
         }
         if shown("crashes") {
             let c = r.crashes ?? Diag.Crashes()
-            let parts = [c.crashes.isEmpty ? nil : "\(c.crashes.count) app" + (c.crashes.count == 1 ? "" : "s") + " crashed",
-                         c.hangs.isEmpty ? nil : "\(c.hangs.count) stopped responding",
-                         c.jetsam > 0 ? "out of memory \(c.jetsam)×" : nil].compactMap { $0 }
-            g.append(Group(id: "stability", title: "Stability", icon: "exclamationmark.triangle",
-                           summary: parts.isEmpty ? "No crashes or hangs \(r.when)" : parts.joined(separator: " · "), warn: !c.crashes.isEmpty || !c.hangs.isEmpty))
+            let parts = [c.crashes.isEmpty ? nil : c.crashes.count == 1 ? L("1 app crashed") : L("\(c.crashes.count) apps crashed"),
+                         c.hangs.isEmpty ? nil : L("\(c.hangs.count) stopped responding"),
+                         c.jetsam > 0 ? L("out of memory \(c.jetsam)×") : nil].compactMap { $0 }
+            g.append(Group(id: "stability", title: L("Stability"), icon: "exclamationmark.triangle",
+                           summary: parts.isEmpty ? L("No crashes or hangs \(r.when)") : parts.joined(separator: " · "), warn: !c.crashes.isEmpty || !c.hangs.isEmpty))
         }
         if shown("startup") || shown("disk") {
             let items = StartupSection.cache
-            let login = items.map { l in "\(l.filter { $0.atLogin && !$0.orphan }.count) items start at login" }
+            let login = items.map { l in L("\(l.filter { $0.atLogin && !$0.orphan }.count) items start at login") }
             let orphans = items.map { $0.filter(\.orphan).count } ?? 0
-            let free = r.diskFreeGB.map { "\(Int($0)) GB free" }
-            let parts = [login, orphans > 0 ? "\(orphans) left behind" : nil, free].compactMap { $0 }
-            g.append(Group(id: "storage", title: "Startup & storage", icon: "internaldrive",
-                           summary: parts.isEmpty ? "Login items and disk space" : parts.joined(separator: " · "),
+            let free = r.diskFreeGB.map { L("\(Int($0)) GB free") }
+            let parts = [login, orphans > 0 ? L("\(orphans) left behind") : nil, free].compactMap { $0 }
+            g.append(Group(id: "storage", title: L("Startup & storage"), icon: "internaldrive",
+                           summary: parts.isEmpty ? L("Login items and disk space") : parts.joined(separator: " · "),
                            warn: orphans > 0 || Analysis.diskLow(free: r.diskFreeGB, total: r.diskTotalGB)))
         }
         if shown("runtime") || shown("log") {
-            let ev = r.events.isEmpty ? "nothing unusual" : "\(r.events.count) event" + (r.events.count == 1 ? "" : "s")
-            g.append(Group(id: "history", title: "History & export", icon: "clock.arrow.circlepath",
-                           summary: "Measured \(duration(r.minutes)) · \(ev)", warn: false))
+            let ev = r.events.isEmpty ? L("nothing unusual") : r.events.count == 1 ? L("1 event") : L("\(r.events.count) events")
+            g.append(Group(id: "history", title: L("History & export"), icon: "clock.arrow.circlepath",
+                           summary: L("Measured \(duration(r.minutes)) · \(ev)"), warn: false))
         }
         return g
     }
@@ -923,7 +934,7 @@ private struct AnalysisPage: View, Equatable {
         let open = openIDs.contains(g.id)
         // Tips horen bij hun categorie: aantal vooraan in de kop, de tips zelf bovenaan als je openklapt
         let mine = shown("tips") ? tips.filter { $0.category == g.id } : []
-        let summary = (mine.isEmpty ? [] : ["\(mine.count) tip" + (mine.count == 1 ? "" : "s")]) + [g.summary]
+        let summary = (mine.isEmpty ? [] : [mine.count == 1 ? L("1 tip") : L("\(mine.count) tips")]) + [g.summary]
         return VStack(alignment: .leading, spacing: 10) {
             Button {
                 var s = openIDs
@@ -948,7 +959,7 @@ private struct AnalysisPage: View, Equatable {
                 .padding(.vertical, 10).contentShape(Rectangle())
             }
             .buttonStyle(.plain)
-            .accessibilityLabel("\(g.title), \(open ? "expanded" : "collapsed")")
+            .accessibilityLabel("\(g.title), \(open ? L("expanded") : L("collapsed"))")
             // Ingeklapt staat de inhoud niet in de boom: de .task van die kaarten (pmset, opstartitems, schijf) loopt dan niet
             if open {
                 VStack(alignment: .leading, spacing: 10) {
@@ -991,8 +1002,8 @@ private struct AnalysisPage: View, Equatable {
             if let c = r.crashes, !c.isEmpty { part(r, tips, .crashes) }
             else {
                 VStack(alignment: .leading, spacing: 4) {
-                    CardTitle(icon: "checkmark.seal", title: "Crashes", tone: 3)
-                    Headline(big: "None", small: "No apps crashed or stopped responding \(r.when)", tone: 3)
+                    CardTitle(icon: "checkmark.seal", title: L("Crashes"), tone: 3)
+                    Headline(big: L("None"), small: L("No apps crashed or stopped responding \(r.when)"), tone: 3)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8)
             }
@@ -1019,7 +1030,7 @@ private struct AnalysisPage: View, Equatable {
     /// De drie belangrijkste tips; de rest achter "Show all".
     private var picker: some View {
         HStack(spacing: 8) {
-            Picker("Period", selection: $period) { ForEach(Period.allCases) { Text($0.title).tag($0) } }
+            Picker("Period", selection: $period) { ForEach(Period.allCases) { Text($0.label).tag($0) } }
                 .pickerStyle(.segmented).labelsHidden().controlSize(.small)
             Button { reload += 1 } label: { Image(systemName: "arrow.clockwise") }
                 .buttonStyle(.plain).foregroundStyle(theme.secondary).help("Reload")
@@ -1068,7 +1079,7 @@ private struct AnalysisPage: View, Equatable {
         switch a {
         case .open(let url, _): NSWorkspace.shared.open(url)
         case .stop(let name):
-            if let app = meter.minuteApps.apps.first(where: { $0.name == name && $0.canStop }) { confirm = app } else { note = "\(name) is no longer running" }
+            if let app = meter.minuteApps.apps.first(where: { $0.name == name && $0.canStop }) { confirm = app } else { note = L("\(name) is no longer running") }
         }
     }
 
@@ -1099,7 +1110,7 @@ private struct AnalysisPage: View, Equatable {
                 Button("Copy") { NSPasteboard.general.clearContents(); NSPasteboard.general.setString(text, forType: .string) }
                 Button("Save as .txt…") {
                     guard let url = save("fusebox-report.txt", .plainText) else { return }
-                    do { try text.write(to: url, atomically: true, encoding: .utf8) } catch { note = "Saving failed: \(error.localizedDescription)" }
+                    do { try text.write(to: url, atomically: true, encoding: .utf8) } catch { note = L("Saving failed: \(error.localizedDescription)") }
                 }
                 Spacer()
                 Button("Close") { share = nil }.keyboardShortcut(.cancelAction)
@@ -1122,14 +1133,14 @@ private struct AnalysisPage: View, Equatable {
         let p = period, dir = meter.logDir
         Task.detached(priority: .utility) {
             do { try Analysis.combinedCSV(p, dir: dir).write(to: url, atomically: true, encoding: .utf8) }
-            catch { let msg = error.localizedDescription; await MainActor.run { note = "Saving failed: \(msg)" } }
+            catch { let msg = error.localizedDescription; await MainActor.run { note = L("Saving failed: \(msg)") } }
         }
     }
 
     private func exportPDF(_ r: Report, _ tips: [Tip]) {
         guard let url = save(fileStem + ".pdf", .pdf) else { return }
         let content = VStack(alignment: .leading, spacing: 12) {
-            Text("Fusebox — \(period.title)").font(.system(size: 20, weight: .semibold))
+            Text("Fusebox — \(period.label)").font(.system(size: 20, weight: .semibold))
             Text(Date().formatted(Date.FormatStyle(date: .long, time: .shortened).locale(Locale(identifier: "en_US")))).font(.system(size: 11)).foregroundStyle(.secondary)
             ReportSections(report: r, tips: tips, previousName: period.previousName, parts: ReportSections.Part.allCases, logDir: nil, act: nil)
         }
@@ -1143,7 +1154,7 @@ private struct AnalysisPage: View, Equatable {
             guard let pdf = CGContext(url as CFURL, mediaBox: &box, nil) else { failed = true; return }
             pdf.beginPDFPage(nil); draw(pdf); pdf.endPDFPage(); pdf.closePDF()
         }
-        if failed { note = "Creating the PDF failed" }
+        if failed { note = L("Creating the PDF failed") }
     }
 }
 
@@ -1204,10 +1215,10 @@ fileprivate struct ReportSections: View {
     }
 
     private var cpuTop: some View {
-        top("Top 5 CPU", icon: "cpu", report.topCPU, value: { pct($0.cpu) }, frac: { $0.cpu / max(report.topCPU.first?.cpu ?? 1, 0.1) }, index: 1)
+        top(L("Top 5 CPU"), icon: "cpu", report.topCPU, value: { pct($0.cpu) }, frac: { $0.cpu / max(report.topCPU.first?.cpu ?? 1, 0.1) }, index: 1)
     }
     private var ramTop: some View {
-        top("Top 5 RAM", icon: "memorychip", report.topRAM, value: { one($0.mem) + " GB" }, frac: { $0.mem / max(report.topRAM.first?.mem ?? 1, 0.01) }, index: 2)
+        top(L("Top 5 RAM"), icon: "memorychip", report.topRAM, value: { one($0.mem) + " GB" }, frac: { $0.mem / max(report.topRAM.first?.mem ?? 1, 0.01) }, index: 2)
     }
 
     private func top(_ title: String, icon: String, _ list: [AppStat], value: @escaping (AppStat) -> String, frac: @escaping (AppStat) -> Double, index: Int) -> some View {
@@ -1241,13 +1252,13 @@ fileprivate struct ReportSections: View {
     private var runtime: some View {
         // kern.boottime (telt slaap mee); systemUptime alleen als dat niet lukt
         let up = Int(report.boot.map { Date().timeIntervalSince($0) } ?? ProcessInfo.processInfo.systemUptime) / 60
-        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE d MMM HH:mm"
+        let f = DateFormatter(); f.locale = uiLocale; f.dateFormat = "EEE d MMM HH:mm"
         return VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "clock", title: "Running time", tone: report.uptimeDays >= Diag.restartDays ? 1 : 0)
-            Headline(big: duration(up), small: "Mac on since \(f.string(from: Date().addingTimeInterval(-Double(up) * 60)))",
+            CardTitle(icon: "clock", title: L("Running time"), tone: report.uptimeDays >= Diag.restartDays ? 1 : 0)
+            Headline(big: duration(up), small: L("Mac on since \(f.string(from: Date().addingTimeInterval(-Double(up) * 60)))"),
                      tone: report.uptimeDays >= Diag.restartDays ? 1 : 0)
-            line("Fusebox measuring since", report.first.map { f.string(from: $0) } ?? "–")
-            line("Measured this period", duration(report.minutes))
+            line(L("Fusebox measuring since"), report.first.map { f.string(from: $0) } ?? "–")
+            line(L("Measured this period"), duration(report.minutes))
             if !report.topSeen.isEmpty {
                 Text("Seen active longest").font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.top, 3)
                 ForEach(report.topSeen) { a in item(a.name, duration(a.minutes)) }
@@ -1259,7 +1270,7 @@ fileprivate struct ReportSections: View {
 
     private func battery(_ b: Diag.Battery) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "battery.100percent", title: "Battery", tone: b.worn ? 1 : 0)
+            CardTitle(icon: "battery.100percent", title: L("Battery"), tone: b.worn ? 1 : 0)
             Text(b.summary).font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1268,9 +1279,9 @@ fileprivate struct ReportSections: View {
 
     private func crashes(_ c: Diag.Crashes) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "exclamationmark.octagon", title: "Crashes", tone: c.crashes.isEmpty && c.hangs.isEmpty ? 1 : 2)
+            CardTitle(icon: "exclamationmark.octagon", title: L("Crashes"), tone: c.crashes.isEmpty && c.hangs.isEmpty ? 1 : 2)
             let n = c.crashes.count + c.hangs.count
-            if n > 0 { Headline(big: "\(n) app" + (n == 1 ? "" : "s"), small: "crashed or stopped responding \(report.when)", tone: 1) }
+            if n > 0 { Headline(big: n == 1 ? L("1 app") : L("\(n) apps"), small: L("crashed or stopped responding \(report.when)"), tone: 1) }
             Capped(items: Array(c.rows.enumerated()), id: \.offset, limit: limit) { item($0.element.label, $0.element.value) }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -1300,10 +1311,10 @@ fileprivate struct ReportSections: View {
 
     private var busy: some View {
         VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "flame", title: "Busy moments", tone: report.busy.isEmpty ? 0 : 1)
-            Headline(big: report.busy.isEmpty ? "None" : "\(report.busy.count)", small: "periods of ≥ 5 min above 85% CPU \(report.when)",
+            CardTitle(icon: "flame", title: L("Busy moments"), tone: report.busy.isEmpty ? 0 : 1)
+            Headline(big: report.busy.isEmpty ? L("None") : "\(report.busy.count)", small: L("periods of ≥ 5 min above 85% CPU \(report.when)"),
                      tone: report.busy.isEmpty ? 3 : 1)
-            ForEach(report.busy) { b in item(b.app.map { "Mostly \($0)" } ?? "Busy", "\(Analysis.span(b.start, b.end)) · \(pct(b.cpu))") }
+            ForEach(report.busy) { b in item(b.app.map { L("Mostly \($0)") } ?? L("Busy"), "\(Analysis.span(b.start, b.end)) · \(pct(b.cpu))") }
         }
         .font(theme.label(11)).frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: 4)
@@ -1313,11 +1324,11 @@ fileprivate struct ReportSections: View {
     private var peakSection: some View {
         let p = report.peaks
         return VStack(alignment: .leading, spacing: 5) {
-            CardTitle(icon: "waveform.path.ecg", title: "Peaks")
+            CardTitle(icon: "waveform.path.ecg", title: L("Peaks"))
             if p.isEmpty {
-                Headline(big: "None", small: "No peaks recorded \(report.when) (CPU or GPU ≥ 80%, hot, memory pressure or heavy disk use)", tone: 3)
+                Headline(big: L("None"), small: L("No peaks recorded \(report.when) (CPU or GPU ≥ 80%, hot, memory pressure or heavy disk use)"), tone: 3)
             } else {
-                Headline(big: "\(p.count)", small: "peak" + (p.count == 1 ? "" : "s") + " \(report.when)")
+                Headline(big: "\(p.count)", small: p.count == 1 ? L("peak \(report.when)") : L("peaks \(report.when)"))
                 if let from = report.peakFrom { PeakTimeline(peaks: p, from: from, days: report.peakDays).padding(.vertical, 2) }
                 ForEach(Peaks.summary(p, when: report.when), id: \.self) { Text($0).foregroundStyle(theme.onRow()) }
                 Capped(items: logDir == nil ? Array(p.suffix(6).reversed()) : p.reversed(), id: \.id, limit: limit) { x in
@@ -1335,7 +1346,7 @@ fileprivate struct ReportSections: View {
 
     private var tipList: some View {
         VStack(alignment: .leading, spacing: 6) {
-            header("Tips")
+            header(L("Tips"))
             ForEach(Array(tips.enumerated()), id: \.element.id) { i, tip in
                 HStack(alignment: .center, spacing: 8) {
                     let (head, rest) = tip.parts
@@ -1362,7 +1373,8 @@ fileprivate struct ReportSections: View {
 
     private var log: some View {
         VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "list.bullet.rectangle", title: "Log")
+            CardTitle(icon: "list.bullet.rectangle", title: L("Log"))
+
             if report.events.isEmpty { Text("Nothing unusual happened").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
             Capped(items: report.events, id: \.id, limit: limit) { e in
                 HStack(alignment: .firstTextBaseline, spacing: 6) {

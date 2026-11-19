@@ -22,7 +22,7 @@ extension Diag {
         }
     }
 
-    static let coolingDown = "Your Mac is cooling down (kernel_task slows it on purpose)"
+    static let coolingDown = L("Your Mac is cooling down (kernel_task slows it on purpose)")
     /// kernel_task (pid 0) is zonder root niet te meten; als hij hoog staat is dat vrijwel altijd koelen, en dat meldt thermalState.
     static func isCooling(_ s: ProcessInfo.ThermalState) -> Bool { s == .serious || s == .critical }
 
@@ -76,9 +76,10 @@ struct BackgroundSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "gearshape.2", title: "What macOS is doing")
+            CardTitle(icon: "gearshape.2", title: L("What macOS is doing"))
             if let now {
-                Text(now.isEmpty ? "Nothing special in the background right now." : now.joined(separator: ". ") + " — this passes by itself.")
+                Text(now.isEmpty ? L("Nothing special in the background right now.") : now.joined(separator: ". ") + L(" — this passes by itself."))
+
                     .font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
             } else {
                 ProgressView().controlSize(.small)

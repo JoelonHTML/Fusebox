@@ -126,7 +126,7 @@ enum DiskScan {
                             "Library/Mail", "Library/Messages", "Library/Safari", "Library/Calendars", "Library/HomeKit"]
     /// Nooit doorlopen: cloudmappen (File Provider) kunnen bij lezen gaan downloaden.
     static let never = ["Library/CloudStorage"]
-    static let titles = [".Trash": "Trash", "Library/Application Support/MobileSync": "iPhone & iPad backups", "Music/Music": "Music library", "Movies/TV": "TV library", "Pictures/Photos Library.photoslibrary": "Photos library", "Library/Photos": "Photos data"]
+    static let titles = [".Trash": L("Trash"), "Library/Application Support/MobileSync": L("iPhone & iPad backups"), "Music/Music": L("Music library"), "Movies/TV": L("TV library"), "Pictures/Photos Library.photoslibrary": L("Photos library"), "Library/Photos": L("Photos data")]
 
     /// Volledige schijftoegang? Openen van de TCC-database faalt dan stil (geen venster).
     static var fullDiskAccess: Bool {
@@ -233,21 +233,21 @@ struct StartupSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                CardTitle(icon: "power", title: "Startup & background items", tone: items?.contains(where: \.orphan) == true ? 1 : 0)
+                CardTitle(icon: "power", title: L("Startup & background items"), tone: items?.contains(where: \.orphan) == true ? 1 : 0)
                 Spacer()
                 Button("Login Items…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!) }
                     .buttonStyle(Pill(color: theme.onRow()))
             }
             if let items {
                 let login = Set(items.filter { $0.atLogin && !$0.orphan }.map(\.name)).count
-                Headline(big: "\(login)", small: login == 1 ? "app starts at login" : "apps start at login")
+                Headline(big: "\(login)", small: login == 1 ? L("app starts at login") : L("apps start at login"))
             }
             Text("Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items.")
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             if let items {
                 orphans(items.filter(\.orphan))
-                group("Apps that start at login", items.filter { $0.atLogin && !$0.orphan })
-                group("Background helpers", items.filter { !$0.atLogin && !$0.orphan })
+                group(L("Apps that start at login"), items.filter { $0.atLogin && !$0.orphan })
+                group(L("Background helpers"), items.filter { !$0.atLogin && !$0.orphan })
             } else {
                 ProgressView().controlSize(.small)
             }
@@ -277,7 +277,7 @@ struct StartupSection: View {
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow()))
                 }
                 .font(theme.label(11))
-                .help(i.plist.path + (i.program.map { "\nMissing: " + $0 } ?? ""))
+                .help(i.plist.path + (i.program.map { "\n" + L("Missing: \($0)") } ?? ""))
             }
         }
     }
@@ -334,12 +334,12 @@ struct DiskSection: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                CardTitle(icon: "internaldrive", title: "What takes my disk space?", tone: low ? 1 : 0)
+                CardTitle(icon: "internaldrive", title: L("What takes my disk space?"), tone: low ? 1 : 0)
                 Spacer()
                 Button(result == nil ? "Find large folders" : "Check again") { run += 1 }
                     .buttonStyle(Pill(color: theme.onRow())).disabled(progress != nil)
             }
-            if let space { Headline(big: "\(Int(space.free)) GB free", small: "of \(Int(space.total)) GB", tone: low ? 1 : 0) }
+            if let space { Headline(big: L("\(Int(space.free)) GB free"), small: L("of \(Int(space.total)) GB"), tone: low ? 1 : 0) }
             if let p = progress {
                 ProgressView(value: Double(p.done), total: Double(max(p.total, 1))).controlSize(.small).tint(theme.rowStyle == .blocks ? .white : theme.accent)
                 Text("Checking \(p.now)…").font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.middle)
@@ -357,7 +357,8 @@ struct DiskSection: View {
                     .font(theme.label(11))
                 }
                 if !r.skipped.isEmpty {
-                    Text("Not checked (macOS protects these): " + r.skipped.map(\.title).joined(separator: ", ") + ". Give Fusebox Full Disk Access to include them.")
+                    Text(L("Not checked (macOS protects these): \(r.skipped.map(\.title).joined(separator: ", ")). Give Fusebox Full Disk Access to include them."))
+
                         .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
                 }
             } else {
