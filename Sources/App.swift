@@ -62,7 +62,7 @@ struct MeterkastApp: App {
     @AppStorage("menubarStyle") private var style: MenubarStyle = .text
     @AppStorage("menubarMetrics") private var menubarMetrics = "cpu"
     @AppStorage("menubarSplit") private var split = false
-    @AppStorage("menuStyle") private var menuStyle: MenuStyle = .menu
+    @AppStorage("menuStyle") private var menuStyle: MenuStyle = .panel
     @AppStorage("setupDone") private var setupDone = false
     @AppStorage("appearanceMode") private var mode: AppearanceMode = .system
 

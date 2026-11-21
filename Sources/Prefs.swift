@@ -24,7 +24,7 @@ enum Prefs {
             "dockedEmpty": true, "dockedBytes": false,
             // Menubalk
             "menubarMetrics": "cpu", "menubarMetricsHidden": "", "menubarStyle": "text", "menubarSplit": false,
-            "menuStyle": "menu", "menuParts": "status,values,top,links", "richPanel": true,
+            "menuStyle": "panel", "menuParts": "status,values,top,links", "richPanel": true,
             // Meldingen
             "notify": true, "smoothBig": true, "alertCooldown": 30, PeakAlert.key("on"): true, PeakAlert.key("min"): 2,
             // Gegevens en privacy

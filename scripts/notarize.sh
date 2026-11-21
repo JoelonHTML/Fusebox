@@ -5,7 +5,7 @@
 #   2. xcrun notarytool store-credentials fusebox-notary --apple-id <jouw Apple ID> --team-id <TEAMID>
 # Daarna doet release.sh dit vanzelf: ondertekenen met hardened runtime, insturen, wachten, "staple".
 set -e
-APP="${1:-$HOME/Applications/Fusebox.app}"
+APP="${1:-/Applications/Fusebox.app}"
 ID=$(security find-identity -v -p codesigning | grep -o '"Developer ID Application:[^"]*"' | head -1 | tr -d '"')
 if [ -z "$ID" ] || ! xcrun notarytool history --keychain-profile fusebox-notary >/dev/null 2>&1; then
   echo "notariseren: overgeslagen (geen Developer ID of geen notarytool-profiel 'fusebox-notary')"

@@ -481,7 +481,7 @@ struct LivePreview: View {
 
 struct MenubarSettings: View {
     @AppStorage("menubarSplit") private var split = false
-    @AppStorage("menuStyle") private var menuStyle: MenuStyle = .menu
+    @AppStorage("menuStyle") private var menuStyle: MenuStyle = .panel
     @AppStorage("menuParts") private var parts = "status,values,top,links"
     @AppStorage("richPanel") private var rich = true
 

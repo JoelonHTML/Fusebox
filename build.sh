@@ -1,9 +1,9 @@
 #!/bin/zsh
-# Werkt ~/Applications/Fusebox.app bij op dezelfde plek, zodat je Dock-icoon blijft werken.
+# Werkt /Applications/Fusebox.app bij op dezelfde plek, zodat je Dock-icoon blijft werken.
 # (Buiten iCloud, anders weigert codesign.) Gebruik: ./build.sh
 set -e
 cd "$(dirname "$0")"
-APP="$HOME/Applications/Fusebox.app"
+APP="/Applications/Fusebox.app"
 OLD="$HOME/Applications/Meterkast.app"   # oude naam; wordt na het bouwen naar de Prullenmand verplaatst
 TMP=$(mktemp -d)
 
@@ -56,7 +56,7 @@ cat > "$APP/Contents/Info.plist" <<'EOF'
   <key>CFBundleExecutable</key><string>Fusebox</string>
   <key>CFBundleIconFile</key><string>AppIcon</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>0.10.1</string>
+  <key>CFBundleShortVersionString</key><string>0.11</string>
   <key>CFBundleVersion</key><string>1</string>
   <key>LSMinimumSystemVersion</key><string>26.0</string>
   <key>NSHighResolutionCapable</key><true/>

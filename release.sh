@@ -8,7 +8,7 @@ cd "$(dirname "$0")"
 NOTES="${1:-Improvements and fixes.}"
 ./share.sh
 swift scripts/sign-update.swift Fusebox.zip   # handtekening: de app weigert updates zonder
-APP="$HOME/Applications/Fusebox.app"
+APP="/Applications/Fusebox.app"
 V=$(/usr/libexec/PlistBuddy -c "Print :CFBundleShortVersionString" "$APP/Contents/Info.plist")
 B=$(/usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist")
 BETA=""; [[ "$V" == 0.* ]] && BETA="-beta"   # 0.x = beta
