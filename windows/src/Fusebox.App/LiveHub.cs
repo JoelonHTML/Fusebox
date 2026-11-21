@@ -157,6 +157,8 @@ public sealed partial class LiveHub
     /// <summary>Peak cause from the last minute's apps (Live agent: refine with a snapshot at the peak's start, §3.9).</summary>
     void Blame(Peak p)
     {
+        // Cause snapshotted at the start of the peak (Live), else the last minute's top app.
+        if (PeakSnapshots.Cause(p) is { } c) { p.App = c.Name; p.AppValue = c.Value; return; }
         if (Apps == null || p.Kind == PeakKind.Io) return;
         Func<AppGroup, double> by = p.Kind switch { PeakKind.Gpu => g => g.Gpu, PeakKind.Mem => g => g.Ram / 1073741824.0, _ => g => g.Cpu };
         var top = Apps.Where(g => g.Kind != AppKind.Windows).MaxBy(by);
