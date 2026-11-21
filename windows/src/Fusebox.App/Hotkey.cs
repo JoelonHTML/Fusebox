@@ -14,10 +14,16 @@ public static unsafe class Hotkey
     const int Id = 0x4642;
     static nint hwnd;
     static Window? window;
-    static bool installed, registered;
+    static bool installed, registered, suspended;
 
     /// <summary>False when another program already owns the combination.</summary>
     public static bool Registered => registered;
+
+    /// <summary>A shortcut is set but Windows refused it (another app owns it).</summary>
+    public static bool Conflict => !suspended && Prefs.Int("hotkeyCode") > 0 && !registered;
+
+    /// <summary>While the Settings recorder listens, the shortcut must not trigger itself.</summary>
+    public static void Suspend(bool on) { suspended = on; Apply(); }
 
     public static void Start(Window w)
     {
@@ -33,7 +39,7 @@ public static unsafe class Hotkey
         if (!installed) installed = SettingsNative.SetWindowSubclass(hwnd, &WndProc, 1, 0);
         if (registered) { SettingsNative.UnregisterHotKey(hwnd, Id); registered = false; }
         int code = Prefs.Int("hotkeyCode"), mods = Prefs.Int("hotkeyMods") & 0xF;   // MOD_ALT|CONTROL|SHIFT|WIN
-        if (code > 0 && mods != 0) registered = SettingsNative.RegisterHotKey(hwnd, Id, (uint)mods | SettingsNative.MOD_NOREPEAT, (uint)code);
+        if (code > 0 && mods != 0 && !suspended) registered = SettingsNative.RegisterHotKey(hwnd, Id, (uint)mods | SettingsNative.MOD_NOREPEAT, (uint)code);
     }
 
     [UnmanagedCallersOnly]   // platform default = stdcall on x64/arm64, matches delegate* unmanaged

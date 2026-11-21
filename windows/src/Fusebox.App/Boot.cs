@@ -34,6 +34,8 @@ public static class Boot
         Notify.Register();
         LowImpact.Start();
         Hotkey.Start(main);
+        AlertRunner.Start();   // per-minute alerts (§11.2)
+        SelfUsage.Start();     // own-use log for the performance report (§11.5)
         Updater.Start();
         if (NeedsSetup) ShowSetup();
         else if (Background)

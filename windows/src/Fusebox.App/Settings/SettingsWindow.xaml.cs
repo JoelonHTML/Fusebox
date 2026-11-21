@@ -74,11 +74,14 @@ public sealed partial class SettingsWindow : Window
         Select(Prefs.Str("settingsTab"));
     }
 
-    static bool HasBattery()
+    internal static bool HasBattery()
     {
         try { return Windows.System.Power.PowerManager.BatteryStatus != Windows.System.Power.BatteryStatus.NotPresent; }
         catch { return false; }
     }
+
+    /// <summary>Switch the open window to a tab without moving it (e.g. "Change in Privacy").</summary>
+    public static void GoTo(string tab) => current?.Select(tab);
 
     void Select(string id)
     {

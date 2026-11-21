@@ -1,69 +1,151 @@
 using Fusebox.Core.Update;
+using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Documents;
+using Microsoft.UI.Xaml.Media;
 using static Fusebox.App.Settings.SettingsUi;
 using static Fusebox.Core.Strings;
 
 namespace Fusebox.App.Settings;
 
 /// <summary>
-/// Settings › About (FEATURES.md §9.16). Has (from v1): version, update automatically, check for updates + status, changelog.
-/// To do (Settings agent): header block with icon, credits, beta performance report.
+/// Settings › About (FEATURES.md §9.16): icon, version and build, credits, updates (status in an InfoBar), the beta performance report,
+/// and "What's new" from the win- release notes with the installed one marked.
 /// </summary>
 public sealed partial class AboutSettingsPage : Page
 {
     readonly Button check = new();
-    readonly SettingsCard updates;
-    readonly StackPanel changelog = new() { Spacing = 12, Margin = new Thickness(2, 4, 2, 0) };
+    readonly InfoBar status = new() { IsClosable = false, IsOpen = false };
+    readonly StackPanel changelog = new() { Spacing = 14, Margin = new Thickness(2, 6, 2, 0) };
+    List<ReleaseInfo>? shownLog;
 
     public AboutSettingsPage()
     {
         InitializeComponent();
         SettingsUi.TranslateOnce(this);
-        var version = Card("Fusebox", "", null, "\uE946");
-        version.SetDescriptionText(L("Version %@", Updater.CurrentVersion) + " · " + L("A lightweight system monitor for your PC: live measurements, apps and advice."));
-        Body.Children.Add(version);
+
+        var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(0, 0, 0, 4) };
+        head.Children.Add(new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Fusebox-256.png")), Width = 56, Height = 56 });
+        var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
+        names.Children.Add(new TextBlock { Text = "Fusebox", FontSize = 20, FontWeight = FontWeights.SemiBold });
+        names.Children.Add(new TextBlock { Text = L("Version %@", Updater.CurrentVersion), Opacity = 0.75 });
+        head.Children.Add(names);
+        Body.Children.Add(head);
+        Body.Children.Add(new TextBlock { Text = L("A lightweight system monitor for your PC: live measurements, apps and advice."), Opacity = 0.75, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
+        Body.Children.Add(new SettingsCard { Header = "Made by", Action = new TextBlock { Text = "ClaudIA Software & Development", Opacity = 0.75 } });
+
         Body.Children.Add(Section("Updates"));
-        Body.Children.Add(Card("Update automatically", "", Toggle("autoUpdate"), "\uE895"));
+        Body.Children.Add(new SettingsCard { Header = "Installed", Action = new TextBlock { Text = Updater.CurrentVersion, Opacity = 0.75 } });
+        Body.Children.Add(Card("Update automatically", "Fusebox checks GitHub every 15 minutes, tells you when there is a new version, installs it and restarts. Your settings stay.", Toggle("autoUpdate"), ""));
         check.Content = L("Check for updates");
         check.Click += (_, _) => _ = Updater.Check(true);
-        updates = Card("Check for updates", "", check, "\uE72C");
-        Body.Children.Add(updates);
+        Body.Children.Add(Card("Check for updates", "", check, ""));
+        Body.Children.Add(status);
+
+        Body.Children.Add(Section("Beta test"));
+        var share = new Button { Content = L("Share performance report") };
+        share.Click += async (_, _) =>
+        {
+            share.IsEnabled = false;
+            share.Content = L("Measuring 5 s…");
+            var file = await SelfUsage.ShareReport();
+            share.Content = L("Share performance report");
+            share.IsEnabled = true;
+            if (file == null) Say(InfoBarSeverity.Error, L("Couldn't save the report."));
+        };
+        Body.Children.Add(Card("Beta: how light is Fusebox on this PC?", "Fusebox notes its own CPU and memory use once a minute, and looks for 5 seconds at what it is doing right now. This makes a small text file in Downloads (also copied) to send to the maker. Nothing is sent automatically.", share, ""));
+
         Body.Children.Add(Section("What's new"));
         Body.Children.Add(changelog);
+
         Loaded += (_, _) => { Updater.Changed += OnUpdater; _ = Updater.LoadChangelog(); ShowUpdate(); };
         Unloaded += (_, _) => Updater.Changed -= OnUpdater;
     }
 
     void OnUpdater() => DispatcherQueue.TryEnqueue(ShowUpdate);
 
+    void Say(InfoBarSeverity severity, string text)
+    {
+        status.Severity = severity;
+        status.Message = text;
+        status.IsOpen = text.Length > 0;
+    }
+
     void ShowUpdate()
     {
         check.IsEnabled = Updater.Current is not (Updater.State.Checking or Updater.State.Installing);
-        updates.SetDescriptionText(Updater.Current switch
+        switch (Updater.Current)
         {
-            Updater.State.Checking => L("Checking…"),
-            Updater.State.UpToDate => L("You're up to date"),
-            Updater.State.Available => L("Fusebox %@ available", UpdateLogic.Pretty(Updater.Tag ?? "")),
-            Updater.State.Installing => L("Installing…"),
-            Updater.State.Failed => Updater.Error ?? "",
-            _ => Updater.LastCheck is { } t ? L("Last checked %@", t.ToLocalTime().ToString("t", Culture)) : "",
-        });
+            case Updater.State.Checking: Say(InfoBarSeverity.Informational, L("Checking…")); break;
+            case Updater.State.UpToDate: Say(InfoBarSeverity.Success, L("You're up to date")); break;
+            case Updater.State.Available: Say(InfoBarSeverity.Informational, L("Fusebox %@ available", UpdateLogic.Pretty(Updater.Tag ?? ""))); break;
+            case Updater.State.Installing: Say(InfoBarSeverity.Informational, L("Installing…")); break;
+            case Updater.State.Failed: Say(InfoBarSeverity.Error, Updater.Error ?? ""); break;
+            default: Say(InfoBarSeverity.Informational, Updater.LastCheck is { } t ? L("Last checked %@", t.ToLocalTime().ToString("t", Culture)) : ""); break;
+        }
+        if (!ReferenceEquals(Updater.Changelog, shownLog) || Updater.Changelog == null) ShowChangelog();
+    }
+
+    void ShowChangelog()
+    {
+        shownLog = Updater.Changelog;
         changelog.Children.Clear();
-        var list = Updater.Changelog;
-        if (list == null) { changelog.Children.Add(new TextBlock { Text = L("Loading…"), Opacity = 0.7 }); return; }
-        if (list.Count == 0) { changelog.Children.Add(new TextBlock { Text = L("Couldn't load the changelog. Check your internet connection."), Opacity = 0.7, TextWrapping = TextWrapping.Wrap }); return; }
+        var list = shownLog;
+        if (list == null) { changelog.Children.Add(new TextBlock { Text = L("Loading…"), Opacity = 0.75 }); return; }
+        if (list.Count == 0) { changelog.Children.Add(new TextBlock { Text = L("Couldn't load the changelog. Check your internet connection."), Opacity = 0.75, TextWrapping = TextWrapping.Wrap }); return; }
         foreach (var r in list)
         {
-            var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            head.Children.Add(new TextBlock { Text = r.Title, FontWeight = Microsoft.UI.Text.FontWeights.SemiBold });
+            var head = new Grid { ColumnSpacing = 6 };
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+            head.Children.Add(new TextBlock { Text = r.Title, FontWeight = FontWeights.SemiBold, VerticalAlignment = VerticalAlignment.Center });
             if (new[] { r.Tag }.Concat(r.Builds).Any(t => UpdateLogic.BuildNumber(t) == Updater.CurrentBuild))
-                head.Children.Add(new TextBlock { Text = L("Installed"), Opacity = 0.7 });
-            if (r.Date is { } d) head.Children.Add(new TextBlock { Text = d.ToLocalTime().ToString("d", Culture), Opacity = 0.7 });
-            var item = new StackPanel { Spacing = 2 };
+            {
+                var badge = Badge(L("Installed"));
+                Grid.SetColumn(badge, 1);
+                head.Children.Add(badge);
+            }
+            if (r.Date is { } d)
+            {
+                var date = new TextBlock { Text = d.ToLocalTime().ToString("d MMMM yyyy", Culture), FontSize = 12, Opacity = 0.75, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
+                Grid.SetColumn(date, 2);
+                head.Children.Add(date);
+            }
+            var item = new StackPanel { Spacing = 3 };
             item.Children.Add(head);
-            if (r.Notes.Length > 0) item.Children.Add(new TextBlock { Text = r.Notes, Opacity = 0.7, TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true });
+            foreach (var line in MiniMarkdown.Parse(r.Notes)) item.Children.Add(NoteLine(line));
             changelog.Children.Add(item);
         }
+    }
+
+    /// <summary>"Installed": caption, capsule filled with the accent at 15 %.</summary>
+    static Border Badge(string text)
+    {
+        var accent = Kit.Accent();
+        return new Border
+        {
+            CornerRadius = new CornerRadius(10), Padding = new Thickness(6, 1, 6, 1), VerticalAlignment = VerticalAlignment.Center,
+            Background = new SolidColorBrush(Windows.UI.Color.FromArgb(38, accent.R, accent.G, accent.B)),
+            Child = new TextBlock { Text = text, FontSize = 12, FontWeight = FontWeights.Medium, Foreground = new SolidColorBrush(Kit.AccentText()) },
+        };
+    }
+
+    static TextBlock NoteLine(MdLine line)
+    {
+        var tb = new TextBlock { TextWrapping = TextWrapping.Wrap, IsTextSelectionEnabled = true, Opacity = line.Heading ? 1 : 0.8, FontSize = 13 };
+        if (line.Bullet) { tb.Margin = new Thickness(10, 0, 0, 0); tb.Inlines.Add(new Run { Text = "•  " }); }
+        foreach (var s in line.Spans)
+        {
+            if (s.Url != null)
+            {
+                var link = new Hyperlink { NavigateUri = new Uri(s.Url) };
+                link.Inlines.Add(new Run { Text = s.Text });
+                tb.Inlines.Add(link);
+            }
+            else tb.Inlines.Add(new Run { Text = s.Text, FontWeight = s.Bold ? FontWeights.SemiBold : FontWeights.Normal });
+        }
+        return tb;
     }
 }

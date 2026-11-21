@@ -120,7 +120,8 @@ public static partial class Updater
         if (Prefs.Str("notifiedUpdate") == tag) return;
         Prefs.Set("notifiedUpdate", tag);
         Notify.Send(Strings.L("Fusebox %@ is available", UpdateLogic.Pretty(tag)),
-            AutoInstall ? Strings.L("Installing now. Fusebox restarts in a moment.") : Strings.L("Open Settings › About to install it."));
+            AutoInstall ? Strings.L("Installing now. Fusebox restarts in a moment.") : Strings.L("Open Settings › About to install it."),
+            new("", "settings", ("tab", "about")));
     }
 
     /// <summary>First start after an update: one notification with what is new.</summary>
@@ -136,8 +137,10 @@ public static partial class Updater
             var mine = list.FirstOrDefault(r => UpdateLogic.BuildNumber(r.Tag) == now) ?? list.FirstOrDefault();
             var version = mine == null ? "" : UpdateLogic.Pretty(mine.Tag);
             var summary = mine == null ? "" : UpdateLogic.Summary(mine.Notes);
+            // Clicking the notification or "What's new" opens Settings › About (changelog, installed release marked).
             Notify.Send(version.Length == 0 ? Strings.L("Fusebox updated") : Strings.L("Fusebox updated to %@", version),
-                summary.Length > 0 ? summary : Strings.L("See what's new in Settings › About."));
+                summary.Length > 0 ? summary : Strings.L("See what's new in Settings › About."),
+                new("", "settings", ("tab", "about")), new Notify.Act(Strings.L("What's new"), "settings", ("tab", "about")));
         }
         catch { }
     }

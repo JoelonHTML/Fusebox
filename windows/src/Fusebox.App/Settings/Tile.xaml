@@ -1,0 +1,16 @@
+<UserControl x:Class="Fusebox.App.Settings.Tile"
+             xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             IsTabStop="True" UseSystemFocusVisuals="True">
+    <!-- Selectable card (Mac "Card", §9.3): radius 12, padding 10, faint fill, 1 pt border; selected = accent border 2.5. The ring is a second
+         border on top so the layout never jumps. Colors are theme resources, so they follow the Settings window's light/dark. -->
+    <Grid>
+        <Border x:Name="Face" CornerRadius="12" Padding="10" BorderThickness="1"
+                Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
+                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+            <ContentPresenter x:Name="Host" />
+        </Border>
+        <Border x:Name="Ring" CornerRadius="12" BorderThickness="2.5" Visibility="Collapsed" IsHitTestVisible="False"
+                BorderBrush="{ThemeResource AccentFillColorDefaultBrush}" />
+    </Grid>
+</UserControl>
