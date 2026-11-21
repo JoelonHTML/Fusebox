@@ -47,15 +47,12 @@ public static class MetricsEditor
         };
         ScrollViewer.SetVerticalScrollMode(list, ScrollMode.Disabled);
         ScrollViewer.SetVerticalScrollBarVisibility(list, ScrollBarVisibility.Hidden);
-        bool saving = false;
 
         void Save()
         {
             var rows = list.Items.Cast<Grid>().Select(g => (Entry)g.Tag).ToList();
-            saving = true;
             Prefs.Set(key, Metrics.Join(rows.Where(r => r.Box.IsChecked == true).Select(r => r.Metric)));
             Prefs.Set(key + "Hidden", Metrics.Join(rows.Where(r => r.Box.IsChecked != true).Select(r => r.Metric)));
-            saving = false;
             Limit();
         }
 
@@ -116,7 +113,13 @@ public static class MetricsEditor
         Fill();
         root.Children.Add(list);
         root.Children.Add(restore);
-        Kit.WhilePrefs(root, k => { if (!saving && k == key) Fill(); });
+        // Changed from elsewhere (a profile, import, reset): redraw. Our own saves already match what is shown.
+        Kit.WhilePrefs(root, k =>
+        {
+            if (k != key) return;
+            var shown = Metrics.Join(list.Items.Cast<Grid>().Select(g => (Entry)g.Tag).Where(r => r.Box.IsChecked == true).Select(r => r.Metric));
+            if (shown != Metrics.Join(Enabled(key))) Fill();
+        });
         return root;
     }
 }

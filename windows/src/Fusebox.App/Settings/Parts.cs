@@ -45,7 +45,7 @@ internal static class Parts
 
     static StackPanel Stack(double spacing, params UIElement[] children)
     {
-        var p = new StackPanel { Spacing = spacing, HorizontalAlignment = HorizontalAlignment.Center };
+        var p = new StackPanel { Spacing = spacing };
         foreach (var c in children) p.Children.Add(c);
         return p;
     }
@@ -138,7 +138,7 @@ internal static class Parts
         UIElement Card(string glyphOrText, bool text, string title, string detail)
         {
             UIElement icon = text ? new TextBlock { Text = glyphOrText, FontSize = 18, FontWeight = FontWeights.SemiBold, Height = 28, HorizontalAlignment = HorizontalAlignment.Center }
-                                  : new FontIcon { Glyph = glyphOrText, FontSize = 20, Height = 28 };
+                                  : new FontIcon { Glyph = glyphOrText, FontSize = 20, Height = 28, HorizontalAlignment = HorizontalAlignment.Center };
             return Stack(5, icon, new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center },
                 new TextBlock { Text = detail, FontSize = 12, Opacity = 0.75, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MinHeight = 32 });
         }
