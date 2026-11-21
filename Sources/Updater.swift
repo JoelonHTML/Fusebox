@@ -61,7 +61,8 @@ import CryptoKit
     nonisolated static func parseReleases(_ data: Data?) -> [Release] {
         guard let data, let a = try? JSONSerialization.jsonObject(with: data) as? [[String: Any]] else { return [] }
         return a.compactMap { j in
-            guard let tag = j["tag_name"] as? String, j["draft"] as? Bool != true else { return nil }
+            // Windows-releases (tag "win-…") staan in dezelfde repo, maar horen niet in de Mac-changelog
+            guard let tag = j["tag_name"] as? String, j["draft"] as? Bool != true, !tag.hasPrefix("win-") else { return nil }
             let title = (j["name"] as? String).flatMap { $0.isEmpty ? nil : $0 } ?? "Fusebox \(pretty(tag))"
             let date = (j["published_at"] as? String).flatMap { ISO8601DateFormatter().date(from: $0) }
             return Release(id: tag, title: title, date: date, notes: (j["body"] as? String ?? "").trimmingCharacters(in: .whitespacesAndNewlines))
