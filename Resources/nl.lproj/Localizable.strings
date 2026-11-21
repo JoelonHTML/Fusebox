@@ -1508,3 +1508,21 @@
 "macOS asks you once for each of these. Allow what you want to use; you can change it later in System Settings." = "macOS vraagt je dit één keer per onderdeel. Sta toe wat je wilt gebruiken; je kunt het later wijzigen in Systeeminstellingen.";
 "npm download cache. Safe to delete" = "npm-downloadcache. Veilig te verwijderen";
 "paused · battery warm" = "gepauzeerd · accu warm";
+
+/* feat-ssdbat */
+" (learned from your use)" = " (geleerd van je gebruik)";
+" (learned)" = " (geleerd)";
+"As fast as expected" = "Zo snel als verwacht";
+"Learn battery time from my use" = "Accutijd leren van mijn gebruik";
+"Needs at least 5 GB of free space." = "Heeft minstens 5 GB vrije ruimte nodig.";
+"On battery, \"time left\" comes from how fast your battery drained over the last 7 days, mixed with the last 15 minutes. Needs 2 hours on battery first; until then macOS's estimate." = "Op de accu komt \"tijd over\" uit hoe snel je accu de afgelopen 7 dagen leegliep, gemengd met de laatste 15 minuten. Eerst 2 uur op de accu nodig; tot dan de schatting van macOS.";
+"Read %@ · Write %@" = "Lezen %@ · Schrijven %@";
+"Reading it back…" = "Teruglezen…";
+"SSD speed" = "SSD-snelheid";
+"SSD speed test" = "SSD-snelheidstest";
+"Slower than usual" = "Trager dan normaal";
+"Test speed" = "Test snelheid";
+"The disk may be almost full or busy. Try again when nothing else is running." = "De schijf is misschien bijna vol of bezig. Probeer het opnieuw als er niets anders draait.";
+"The test couldn't finish." = "De test kon niet worden afgerond.";
+"Writes and reads 1 GB in a temporary file (a few seconds), then deletes it." = "Schrijft en leest 1 GB in een tijdelijk bestand (een paar seconden) en verwijdert het daarna.";
+"Writing a test file…" = "Testbestand schrijven…";

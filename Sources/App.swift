@@ -140,6 +140,8 @@ struct MeterkastApp: App {
         FanDust.selfTest()
         ChargeLimit.selfTest()
         SSDHealth.selfTest()
+        SSDBench.selfTest()
+        LearnedBattery.selfTest()
         NetScanner.selfTest()
         InternetStats.findSelfTest()
         Installer.selfTest()

@@ -912,7 +912,7 @@ private struct AnalysisPage: View, Equatable {
             g.append(Group(id: "stability", title: L("Stability"), icon: "exclamationmark.triangle",
                            summary: parts.isEmpty ? L("No crashes or hangs \(r.when)") : parts.joined(separator: " · "), warn: !c.crashes.isEmpty || !c.hangs.isEmpty))
         }
-        if shown("startup") || shown("disk") {
+        if shown("startup") || shown("disk") || shown("ssdBench") {
             let items = StartupSection.cache
             let login = items.map { l in L("\(l.filter { $0.atLogin && !$0.orphan }.count) items start at login") }
             let orphans = items.map { $0.filter(\.orphan).count } ?? 0
@@ -1008,7 +1008,7 @@ private struct AnalysisPage: View, Equatable {
                 .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8)
             }
         case "storage":
-            cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10); SSDHealthCard(index: 11) } }
+            cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10); SSDHealthCard(index: 11) }; if shown("ssdBench") { SSDSpeedCard(index: 12) } }
         default:
             cols { if shown("runtime") { part(r, tips, .runtime) } } right: { if shown("log") { part(r, tips, .log) } }
             exportBar(r, tips)

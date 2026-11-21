@@ -129,7 +129,7 @@ struct CheckupSettings: View {
     private static let parts = [("score", L("Health score")), ("tips", L("Tips")),
                                 ("tops", L("Top apps")), ("peaks", L("Peaks")), ("busy", L("Busy moments")), ("background", L("macOS background")),
                                 ("battery", L("Battery")), ("health", L("Battery health")), ("drain", L("Battery drain")), ("sleep", L("Sleep drain")), ("awake", L("Keeps awake")),
-                                ("crashes", L("Crashes")), ("startup", L("Startup items")), ("disk", L("Disk space")), ("runtime", L("Running time")), ("log", L("Log"))]
+                                ("crashes", L("Crashes")), ("startup", L("Startup items")), ("disk", L("Disk space")), ("ssdBench", L("SSD speed test")), ("runtime", L("Running time")), ("log", L("Log"))]
 
     var body: some View {
         Section("When you open Checkup") {

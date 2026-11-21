@@ -164,6 +164,13 @@ final class Meter: ObservableObject {
         s.pingPending = !pingHost.isEmpty && !pinger.answered
         // Aan het laden maar macOS heeft (nog) geen schatting: zelf uitrekenen uit hoe snel het % de laatste minuten steeg
         if s.charging, s.batteryMinutes == nil, let b = s.battery { s.batteryMinutes = Self.timeToFull(now: b, at: s.time, history: recent) }
+        // Op de accu: liever het tempo uit je eigen gebruik (instelling "learnedBattery"), gemengd met de laatste 15 min
+        if !s.charging, !s.onAC, let b = s.battery, UserDefaults.standard.bool(forKey: "learnedBattery"), let rate = LearnedBattery.cached {
+            let since = recent.reversed().prefix { !$0.onAC && s.time.timeIntervalSince($0.time) <= 900 }.last
+            if let m = LearnedBattery.minutes(pct: b, at: s.time, learned: rate, since: since.flatMap { o in o.battery.map { (o.time, $0) } }) {
+                s.batteryMinutes = m; s.batteryLearned = true
+            }
+        }
         s.wifiDbm = WifiWatch.shared.value()
         if let programs, programsVisible { ui.apps = programs }
         fanControl.update(s)
@@ -235,6 +242,7 @@ final class Meter: ObservableObject {
         }
         BatteryHealth.tick(s.time, dir: logDir)   // één regel per dag in battery-health.csv
         SSDHealth.refresh()                       // hooguit eens per uur, op de achtergrond
+        if Power.hasBattery, UserDefaults.standard.bool(forKey: "learnedBattery") { LearnedBattery.refresh(dir: logDir) }   // hooguit eens per 30 min
         checkAlerts(s, top: apps.first { $0.kind != .macos })
         checkPeakAlert(s, apps: apps)
     }

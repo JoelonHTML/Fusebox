@@ -627,3 +627,114 @@ struct SSDHealthCard: View {
         }
     }
 }
+
+// MARK: - SSD-snelheid: alleen op verzoek. ~1 GB schrijven en daarna lezen in de tijdelijke map, buiten de cache om
+// (F_NOCACHE), daarna weg. Niets draait vanzelf.
+
+enum SSDBench {
+    struct Result: Codable, Equatable { var read, write: Double; var date: Date }   // MB/s
+    enum Failure: Error { case space, io, cancelled }
+    static let block = 8 << 20, blocks = 128   // 8 MB × 128 = 1 GB
+
+    /// Laatste uitslag, bewaard met datum.
+    static var last: Result? {
+        get { UserDefaults.standard.data(forKey: "ssdBenchLast").flatMap { try? JSONDecoder().decode(Result.self, from: $0) } }
+        set { UserDefaults.standard.set(newValue.flatMap { try? JSONEncoder().encode($0) }, forKey: "ssdBenchLast") }
+    }
+    static func speed(_ mb: Double) -> String { mb >= 1000 ? "\(one(mb / 1000)) GB/s" : "\(Int(mb.rounded())) MB/s" }
+    static func text(_ r: Result) -> String { L("Read \(speed(r.read)) · Write \(speed(r.write))") }
+    /// Interne SSD's van Apple Silicon halen ±1,5–7 GB/s lezen en ±1–6 GB/s schrijven (256 GB-modellen het traagst).
+    static func fast(_ r: Result) -> Bool { r.read >= 1500 && r.write >= 1000 }
+
+    /// Synchroon, dus buiten de hoofdthread aanroepen. `step(0…1)` krijgt de voortgang; false = stoppen.
+    static func run(dir: URL = FileManager.default.temporaryDirectory, step: (Double) -> Bool) throws -> Result {
+        let free = (try? dir.resourceValues(forKeys: [.volumeAvailableCapacityForImportantUsageKey]))?.volumeAvailableCapacityForImportantUsage ?? 0
+        guard free >= 5_000_000_000 else { throw Failure.space }
+        let path = dir.appendingPathComponent("fusebox-speedtest-\(getpid()).tmp").path
+        defer { unlink(path) }
+        let buf = UnsafeMutableRawPointer.allocate(byteCount: block, alignment: 16384)
+        defer { buf.deallocate() }
+        arc4random_buf(buf, block)   // willekeurig: niets valt weg door compressie
+        func pass(_ writing: Bool) throws -> Double {
+            let fd = writing ? open(path, O_CREAT | O_TRUNC | O_WRONLY, 0o600) : open(path, O_RDONLY)
+            guard fd >= 0 else { throw Failure.io }
+            defer { close(fd) }
+            _ = fcntl(fd, F_NOCACHE, 1)
+            let t = DispatchTime.now().uptimeNanoseconds
+            for i in 0..<blocks {
+                guard (writing ? write(fd, buf, block) : read(fd, buf, block)) == block else { throw Failure.io }
+                guard step((Double(i + 1) / Double(blocks) + (writing ? 0 : 1)) / 2) else { throw Failure.cancelled }
+            }
+            // Echt op de SSD (F_FULLFSYNC leegt ook de cache van de schijf zelf; fsync alleen als dat niet lukt)
+            if writing, fcntl(fd, F_FULLFSYNC) != 0, fsync(fd) != 0 { throw Failure.io }
+            return Double(block * blocks) / 1e6 / (Double(DispatchTime.now().uptimeNanoseconds - t) / 1e9)
+        }
+        let w = try pass(true), r = try pass(false)
+        return Result(read: r, write: w, date: Date())
+    }
+
+    static func selfTest() {
+        precondition(text(Result(read: 3120, write: 2840, date: .distantPast)) == "Read 3.1 GB/s · Write 2.8 GB/s", "snelheidstekst")
+        precondition(speed(850) == "850 MB/s" && fast(Result(read: 3000, write: 2500, date: .distantPast)) && !fast(Result(read: 900, write: 2500, date: .distantPast)), "oordeel")
+        // Te weinig ruimte: weigeren zonder iets te schrijven (een map op een volume dat niet bestaat geeft 0 vrij)
+        do { _ = try run(dir: URL(fileURLWithPath: "/nonexistent-fusebox")) { _ in true }; preconditionFailure("ruimte") } catch Failure.space {} catch { preconditionFailure("ruimte \(error)") }
+    }
+}
+
+/// Checkup › Startup & storage: SSD-snelheid meten op verzoek. Pagina verlaten of Stop = afbreken (.task wordt geannuleerd).
+struct SSDSpeedCard: View {
+    @Environment(\.theme) private var theme
+    let index: Int
+    @State private var result = SSDBench.last
+    @State private var run = 0
+    @State private var progress: Double?
+    @State private var note: String?
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 5) {
+            HStack {
+                CardTitle(icon: "speedometer", title: L("SSD speed"), tone: result.map { SSDBench.fast($0) ? 3 : 1 } ?? 0)
+                Spacer()
+                Button(progress != nil ? L("Stop") : result == nil ? L("Test speed") : L("Test again")) { run = progress != nil ? 0 : run + 1 }
+                    .buttonStyle(Pill(color: theme.onRow()))
+            }
+            if let p = progress {
+                ProgressView(value: p).controlSize(.small).tint(theme.rowStyle == .blocks ? .white : theme.accent)
+                Text(p < 0.5 ? "Writing a test file…" : "Reading it back…").font(theme.label(11)).foregroundStyle(theme.onRow(true))
+            } else if let r = result {
+                let fast = SSDBench.fast(r)
+                Headline(big: fast ? L("As fast as expected") : L("Slower than usual"),
+                         small: SSDBench.text(r) + " · " + r.date.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened).locale(uiLocale)), tone: fast ? 3 : 1)
+                if !fast {
+                    Text("The disk may be almost full or busy. Try again when nothing else is running.").font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
+                }
+            } else {
+                Text("Writes and reads 1 GB in a temporary file (a few seconds), then deletes it.").font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
+            }
+            if let note { Text(note).font(theme.label(11)).foregroundStyle(theme.warn) }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .themedRow(theme, index: index)
+        .task(id: run) {
+            guard run > 0 else { return }
+            note = nil; progress = 0
+            let show = $progress
+            // Echt van de hoofdthread af (een gewone async-functie draait hier anders op de hoofdthread mee)
+            let job = Task.detached(priority: .userInitiated) {
+                var shown = 0.0
+                return try SSDBench.run { p in
+                    if p - shown >= 0.02 || p == 1 { shown = p; DispatchQueue.main.async { if show.wrappedValue != nil { show.wrappedValue = p } } }
+                    return !Task.isCancelled
+                }
+            }
+            let r = await withTaskCancellationHandler { await job.result } onCancel: { job.cancel() }
+            progress = nil
+            switch r {
+            case .success(let x): result = x; SSDBench.last = x
+            case .failure(SSDBench.Failure.space): note = L("Needs at least 5 GB of free space.")
+            case .failure(SSDBench.Failure.cancelled): break
+            case .failure: note = L("The test couldn't finish.")
+            }
+        }
+    }
+}

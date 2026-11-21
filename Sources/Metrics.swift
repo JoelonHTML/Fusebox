@@ -155,7 +155,7 @@ extension Metric {
             // Aan de lader maar niet aan het laden en niet vol: macOS houdt hem vast (oplaadlimiet / geoptimaliseerd laden)
             out = s.charging ? [Fact(label: L("Charging"), value: s.batteryMinutes.map { L("full in \(duration($0))") } ?? "–"), w.map { Fact(label: L("Charging at"), value: $0) }]
                 : s.onAC ? [ChargeLimit.fact(s) ?? (b < 99 ? Fact(label: L("Charge limit"), value: L("holding at \(pct(b))")) : nil)]
-                : [Fact(label: L("On battery"), value: s.batteryMinutes.map { L("\(duration($0)) left") } ?? "–"), w.map { Fact(label: L("Using"), value: $0) }]
+                : [Fact(label: L("On battery"), value: s.batteryMinutes.map { L("\(duration($0)) left") + (s.batteryLearned ? L(" (learned)") : "") } ?? "–"), w.map { Fact(label: L("Using"), value: $0) }]
             if s.charging { out.insert(ChargeLimit.fact(s), at: 1) }   // "Charge limit 80%" terwijl hij er naartoe laadt
             if s.onAC { out.append(Fact(label: L("Power adapter"), value: s.adapterW.map { "\($0) W" } ?? L("connected"))) }
             out.append(spread(h.compactMap(\.battery)))
