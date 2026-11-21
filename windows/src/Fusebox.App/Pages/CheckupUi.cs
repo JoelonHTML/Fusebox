@@ -223,7 +223,7 @@ internal static class Ui
 }
 
 /// <summary>Two cards side by side when the host is at least <c>min</c> wide, else stacked (left first). Re-arranges only when that flips.</summary>
-internal sealed class TwoUp : Grid
+internal sealed partial class TwoUp : Grid
 {
     public readonly StackPanel Left = new() { Spacing = 10 }, Right = new() { Spacing = 10 };
     readonly double min;
@@ -265,7 +265,7 @@ internal sealed class TwoUp : Grid
 }
 
 /// <summary>Peak timeline (§5.6.4): axis, ticks and one rounded bar per peak, coloured by kind. Redrawn on size change only.</summary>
-internal sealed class PeakTimeline : Canvas
+internal sealed partial class PeakTimeline : Canvas
 {
     readonly IReadOnlyList<Peak> peaks;
     readonly DateTime from;
