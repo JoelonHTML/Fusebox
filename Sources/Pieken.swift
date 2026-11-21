@@ -695,7 +695,8 @@ enum PeakAlert {
 
     /// Melden? Piek lang genoeg en deze app niet al binnen `cooldown` gemeld. Puur (zelftest).
     static func due(_ p: Peak, app: String, now: Date, minutes: Int, cooldown: TimeInterval, last: [String: Date]) -> Bool {
-        p.seconds >= max(1, minutes) * 60 && now.timeIntervalSince(last[app] ?? .distantPast) >= cooldown
+        // 10 s speling: de minuutronde valt anders net op 119 s en de melding komt pas een minuut later
+        p.seconds >= max(1, minutes) * 60 - 10 && now.timeIntervalSince(last[app] ?? .distantPast) >= cooldown
     }
 
     static func text(_ p: Peak, app: String) -> (title: String, body: String) {
