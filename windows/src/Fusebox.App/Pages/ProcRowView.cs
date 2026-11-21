@@ -86,6 +86,7 @@ sealed partial class ProcRowView
     readonly FontIcon iconFallback;
     readonly TextBlock name = ProcUi.Text(12), expl = ProcUi.Text(10, "FuseboxOnRowSecondary");
     readonly Dictionary<Col, TextBlock> cells = [];
+    StackPanel? cpuCell;   // own reference: FrameworkElement.Parent is null until the row is loaded (crashed on arm64 CI)
     readonly Grid cpuBarHost = new() { Height = 3, HorizontalAlignment = HorizontalAlignment.Right };
     readonly Border cpuTrack = new() { CornerRadius = new CornerRadius(1.5), Opacity = 0.2 };
     readonly Border cpuFill = new() { CornerRadius = new CornerRadius(1.5), HorizontalAlignment = HorizontalAlignment.Left };
@@ -137,7 +138,7 @@ sealed partial class ProcRowView
                 var stack = new StackPanel { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center };
                 stack.Children.Add(t);
                 stack.Children.Add(cpuBarHost);
-                cell = stack;
+                cell = cpuCell = stack;
             }
             else { t.VerticalAlignment = VerticalAlignment.Center; cell = t; }
             cell.Margin = new Thickness(8, 0, 0, 0);
@@ -217,7 +218,7 @@ sealed partial class ProcRowView
             bool on = visible.Any(v => v.Col == Order[i]);
             cols.ColumnDefinitions[i + 2].Width = new GridLength(on ? match.Width + 8 : 0);
             cells[Order[i]].Visibility = on ? Visibility.Visible : Visibility.Collapsed;
-            if (Order[i] == Col.Cpu) { cpuColWidth = match.Width; cpuBarHost.Width = match.Width; ((FrameworkElement)cells[Col.Cpu].Parent).Visibility = Visibility.Visible; }
+            if (Order[i] == Col.Cpu) { cpuColWidth = match.Width; cpuBarHost.Width = match.Width; if (cpuCell != null) cpuCell.Visibility = Visibility.Visible; }
         }
         UpdateBar();
     }
