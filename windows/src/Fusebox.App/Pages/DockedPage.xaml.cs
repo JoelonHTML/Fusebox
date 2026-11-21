@@ -36,10 +36,26 @@ public sealed partial class DockedPage : Page
         debounce.Interval = TimeSpan.FromSeconds(1);
         debounce.IsRepeating = false;
         debounce.Tick += (_, _) => Reload();
-        StartWatcher(DeviceInformation.CreateWatcher(UsbFilter, Array.Empty<string>(), DeviceInformationKind.DeviceInterface));
-        StartWatcher(DeviceInformation.CreateWatcher(BtFilter, Array.Empty<string>(), DeviceInformationKind.AssociationEndpoint));
-        StartWatcher(DeviceInformation.CreateWatcher(DeviceClass.AudioRender));
         Reload();
+        // Creating and starting the watchers takes ~150 ms of COM work (measured in CI): do it off the UI thread.
+        int session = ++watchSession;
+        var queue = DispatcherQueue;
+        _ = Task.Run(() =>
+        {
+            var started = new List<DeviceWatcher>();
+            try
+            {
+                started.Add(StartWatcher(DeviceInformation.CreateWatcher(UsbFilter, Array.Empty<string>(), DeviceInformationKind.DeviceInterface), queue));
+                started.Add(StartWatcher(DeviceInformation.CreateWatcher(BtFilter, Array.Empty<string>(), DeviceInformationKind.AssociationEndpoint), queue));
+                started.Add(StartWatcher(DeviceInformation.CreateWatcher(DeviceClass.AudioRender), queue));
+            }
+            catch { }
+            queue.TryEnqueue(() =>
+            {
+                if (session == watchSession) watchers.AddRange(started);
+                else StopAll(started);   // page already left
+            });
+        });
     }
 
     protected override void OnNavigatedFrom(NavigationEventArgs e)
@@ -47,18 +63,26 @@ public sealed partial class DockedPage : Page
         generation++;   // drops a read that is still running
         debounce?.Stop();
         debounce = null;
-        foreach (var w in watchers)
-        {
-            try { if (w.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted) w.Stop(); } catch { }
-        }
+        watchSession++;
+        StopAll(watchers);
         watchers.Clear();
     }
 
-    void StartWatcher(DeviceWatcher w)
+    int watchSession;
+
+    static void StopAll(IEnumerable<DeviceWatcher> list)
+    {
+        foreach (var w in list)
+        {
+            try { if (w.Status is DeviceWatcherStatus.Started or DeviceWatcherStatus.EnumerationCompleted) w.Stop(); } catch { }
+        }
+    }
+
+    /// <summary>Wires and starts a watcher (any thread). Its events come on pool threads and are posted to <paramref name="queue"/>.</summary>
+    DeviceWatcher StartWatcher(DeviceWatcher w, Microsoft.UI.Dispatching.DispatcherQueue queue)
     {
         // The initial Added burst is the existing devices: only react once enumeration has finished.
         bool ready = false;
-        var queue = DispatcherQueue;   // watcher events come on thread-pool threads
         void Changed(DeviceWatcher s, object o)
         {
             if (ready) queue.TryEnqueue(() => { debounce?.Stop(); debounce?.Start(); });
@@ -67,8 +91,8 @@ public sealed partial class DockedPage : Page
         w.Removed += (s, i) => Changed(s, i);
         w.Updated += (s, i) => Changed(s, i);
         w.EnumerationCompleted += (s, o) => ready = true;
-        watchers.Add(w);
         try { w.Start(); } catch { }
+        return w;
     }
 
     void OnRefresh(object sender, RoutedEventArgs e) => Reload();

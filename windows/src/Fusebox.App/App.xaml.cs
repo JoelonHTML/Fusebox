@@ -61,7 +61,7 @@ public partial class App : Application
         t.Interval = TimeSpan.FromSeconds(20);   // first 20 s on Live: the workflow measures idle CPU there
         t.Tick += (_, _) =>
         {
-            t.Interval = TimeSpan.FromSeconds(5);
+            if (t.Interval != TimeSpan.FromSeconds(5)) { t.Stop(); t.Interval = TimeSpan.FromSeconds(5); t.Start(); }   // a new interval only applies after a restart
             report.AppendLine($"{Name(items[i])}: longest UI stall {worst} ms");
             worst = 0;
             if (++i < items.Count)
