@@ -67,7 +67,7 @@ public partial class App : Application
             if (++i < items.Count)
             {
                 long t0 = clock.ElapsedMilliseconds;
-                Main.Navigation.SelectedItem = items[i];
+                Main.Open(Name(items[i]));
                 report.Append($"{Name(items[i])}: opened at {t0 / 1000.0:0.0} s, navigate {clock.ElapsedMilliseconds - t0} ms; ");
                 lastBeat = clock.ElapsedMilliseconds;
                 return;

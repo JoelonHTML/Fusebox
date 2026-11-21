@@ -60,24 +60,39 @@ public sealed partial class MainWindow : Window
         Prefs.Set("windowRect", $"{pos.X},{pos.Y},{size.Width},{size.Height}");
     }
 
-    void Nav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args)
+    static Type PageFor(string? tag) => tag switch
     {
-        // Live is already selected while a detail page is open: clicking it must still go back to the cards.
-        if (!args.IsSettingsInvoked && (args.InvokedItemContainer as NavigationViewItem)?.Tag as string == "Live" && ContentFrame.CurrentSourcePageType != typeof(LivePage))
-            ContentFrame.Navigate(typeof(LivePage));
+        "Processes" => typeof(ProcessesPage),
+        "Checkup" => typeof(CheckupPage),
+        "Network" => typeof(NetworkPage),
+        "Docked" => typeof(DockedPage),
+        "Settings" => typeof(SettingsPage),
+        _ => typeof(LivePage),
+    };
+
+    /// <summary>
+    /// Show a page by tag (Live, Processes, Checkup, Network, Docked, Settings) and keep the selection in sync.
+    /// Navigates only when another page is showing, so a detail page under Live goes back to the cards.
+    /// </summary>
+    public void Open(string tag)
+    {
+        var page = PageFor(tag);
+        if (ContentFrame.CurrentSourcePageType != page) ContentFrame.Navigate(page);
+        object? item = tag == "Settings" ? Nav.SettingsItem : Nav.MenuItems.OfType<NavigationViewItem>().FirstOrDefault(i => (string)i.Tag == tag);
+        if (item != null && !ReferenceEquals(Nav.SelectedItem, item)) Nav.SelectedItem = item;
     }
 
+    static string TagOf(object? item, bool settings) => settings ? "Settings" : (item as NavigationViewItem)?.Tag as string ?? "Settings";
+
+    // A click: IsSettingsInvoked is reliable here (programmatic selection of the settings item does not navigate, seen in CI).
+    void Nav_ItemInvoked(NavigationView sender, NavigationViewItemInvokedEventArgs args) =>
+        Open(TagOf(args.InvokedItemContainer, args.IsSettingsInvoked));
+
+    // Keyboard and programmatic selection of the menu items.
     void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        // IsSettingsSelected is not always set (seen in CI when selecting programmatically): compare the item too.
-        var page = args.IsSettingsSelected || ReferenceEquals(args.SelectedItem, sender.SettingsItem) ? typeof(SettingsPage) : ((args.SelectedItem as NavigationViewItem)?.Tag as string) switch
-        {
-            "Processes" => typeof(ProcessesPage),
-            "Checkup" => typeof(CheckupPage),
-            "Network" => typeof(NetworkPage),
-            "Docked" => typeof(DockedPage),
-            _ => typeof(LivePage),
-        };
-        ContentFrame.Navigate(page);
+        bool settings = args.IsSettingsSelected || (args.SelectedItem != null && ReferenceEquals(args.SelectedItem, sender.SettingsItem));
+        if (args.SelectedItem == null && !settings) return;   // deselection
+        Open(TagOf(args.SelectedItem, settings));
     }
 }

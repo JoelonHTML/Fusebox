@@ -43,7 +43,7 @@ public static class Boot
             if (Prefs.Get("tray", true)) main.AppWindow.Hide();
             else if (main.AppWindow.Presenter is OverlappedPresenter p) p.Minimize();
         }
-        // Still running after 10 s = this build starts: confirms an update (no rollback) and removes its leftovers.
+        // Still running after 3 s = this build starts: confirms an update (no rollback) and removes its leftovers.
         var t = App.Main!.DispatcherQueue.CreateTimer();
         t.Interval = TimeSpan.FromSeconds(3);
         t.IsRepeating = false;
