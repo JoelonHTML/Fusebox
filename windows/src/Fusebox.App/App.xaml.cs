@@ -42,14 +42,14 @@ public partial class App : Application
     /// <summary>CI only: visit every page (Live 20 s, then 5 s each, the workflow screenshots each one), then quit cleanly.</summary>
     static void SmokeTour()
     {
-        var items = Main!.Nav.MenuItems.Cast<object>().Append(Main.Nav.SettingsItem).ToList();
+        var items = Main!.Navigation.MenuItems.Cast<object>().Append(Main.Navigation.SettingsItem).ToList();
         int i = 0;
         var t = Main.DispatcherQueue.CreateTimer();
         t.Interval = TimeSpan.FromSeconds(20);   // first 20 s on Live: the workflow measures idle CPU there
         t.Tick += (_, _) =>
         {
             t.Interval = TimeSpan.FromSeconds(5);
-            if (++i < items.Count) { Main.Nav.SelectedItem = items[i]; return; }
+            if (++i < items.Count) { Main.Navigation.SelectedItem = items[i]; return; }
             t.Stop();
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-ok.txt"), "ok");
             Quit();

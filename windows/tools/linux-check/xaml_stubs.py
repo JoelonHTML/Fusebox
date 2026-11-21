@@ -30,7 +30,7 @@ for root, dirs, files in os.walk(app):
             if n:
                 t = local
                 if uri.startswith('using:'): t = 'global::' + uri[6:] + '.' + local
-                fields.append(f'    internal {t} {n};')
+                fields.append(f'    private {t} {n};')   # WinUI generates private fields
             for k, v in el.attrib.items():
                 if k.startswith('{') or not re.fullmatch(r'[A-Za-z_]\w*', v or ''): continue
                 if re.fullmatch(r'(Click|Toggled|Checked|Unchecked|SelectionChanged|TextChanged|Loaded|Unloaded|Tapped|ItemClick|ValueChanged|QuerySubmitted|PointerPressed|SizeChanged|Closed|Activated|KeyDown|DoubleTapped|RightTapped|Opened|Expanding|Collapsed|ItemInvoked|PaneClosed|Invoked|SelectedIndexChanged|ToggleChanged)', k):

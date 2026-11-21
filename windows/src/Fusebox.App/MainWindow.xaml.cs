@@ -19,6 +19,9 @@ public sealed partial class MainWindow : Window
     }
 
     /// <summary>Visible and not minimized. App.Live.Watched combines this with the tray panel.</summary>
+    /// <summary>The page navigation (x:Name fields are private in WinUI).</summary>
+    public NavigationView Navigation => Nav;
+
     public bool IsOnScreen => AppWindow.IsVisible && AppWindow.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized };
 
     /// <summary>Close = hide to the system tray (setting "tray", default on) or quit.</summary>
