@@ -22,17 +22,20 @@ namespace Fusebox.App;
 /// </summary>
 public sealed partial class MainWindow : Window
 {
-    /// <summary>A top-level tab. Page agents: swap <c>Page</c> for your page type; the tag is what <see cref="Open"/> takes.</summary>
-    public sealed record Tab(string Tag, string Title, string Glyph, Type Page, double MinWidth, double MinHeight);
+    /// <summary>
+    /// A top-level tab. Tag = what <see cref="Open"/> takes; Id = the Mac page id stored in pref "page"; Min = §2.2 "grows to at least".
+    /// Page agents: swap <c>Page</c> for your page type.
+    /// </summary>
+    public sealed record Tab(string Tag, string Id, string Title, string Glyph, Type Page, double MinWidth, double MinHeight);
 
     /// <summary>Tab order = Ctrl+1…5. Titles: Live/Checkup/Docked are never translated.</summary>
     public static readonly Tab[] Tabs =
     [
-        new("Live", "Live", "\uEC4A", typeof(LivePage), 0, 0),
-        new("Processes", "Processes", "\uE71D", typeof(ProcessesPage), 460, 420),
-        new("Checkup", "Checkup", "\uE9D2", typeof(CheckupPage), 420, 460),
-        new("Network", "Network", "\uE968", typeof(NetworkPage), 470, 440),
-        new("Docked", "Docked", "\uE772", typeof(DockedPage), 420, 460),
+        new("Live", "live", "Live", "\uEC4A", typeof(LivePage), 0, 0),
+        new("Processes", "programs", "Processes", "\uE71D", typeof(ProcessesPage), 460, 420),
+        new("Checkup", "advice", "Checkup", "\uE9D2", typeof(CheckupPage), 420, 460),
+        new("Network", "network", "Network", "\uE968", typeof(NetworkPage), 470, 440),
+        new("Docked", "ports", "Docked", "\uE772", typeof(DockedPage), 420, 460),
     ];
 
     const double DefaultW = 300, DefaultH = 340, NamesFrom = 740, IconsBelow = 700;
@@ -80,14 +83,15 @@ public sealed partial class MainWindow : Window
     public string CurrentTab => current.Tag;
 
     /// <summary>
-    /// Shows a tab by tag (Live, Processes, Checkup, Network, Docked; case-insensitive) or "Settings" (opens the Settings window).
+    /// Shows a tab by tag (Live, Processes, Checkup, Network, Docked; case-insensitive; Mac ids live/programs/advice/network/ports too)
+    /// or "Settings" (opens the Settings window).
     /// <paramref name="parameter"/> is passed to the page's OnNavigatedTo (e.g. an app key for Processes). A sub-page (detail,
     /// app page) under the same tab goes back to the tab's page.
     /// </summary>
     public void Open(string tag, object? parameter = null)
     {
         if (tag.Equals("Settings", StringComparison.OrdinalIgnoreCase)) { SettingsWindow.Open(); return; }
-        var tab = Tabs.FirstOrDefault(t => t.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase)) ?? Tabs[0];
+        var tab = Tabs.FirstOrDefault(t => t.Tag.Equals(tag, StringComparison.OrdinalIgnoreCase) || t.Id == tag) ?? Tabs[0];
         bool switched = tab != current;
         current = tab;
         if (Host.CurrentSourcePageType != tab.Page || parameter != null)
@@ -95,7 +99,7 @@ public sealed partial class MainWindow : Window
             Host.Navigate(tab.Page, parameter, new SuppressNavigationTransitionInfo());
             Host.BackStack.Clear();
         }
-        Prefs.Set("page", tab.Tag.ToLowerInvariant());
+        Prefs.Set("page", tab.Id);
         for (int i = 0; i < buttons.Count; i++) Select(buttons[i], Tabs[i] == tab);
         UpdateDrop(switched && ThemeService.Motion);
         if (switched) ResizeFor(tab);
