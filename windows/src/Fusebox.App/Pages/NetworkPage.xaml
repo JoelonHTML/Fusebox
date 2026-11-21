@@ -88,7 +88,13 @@
                         <TextBlock Grid.Column="3" Text="Type" Opacity="0.75" />
                         <TextBlock Grid.Column="4" Text="ms" Opacity="0.75" />
                     </Grid>
-                    <ListView x:Name="DeviceList" MaxHeight="420" SelectionMode="Single" SelectionChanged="DeviceSelected" />
+                    <ListView x:Name="DeviceList" MaxHeight="420" SelectionMode="Single" SelectionChanged="DeviceSelected">
+                        <ListView.ItemContainerStyle>
+                            <Style TargetType="ListViewItem">
+                                <Setter Property="HorizontalContentAlignment" Value="Stretch" />
+                            </Style>
+                        </ListView.ItemContainerStyle>
+                    </ListView>
                     <StackPanel x:Name="DetailPanel" Spacing="4" Visibility="Collapsed" />
                 </StackPanel>
             </Border>

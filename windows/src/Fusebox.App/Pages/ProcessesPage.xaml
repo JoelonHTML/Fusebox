@@ -54,6 +54,7 @@
                         <Style TargetType="ListViewItem">
                             <Setter Property="Padding" Value="8,0,8,0" />
                             <Setter Property="MinHeight" Value="36" />
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch" />
                         </Style>
                     </ListView.ItemContainerStyle>
                     <ListView.ItemTemplate>

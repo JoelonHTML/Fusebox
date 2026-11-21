@@ -22,6 +22,9 @@ public sealed partial class MainWindow : Window
     /// <summary>The page navigation (x:Name fields are private in WinUI).</summary>
     public NavigationView Navigation => Nav;
 
+    /// <summary>Page type now in the frame (smoke test report).</summary>
+    public string CurrentPage => ContentFrame.CurrentSourcePageType?.Name ?? "none";
+
     public bool IsOnScreen => AppWindow.IsVisible && AppWindow.Presenter is not OverlappedPresenter { State: OverlappedPresenterState.Minimized };
 
     /// <summary>Close = hide to the system tray (setting "tray", default on) or quit.</summary>

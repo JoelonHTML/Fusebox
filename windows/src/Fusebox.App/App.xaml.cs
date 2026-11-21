@@ -62,7 +62,7 @@ public partial class App : Application
         t.Tick += (_, _) =>
         {
             if (t.Interval != TimeSpan.FromSeconds(5)) { t.Stop(); t.Interval = TimeSpan.FromSeconds(5); t.Start(); }   // a new interval only applies after a restart
-            report.AppendLine($"{Name(items[i])}: longest UI stall {worst} ms");
+            report.AppendLine($"{Name(items[i])}: longest UI stall {worst} ms, frame shows {Main.CurrentPage}");
             worst = 0;
             if (++i < items.Count)
             {
