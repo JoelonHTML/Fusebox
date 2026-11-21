@@ -857,6 +857,7 @@ private struct AnalysisPage: View, Equatable {
             if let c = Self.cache[p] { report = c }
             let r = await Task.detached(priority: .utility) { Analysis.load(p, dir: dir) }.value
             Self.cache[p] = r
+            if p == .today { Analysis.today = (Date(), r) }   // menubalkpaneel hoeft dan niet zelf in te lezen
             report = r
             loading = false
         }
@@ -1416,6 +1417,34 @@ struct Pill: ButtonStyle {
             .overlay(Capsule().stroke(color.opacity(0.6), lineWidth: 1))
             .contentShape(Capsule())
             .opacity(configuration.isPressed ? 0.55 : 1)
+    }
+}
+
+// MARK: - Menubalkpaneel: score en belangrijkste tip zonder de Checkup-pagina
+
+/// Kern van het Checkup-rapport van vandaag, voor het menubalkpaneel.
+struct CheckupGist {
+    let score: Int?, reason: String
+    let tip: String?, tipRest: String?, serious: Bool
+}
+
+extension Analysis {
+    /// Laatste rapport van vandaag en wanneer; de Checkup-pagina vult dit ook bij elk inlezen.
+    @MainActor fileprivate static var today: (at: Date, report: Report)?
+
+    /// Rapport van vandaag uit het geheugen (< 10 min oud), anders één keer op de achtergrond inlezen (logs van vandaag
+    /// en gisteren, crashrapporten, accu). Belangrijkste tip: eerst iets ernstigs, anders de eerste echte tip
+    /// (de vaste "login items"-tip telt niet).
+    @MainActor static func gist(_ meter: Meter) async -> CheckupGist {
+        let r: Report
+        if let c = today, Date().timeIntervalSince(c.at) < 600 { r = c.report } else {
+            let dir = meter.logDir
+            r = await Task.detached(priority: .utility) { load(.today, dir: dir) }.value
+            today = (Date(), r)
+        }
+        let all = tips(r, current: meter.minuteApps.apps)
+        let t = all.first { $0.serious } ?? all.first { $0.id != "login" }
+        return CheckupGist(score: r.score, reason: r.reason, tip: t?.parts.head, tipRest: t?.parts.rest, serious: t?.serious ?? false)
     }
 }
 

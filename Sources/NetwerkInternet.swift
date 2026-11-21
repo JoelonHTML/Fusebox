@@ -619,6 +619,7 @@ struct InternetPanel: View {
     @Environment(\.theme) private var theme
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
     @AppStorage("netPanelOpen") private var open = false
+    @AppStorage("netFindNow") private var findNow = false   // gezet door "Network" in het menubalkpaneel
 
     var body: some View {
         VStack(alignment: .leading, spacing: 8) {
@@ -653,9 +654,16 @@ struct InternetPanel: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .themedRow(theme, index: 0)
         .clipped()
-        .onAppear { stats.start() }
+        .onAppear { stats.start(); findIfAsked() }
         .onDisappear { stats.stop() }
         .onChange(of: pingHost) { stats.start() }
+        .onChange(of: findNow) { findIfAsked() }
+    }
+
+    private func findIfAsked() {
+        guard findNow else { return }
+        findNow = false
+        stats.findProblem()
     }
 
     private var verdictLine: some View {

@@ -1508,3 +1508,7 @@
 "macOS asks you once for each of these. Allow what you want to use; you can change it later in System Settings." = "macOS fragt dich einmal für jeden Punkt. Erlaube, was du nutzen willst; du kannst es später in den Systemeinstellungen ändern.";
 "npm download cache. Safe to delete" = "npm-Download-Cache. Sicher zu löschen";
 "paused · battery warm" = "pausiert · Batterie warm";
+
+/* feat-menubar */
+"Rich menu bar panel" = "Ausführliches Menüleistenfeld";
+"Health score, live values, the most important tip and quick buttons." = "Gesundheitswert, Live-Werte, der wichtigste Tipp und Schnelltasten.";

@@ -478,6 +478,7 @@ struct MenubarSettings: View {
     @AppStorage("menubarSplit") private var split = false
     @AppStorage("menuStyle") private var menuStyle: MenuStyle = .menu
     @AppStorage("menuParts") private var parts = "status,values,top,links"
+    @AppStorage("richPanel") private var rich = true
 
     var body: some View {
         Section("In the menu bar") {
@@ -487,7 +488,14 @@ struct MenubarSettings: View {
         Section("Measurements in the menu bar (max. 4)") { MetricList("menubarMetrics", limit: 4) }
         Section("When you click it") {
             Picker("Type", selection: $menuStyle) { ForEach(MenuStyle.allCases) { Text($0.title).tag($0) } }.pickerStyle(.segmented)
-            ForEach(MenuPart.allCases) { p in Toggle(p.title, isOn: member($parts, p.rawValue)) }
+            if menuStyle == .panel {
+                Toggle(isOn: $rich) {
+                    Text("Rich menu bar panel")
+                    Text("Health score, live values, the most important tip and quick buttons.")
+                }
+            }
+            // Het rijke paneel kiest zelf wat erin staat
+            if menuStyle == .menu || !rich { ForEach(MenuPart.allCases) { p in Toggle(p.title, isOn: member($parts, p.rawValue)) } }
         }
     }
 }
