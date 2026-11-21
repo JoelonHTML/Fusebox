@@ -30,7 +30,7 @@ Fusebox updates itself: it checks GitHub every 15 minutes and installs new versi
 - **Settings:** style (Glass, Minimal light, Color blocks, Instrument, Terminal), light, dark or system theme, which measurements you see, notifications, Low impact mode, and a shortcut (Ctrl+Alt+Win+F) to show or hide Fusebox.
 - **System tray icon:** a small panel with the key numbers, next to the clock. The icon can show CPU %.
 
-Some things ask for administrator approval, once each time: **SSD health** (Checkup) and **what keeps the PC awake** (Checkup). Fusebox then asks Windows for elevation (UAC) for that one task and closes again. It runs as a normal user the rest of the time.
+Some things ask for administrator approval, once each time: **SSD health** (Checkup) and **what keeps the PC awake** (Checkup). Fusebox then asks Windows for elevation (UAC) to run one small PowerShell script from Windows itself (never Fusebox's own files) and that's it. It runs as a normal user the rest of the time.
 
 **Wi-Fi name:** since Windows 11 24H2, apps need location access to read the name of the Wi-Fi network. Without it, Fusebox still shows the signal, with a button to open the location settings.
 
@@ -53,7 +53,7 @@ Measurements are saved in `Documents\Fusebox` as CSV (one small file per day). N
 
 ### One-time: create the signing key
 
-Updates are signed with an ECDSA P-256 key. The private key goes into a GitHub secret; the public key is built into the app. Do this once, on a Mac with openssl.
+Updates are signed with an ECDSA P-256 key. The private key goes into a secret of a GitHub Environment named **`release`**; the public key is built into the app. Do this once, on a Mac with openssl.
 
 1. **Create the private key** and keep it out of the repo:
 
@@ -62,7 +62,7 @@ Updates are signed with an ECDSA P-256 key. The private key goes into a GitHub s
    openssl pkcs8 -topk8 -nocrypt -in fusebox-win.pem -outform DER | base64
    ```
 
-   Copy the output into the repository secret **`FUSEBOX_WIN_SIGNING_KEY`** (GitHub › Settings › Secrets and variables › Actions).
+   First create the Environment (GitHub › Settings › Environments › New environment, name **`release`**) with yourself as **required reviewer**. Copy the output into an **Environment secret** named **`FUSEBOX_WIN_SIGNING_KEY`** in that Environment (not a repository secret, so no other workflow or branch can read it). Each release run then waits for your approval.
 
 2. **Get the public key** and put it in `ReleaseKey` in `windows/src/Fusebox.Core/Update/Signing.cs`, replacing the development key that is there now:
 
@@ -74,7 +74,7 @@ Updates are signed with an ECDSA P-256 key. The private key goes into a GitHub s
 
 Alternative with .NET, which prints both keys: `dotnet run --project windows/tools/Fusebox.Sign keygen`.
 
-Until `ReleaseKey` matches the secret, the release job fails at its verify step.
+Releases only run from the `windows` branch. Until `ReleaseKey` matches the secret, the release job fails at its verify step.
 
 ### Each release
 

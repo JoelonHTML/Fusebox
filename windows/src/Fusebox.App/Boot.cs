@@ -20,8 +20,9 @@ public static class Boot
         if (i >= 0 && i + 1 < args.Length && int.TryParse(args[i + 1], out var pid))
         {
             // Started by the updater/installer: wait until the old process is gone.
-            try { Process.GetProcessById(pid).WaitForExit(10_000); } catch { }
+            try { using var old = Process.GetProcessById(pid); old.WaitForExit(120_000); } catch { }
         }
+        if (Updater.RollBackIfNeverConfirmed()) Environment.Exit(0);
         Strings.Load(Prefs.Get("language", "system"));
         Installer.CheckOnLaunch();
     }
@@ -42,11 +43,11 @@ public static class Boot
             if (Prefs.Get("tray", true)) main.AppWindow.Hide();
             else if (main.AppWindow.Presenter is OverlappedPresenter p) p.Minimize();
         }
-        // Leftovers of an update (*.old) can only go once the old process has exited.
+        // Still running after 10 s = this build starts: confirms an update (no rollback) and removes its leftovers.
         var t = App.Main!.DispatcherQueue.CreateTimer();
-        t.Interval = TimeSpan.FromSeconds(30);
+        t.Interval = TimeSpan.FromSeconds(10);
         t.IsRepeating = false;
-        t.Tick += (_, _) => Updater.CleanUp();
+        t.Tick += (_, _) => Updater.Confirm();
         t.Start();
     }
 

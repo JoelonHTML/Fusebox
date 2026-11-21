@@ -91,7 +91,8 @@ public static partial class Updater
         }
         catch (Exception e) { why = e.Message; }
         LastCheck = DateTime.UtcNow;
-        var offer = UpdateLogic.PickUpdate(json, Arch);
+        // A build that failed to install is skipped (unless the user clicks), so one bad release doesn't freeze updates.
+        var offer = UpdateLogic.PickUpdate(json, Arch, skipBuild: userInitiated ? 0 : Prefs.Get("failedUpdateBuild", 0L));
         if (offer == null)
         {
             if (json == null) Set(userInitiated ? State.Failed : State.Idle, userInitiated ? why : null);
@@ -103,16 +104,23 @@ public static partial class Updater
         Tag = offer.Tag;
         Set(State.Available);
         if (!userInitiated) NotifyOnce(offer.Tag);
-        bool failedBefore = Prefs.Get("failedUpdateBuild", 0L) == offer.Build;   // don't retry a broken update every 15 min
-        if (userInitiated || (Auto && !failedBefore && CurrentBuild > 0)) await Install();
+        if (userInitiated || AutoInstall) await Install();
     }
+
+    static string AppDir => AppContext.BaseDirectory.TrimEnd('\\', '/');
+    static string DataDir => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Fusebox");
+    static string Marker => Path.Combine(DataDir, "update-pending");
+    static string OldList => Path.Combine(DataDir, "update-old.txt");
+
+    /// <summary>Automatic installs only for release builds living in the install folder; elsewhere the update is just announced.</summary>
+    static bool AutoInstall => Auto && CurrentBuild > 0 && UpdateSafety.IsInstallDir(AppDir, Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData));
 
     static void NotifyOnce(string tag)
     {
         if (Prefs.Get("notifiedUpdate", "") == tag) return;
         Prefs.Set("notifiedUpdate", tag);
         Notify.Send(Strings.L("Fusebox %@ is available", UpdateLogic.Pretty(tag)),
-            Auto && CurrentBuild > 0 ? Strings.L("Installing now. Fusebox restarts in a moment.") : Strings.L("Open Settings › About to install it."));
+            AutoInstall ? Strings.L("Installing now. Fusebox restarts in a moment.") : Strings.L("Open Settings › About to install it."));
     }
 
     /// <summary>First start after an update: one notification with what is new.</summary>
@@ -138,14 +146,14 @@ public static partial class Updater
     {
         if (latest is not { } o) return;
         Set(State.Installing);
-        string appDir = AppContext.BaseDirectory.TrimEnd('\\', '/');
+        string appDir = AppDir;
         string tmp = Path.Combine(Path.GetTempPath(), "fusebox-update-" + Guid.NewGuid().ToString("N"));
         string staging = appDir + ".new";
         try
         {
             Directory.CreateDirectory(tmp);
-            var sig = await Http.GetStringAsync(o.Sig);
-            if (sig.Length > 4096) throw new InvalidDataException(Strings.L("Download failed"));
+            await Fetch(o.Sig, Path.Combine(tmp, "update.sig"), 4096);
+            var sig = File.ReadAllText(Path.Combine(tmp, "update.sig"));
             var zip = Path.Combine(tmp, "update.zip");
             await Fetch(o.Zip, zip);
             string root = await Task.Run(() =>
@@ -161,7 +169,14 @@ public static partial class Updater
                 var r = Path.Combine(staging, "Fusebox");
                 if (!File.Exists(Path.Combine(r, "Fusebox.exe"))) throw new InvalidDataException(Strings.L("Not a Fusebox update"));
                 if (BuildOf(r) != o.Build) throw new InvalidDataException(Strings.L("Version mismatch"));
+                // The signature doesn't cover the CPU type: refuse an exe for the other architecture.
+                var head = new byte[4096];
+                using (var fs = File.OpenRead(Path.Combine(r, "Fusebox.exe"))) head = head[..fs.Read(head)];
+                if (!UpdateSafety.MachineMatches(UpdateSafety.PeMachine(head), RuntimeInformation.ProcessArchitecture == Architecture.Arm64))
+                    throw new InvalidDataException(Strings.L("Not a Fusebox update"));
                 Swap(appDir, r);
+                Directory.CreateDirectory(DataDir);
+                File.WriteAllText(Marker, o.Build.ToString());   // deleted by Confirm() once this build has run for a while
                 return r;
             });
             try { Directory.Delete(staging, true); } catch { }
@@ -170,18 +185,18 @@ public static partial class Updater
         }
         catch (Exception e)
         {
-            Prefs.Set("failedUpdateBuild", o.Build);
+            if (e is not (HttpRequestException or TaskCanceledException)) Prefs.Set("failedUpdateBuild", o.Build);   // a network hiccup isn't a bad release
             try { Directory.Delete(staging, true); } catch { }
             try { Directory.Delete(tmp, true); } catch { }
             Set(State.Failed, e.Message);
         }
     }
 
-    static async Task Fetch(Uri url, string file)
+    static async Task Fetch(Uri url, string file, long max = UpdateLogic.MaxZipBytes)
     {
         using var r = await Download.GetAsync(url, HttpCompletionOption.ResponseHeadersRead);
         r.EnsureSuccessStatusCode();
-        if (r.Content.Headers.ContentLength > UpdateLogic.MaxZipBytes) throw new InvalidDataException(Strings.L("Download failed"));
+        if (r.Content.Headers.ContentLength > max) throw new InvalidDataException(Strings.L("Download failed"));
         await using var src = await r.Content.ReadAsStreamAsync();
         await using var dst = File.Create(file);
         var buf = new byte[81920];
@@ -190,7 +205,7 @@ public static partial class Updater
         while ((n = await src.ReadAsync(buf)) > 0)
         {
             total += n;
-            if (total > UpdateLogic.MaxZipBytes) throw new InvalidDataException(Strings.L("Download failed"));
+            if (total > max) throw new InvalidDataException(Strings.L("Download failed"));
             await dst.WriteAsync(buf.AsMemory(0, n));
         }
     }
@@ -210,32 +225,55 @@ public static partial class Updater
         catch { return -1; }
     }
 
-    /// <summary>Running files can be renamed on Windows: old ones become *.old (deleted at the next start), new ones move in. Rolls back on failure.</summary>
+    /// <summary>Running files can be renamed on Windows: only files that the new version also has become *.old, then the new ones move in. Other files stay. Rolls back on failure.</summary>
     static void Swap(string appDir, string newRoot)
     {
-        var renamed = new List<string>();
+        var renamed = new List<string>();   // relative paths whose old copy is now *.old
         var added = new List<string>();
         try
         {
-            foreach (var f in Directory.EnumerateFiles(appDir, "*", SearchOption.AllDirectories).Where(f => !f.EndsWith(".old")).ToList())
-            {
-                File.Move(f, f + ".old", true);
-                renamed.Add(f);
-            }
             foreach (var f in Directory.EnumerateFiles(newRoot, "*", SearchOption.AllDirectories))
             {
-                var dest = Path.Combine(appDir, Path.GetRelativePath(newRoot, f));
+                var rel = Path.GetRelativePath(newRoot, f);
+                var dest = Path.Combine(appDir, rel);
                 Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
+                if (File.Exists(dest)) { File.Move(dest, dest + ".old", true); renamed.Add(rel); }
                 File.Move(f, dest, true);
-                added.Add(dest);
+                added.Add(rel);
             }
+            Directory.CreateDirectory(DataDir);
+            File.WriteAllLines(OldList, renamed);
         }
         catch
         {
-            foreach (var a in added) try { File.Delete(a); } catch { }
-            foreach (var r in renamed) try { File.Move(r + ".old", r, true); } catch { }
+            foreach (var a in added) try { File.Delete(Path.Combine(appDir, a)); } catch { }
+            foreach (var r in renamed) try { File.Move(Path.Combine(appDir, r) + ".old", Path.Combine(appDir, r), true); } catch { }
             throw;
         }
+    }
+
+    /// <summary>Before any UI: the previous update never confirmed it starts and is older than 2 minutes → put the old files back, restart. True when it did (caller exits).</summary>
+    public static bool RollBackIfNeverConfirmed()
+    {
+        try
+        {
+            if (!File.Exists(Marker)) return false;
+            var dir = AppDir;
+            var rels = File.Exists(OldList) ? File.ReadAllLines(OldList).Where(l => l.Length > 0 && File.Exists(Path.Combine(dir, l) + ".old")).ToList() : [];
+            if (!UpdateSafety.ShouldRollBack(DateTime.UtcNow - File.GetLastWriteTimeUtc(Marker), rels.Count > 0)) return false;
+            long.TryParse(File.ReadAllText(Marker).Trim(), out var bad);
+            File.Delete(Marker);
+            if (bad > 0) Prefs.Set("failedUpdateBuild", bad);
+            foreach (var rel in rels)
+            {
+                var f = Path.Combine(dir, rel);
+                if (File.Exists(f)) File.Move(f, f + ".bad", true);   // the running exe can be renamed, not overwritten
+                File.Move(f + ".old", f, true);
+            }
+            Process.Start(new ProcessStartInfo(Path.Combine(dir, "Fusebox.exe"), $"--wait-pid {Environment.ProcessId}") { UseShellExecute = false, WorkingDirectory = dir });
+            return true;
+        }
+        catch { return false; }
     }
 
     static void Relaunch(string appDir)
@@ -244,13 +282,17 @@ public static partial class Updater
         Application.Current.Exit();
     }
 
-    /// <summary>Delete leftovers of a finished update (*.old, *.new). Call a while after start.</summary>
-    public static void CleanUp()
+    /// <summary>The new build has run for a while: that's the proof it starts. Drop the rollback marker, then delete leftovers (*.old/*.bad next to a file that exists, *.new).</summary>
+    public static void Confirm()
     {
         try
         {
-            var dir = AppContext.BaseDirectory.TrimEnd('\\', '/');
-            foreach (var f in Directory.EnumerateFiles(dir, "*.old", SearchOption.AllDirectories)) try { File.Delete(f); } catch { }
+            File.Delete(Marker);
+            var dir = AppDir;
+            foreach (var ext in new[] { "*.old", "*.bad" })
+                foreach (var f in Directory.EnumerateFiles(dir, ext, SearchOption.AllDirectories))
+                    if (File.Exists(f[..^4])) try { File.Delete(f); } catch { }
+            File.Delete(OldList);
             if (Directory.Exists(dir + ".new")) Directory.Delete(dir + ".new", true);
         }
         catch { }
