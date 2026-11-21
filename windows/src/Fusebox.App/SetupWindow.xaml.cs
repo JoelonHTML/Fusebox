@@ -15,7 +15,7 @@ public sealed partial class SetupWindow : Window
         InitializeComponent();
         AppWindow.Resize(new Windows.Graphics.SizeInt32(560, 620));
         Title = Strings.L("Setup");
-        Theming.Apply(this);
+        ThemeService.Attach(this, themed: false);
         Show();
     }
 
@@ -49,8 +49,8 @@ public sealed partial class SetupWindow : Window
         switch (step)
         {
             case 1:
-                var current = Theming.Current.Id;
-                foreach (var s in Theming.Styles)
+                var current = ThemeService.Current.Id;
+                foreach (var s in Fusebox.Core.Look.Themes.All)
                 {
                     var id = s.Id;
                     var r = new RadioButton { Content = s.Name, GroupName = "style", IsChecked = id == current };   // style names are never translated
@@ -59,19 +59,23 @@ public sealed partial class SetupWindow : Window
                 }
                 break;
             case 2: Host.Children.Add(MetricsEditor.Create()); break;
-            case 3: Host.Children.Add(Toggle("Show the icon in the system tray", "tray", true)); break;
+            case 3:
+                var tray = new ToggleSwitch { Header = Strings.L("Show the icon in the system tray"), IsOn = Prefs.Str("menubarStyle") != "off" };
+                tray.Toggled += (_, _) => { if (tray.IsOn) Prefs.Reset("menubarStyle"); else Prefs.Set("menubarStyle", "off"); };
+                Host.Children.Add(tray);
+                break;
             case 4:
                 var login = new ToggleSwitch { Header = Strings.L("Open at login"), IsOn = StartAtLogin.Enabled };
                 login.Toggled += (_, _) => StartAtLogin.Set(login.IsOn);
                 Host.Children.Add(login);
                 break;
-            case 5: Host.Children.Add(Toggle("Show notifications", "notify", true)); break;
+            case 5: Host.Children.Add(Toggle("Show notifications", "notify")); break;
         }
     }
 
-    static ToggleSwitch Toggle(string header, string key, bool fallback)
+    static ToggleSwitch Toggle(string header, string key)
     {
-        var t = new ToggleSwitch { Header = Strings.L(header), IsOn = Prefs.Get(key, fallback) };
+        var t = new ToggleSwitch { Header = Strings.L(header), IsOn = Prefs.Bool(key) };
         t.Toggled += (_, _) => Prefs.Set(key, t.IsOn);
         return t;
     }

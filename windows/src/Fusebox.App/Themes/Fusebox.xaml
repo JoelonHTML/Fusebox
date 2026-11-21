@@ -1,35 +1,71 @@
-<!-- Shared look. Pages use these keys only; Theming.Apply swaps styles (Glass, Minimal light, Color blocks, Instrument, Terminal)
-     by changing the brush colors / values below at runtime. ThemeDictionaries must stay FIRST (XAML compiler rule WMC0035).
-     Brushes are concrete SolidColorBrush objects (never aliases of system brushes) so they can be mutated safely. -->
+<!-- Theme tokens for every page (ARCHITECTURE.md §3). ThemeService mutates these brushes in place whenever the theme changes
+     (pref theme/appearanceMode/accent/textScale/font, Low impact, Windows light/dark or accent), so {ThemeResource FuseboxText} etc.
+     stay live in every window without reloading. The colors below are only the start values (Instrument, dark).
+     Brushes are concrete objects (never aliases of system brushes) so they can be mutated safely. No ThemeDictionaries: the theme
+     pipeline already resolved light/dark. Fonts, sizes and row shapes are not resources: use Look / ThemedRow (Controls/Look.cs). -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ResourceDictionary.ThemeDictionaries>
-        <ResourceDictionary x:Key="Default">
-            <SolidColorBrush x:Key="FuseboxCardBackground" Color="#14FFFFFF" />
-            <SolidColorBrush x:Key="FuseboxCardBorder" Color="#1FFFFFFF" />
-            <SolidColorBrush x:Key="FuseboxGraphStroke" Color="#4CC2FF" />
-            <SolidColorBrush x:Key="FuseboxWarning" Color="#F7B500" />
-            <SolidColorBrush x:Key="FuseboxBad" Color="#E5484D" />
-            <SolidColorBrush x:Key="FuseboxGood" Color="#30A46C" />
-        </ResourceDictionary>
-        <ResourceDictionary x:Key="Light">
-            <SolidColorBrush x:Key="FuseboxCardBackground" Color="#B3FFFFFF" />
-            <SolidColorBrush x:Key="FuseboxCardBorder" Color="#14000000" />
-            <SolidColorBrush x:Key="FuseboxGraphStroke" Color="#005FB8" />
-            <SolidColorBrush x:Key="FuseboxWarning" Color="#B07A00" />
-            <SolidColorBrush x:Key="FuseboxBad" Color="#CE2C31" />
-            <SolidColorBrush x:Key="FuseboxGood" Color="#218358" />
-        </ResourceDictionary>
-    </ResourceDictionary.ThemeDictionaries>
+    <!-- Theme tokens (FEATURES.md §10.1) -->
+    <SolidColorBrush x:Key="FuseboxBg" Color="#1F2B3D" />
+    <SolidColorBrush x:Key="FuseboxText" Color="#F2F5F7" />
+    <SolidColorBrush x:Key="FuseboxSecondary" Color="#99A6B8" />
+    <SolidColorBrush x:Key="FuseboxAccent" Color="#F5B83D" />
+    <SolidColorBrush x:Key="FuseboxWarn" Color="#FF9940" />
+    <SolidColorBrush x:Key="FuseboxDanger" Color="#FF6159" />
+    <SolidColorBrush x:Key="FuseboxGood" Color="#59D999" />
+    <SolidColorBrush x:Key="FuseboxLine" Color="#2B3B4F" />
+    <SolidColorBrush x:Key="FuseboxCard" Color="#263347" />
+    <!-- Derived -->
+    <SolidColorBrush x:Key="FuseboxOnRow" Color="#F2F5F7" />
+    <SolidColorBrush x:Key="FuseboxOnRowSecondary" Color="#99A6B8" />
+    <SolidColorBrush x:Key="FuseboxLabel" Color="#F5B83D" />
+    <SolidColorBrush x:Key="FuseboxGraph" Color="#F5B83D" />
+    <SolidColorBrush x:Key="FuseboxGraphFill" Color="#26F5B83D" />
+    <SolidColorBrush x:Key="FuseboxGraphSecond" Color="#80F5B83D" />
+    <SolidColorBrush x:Key="FuseboxAccentSoft" Color="#26F5B83D" />
+    <SolidColorBrush x:Key="FuseboxHover" Color="#1F99A6B8" />
+    <SolidColorBrush x:Key="FuseboxBlock0" Color="#E0573D" />
+    <SolidColorBrush x:Key="FuseboxBlock1" Color="#2E7DD6" />
+    <SolidColorBrush x:Key="FuseboxBlock2" Color="#1C9E75" />
+    <SolidColorBrush x:Key="FuseboxBlock3" Color="#7A54C7" />
+    <SolidColorBrush x:Key="FuseboxBlock4" Color="#D9991A" />
+    <LinearGradientBrush x:Key="FuseboxGlassFill" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#1CFFFFFF" Offset="0" />
+        <GradientStop Color="#0DFFFFFF" Offset="1" />
+    </LinearGradientBrush>
+    <LinearGradientBrush x:Key="FuseboxGlassRim" StartPoint="0,0" EndPoint="0,1">
+        <GradientStop Color="#47FFFFFF" Offset="0" />
+        <GradientStop Color="#0FFFFFFF" Offset="1" />
+    </LinearGradientBrush>
+
+    <!-- v1 names, kept so the old pages keep working until they are rebuilt (same colors as card/line/graph/warn/danger/good). -->
+    <SolidColorBrush x:Key="FuseboxCardBackground" Color="#263347" />
+    <SolidColorBrush x:Key="FuseboxCardBorder" Color="#2B3B4F" />
+    <SolidColorBrush x:Key="FuseboxGraphStroke" Color="#F5B83D" />
+    <SolidColorBrush x:Key="FuseboxWarning" Color="#FF9940" />
+    <SolidColorBrush x:Key="FuseboxBad" Color="#FF6159" />
+
+    <!-- Generic Windows card (not a themed Live row): radius 8 like Fluent cards. -->
     <CornerRadius x:Key="FuseboxCardCornerRadius">8</CornerRadius>
     <Thickness x:Key="FuseboxCardPadding">16,12,16,12</Thickness>
-    <FontFamily x:Key="FuseboxFont">Segoe UI Variable Text</FontFamily>
-    <FontFamily x:Key="FuseboxMonoFont">Cascadia Mono, Consolas</FontFamily>
     <Style x:Key="FuseboxCard" TargetType="Border">
-        <Setter Property="Background" Value="{ThemeResource FuseboxCardBackground}" />
-        <Setter Property="BorderBrush" Value="{ThemeResource FuseboxCardBorder}" />
+        <Setter Property="Background" Value="{ThemeResource FuseboxCard}" />
+        <Setter Property="BorderBrush" Value="{ThemeResource FuseboxLine}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource FuseboxCardCornerRadius}" />
         <Setter Property="Padding" Value="{StaticResource FuseboxCardPadding}" />
+    </Style>
+
+    <!-- Settings window: page title and section header (system look, not the Fusebox theme). -->
+    <!-- No BasedOn: StaticResource lookups into XamlControlsResources from a merged dictionary are not reliable at load time. -->
+    <Style x:Key="SettingsPageTitle" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="28" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="0,0,0,12" />
+    </Style>
+    <Style x:Key="SettingsSectionHeader" TargetType="TextBlock">
+        <Setter Property="FontSize" Value="14" />
+        <Setter Property="FontWeight" Value="SemiBold" />
+        <Setter Property="Margin" Value="1,18,0,6" />
     </Style>
 </ResourceDictionary>
