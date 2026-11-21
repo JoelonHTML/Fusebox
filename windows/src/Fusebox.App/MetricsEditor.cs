@@ -6,24 +6,24 @@ namespace Fusebox.App;
 
 /// <summary>
 /// Which measurements show, and in what order (Settings and Setup). Prefs "metrics" = enabled ids in order, comma list
-/// (cpu,gpu,ram,net,ssd,bat); "metricsHidden" = the order of the disabled ones, so the order survives toggling.
+/// (cpu,gpu,ram,net,ssd,io,battery); "metricsHidden" = the order of the disabled ones, so the order survives toggling.
 /// </summary>
 public static class MetricsEditor
 {
-    public const string Default = "cpu,gpu,ram,net,ssd,bat";
+    public const string Default = Metrics.DefaultOrder;
     static readonly (string Id, string Name)[] All =
     [
         ("cpu", "Processor (CPU)"), ("gpu", "Graphics chip (GPU)"), ("ram", "Memory (RAM)"),
-        ("net", "Internet (NET)"), ("ssd", "Free storage (SSD)"), ("bat", "Battery"),
+        ("net", "Internet (NET)"), ("ssd", "Free storage (SSD)"), ("io", "Storage activity (read/write)"), ("battery", "Battery"),
     ];
 
     static List<string> Split(string s) => s.Split(',', StringSplitOptions.RemoveEmptyEntries).Where(i => All.Any(a => a.Id == i)).Distinct().ToList();
-    public static List<string> Enabled => Split(Prefs.Get("metrics", Default));
+    public static List<string> Enabled => Split(Prefs.Str("metrics"));
 
     static List<string> Order()
     {
         var on = Enabled;
-        var hidden = Split(Prefs.Get("metricsHidden", "")).Where(i => !on.Contains(i)).ToList();
+        var hidden = Split(Prefs.Str("metricsHidden")).Where(i => !on.Contains(i)).ToList();
         return [.. on, .. hidden, .. All.Select(a => a.Id).Where(i => !on.Contains(i) && !hidden.Contains(i))];
     }
 

@@ -28,9 +28,17 @@ public sealed class LiveSample
     public double BatteryDesign { get; set; } = double.NaN;  // mWh
     public double BatteryFull { get; set; } = double.NaN;    // mWh at full charge now
     public double BatteryCycles { get; set; } = double.NaN;
+    /// <summary>Memory pressure 1 normal / 2 high / 4 critical (set by LiveHub from <see cref="MemoryPressure"/>; max in minute averages).</summary>
+    public int Pressure { get; set; } = 1;
+    public double TempC { get; set; } = double.NaN;          // hottest CPU °C (Windows: usually unknown)
+    public double GpuTempC { get; set; } = double.NaN;
+    public double PingMs { get; set; } = double.NaN;         // NaN = no ping (off, pending or no answer)
+    public double SwapBytes { get; set; } = double.NaN;
+    public double WifiDbm { get; set; } = double.NaN;        // 0 = Wi-Fi dropped, NaN = no Wi-Fi
 
     public double RamPercent => RamTotal > 0 ? 100 * RamUsed / RamTotal : double.NaN;
     public double BatteryHealth => BatteryDesign > 0 ? 100 * BatteryFull / BatteryDesign : double.NaN;
+    public double DiskUsedPercent => DiskTotal > 0 ? 100 * (DiskTotal - DiskFree) / DiskTotal : double.NaN;
 }
 
 /// <summary>Read once at start: names and core classes.</summary>

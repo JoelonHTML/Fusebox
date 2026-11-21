@@ -1,41 +1,73 @@
 using System.Text;
 using Fusebox.Core;
+using Fusebox.Core.Processes;
 using Fusebox.Platform;
 using Microsoft.UI.Dispatching;
 
 namespace Fusebox.App;
 
 /// <summary>
-/// The one clock. Measures every 2 s (5 s in low impact) on a worker thread, always logs (CSV once a minute) and watches for peaks,
-/// and only wakes the pages (<see cref="Updated"/>) when someone is looking — like the Mac's Meter.
+/// The one clock (Mac Meter). Measures every 2 s (5 s in Low impact) on a worker thread, always keeps history, logs CSVs and watches
+/// peaks, and only wakes the pages (<see cref="Updated"/>) while someone is looking. Once a minute it measures every app
+/// (<see cref="Apps"/>, apps-…csv) and raises <see cref="MinuteTick"/> for per-minute work (alerts, peak notifications, self log).
+/// Everything public is read and raised on the UI thread.
 /// </summary>
 public sealed partial class LiveHub
 {
     readonly LiveSampler sampler = new();
+    readonly ProcessSampler appSampler = new();   // its own instance: CPU per app = average over the minute since the last call
     readonly BatteryEta eta = new();
-    readonly StringBuilder samples = new(), peakLines = new();
+    readonly StringBuilder samples = new(), peakLines = new(), appLines = new();
     DispatcherQueueTimer? timer;
-    bool busy;
-    int lastMinute = -1;
+    bool busy, appsBusy;
+    int ticks;
+    DateTime lastMinute = DateTime.MinValue, lastFlush = DateTime.Now, logDay;
 
-    public Dictionary<Metric, MetricSeries> Series { get; } = Enum.GetValues<Metric>().ToDictionary(m => m, _ => new MetricSeries());
+    /// <summary>Every sample of the last hour + today's minute averages. Use <see cref="Values"/> for graphs.</summary>
+    public SampleHistory History { get; } = new();
     public PeakWatch Peaks { get; } = new();
     public LiveSample? Last { get; private set; }
     public HardwareInfo Hardware => LiveSampler.Hardware;
 
-    /// <summary>Raised on the UI thread after a sample, only while <see cref="Watched"/>.</summary>
+    /// <summary>The last minute's app measurement (all groups, CPU averaged over the minute). Null before the first minute.</summary>
+    public IReadOnlyList<AppGroup>? Apps { get; private set; }
+
+    /// <summary>Raised after a sample, only while <see cref="Watched"/>. Pages subscribe in OnNavigatedTo, unsubscribe in OnNavigatedFrom.</summary>
     public event Action? Updated;
 
-    /// <summary>Raised after every sample, watched or not. Only for work that is trivially cheap (the tray tooltip).</summary>
+    /// <summary>Raised after every sample, watched or not. Only for work that is trivially cheap (the tray icon tooltip/bitmap).</summary>
     public event Action? Sampled;
 
-    /// <summary>Set by App: true when the main window or the tray panel is on screen.</summary>
+    /// <summary>Raised once a minute (≥ 59 s apart) after the app measurement, watched or not: alerts, peak notifications, self log.</summary>
+    public event Action? MinuteTick;
+
+    /// <summary>Set by App: true when the main window or the tray flyout is on screen (or during the first 5 ticks).</summary>
     public Func<bool> Watched { get; set; } = () => true;
 
     public static int StepSeconds => LowImpact.On ? 5 : 2;
     public static TimeSpan Interval => TimeSpan.FromSeconds(StepSeconds);
 
-    public LiveHub() => Peaks.Closed += p => peakLines.Append(PeakWatch.CsvLine(p));
+    /// <summary>pref shortMinutes clamped 1–60.</summary>
+    public static int ShortMinutes => TimeRanges.ShortMinutes(Prefs.Long("shortMinutes"));
+
+    /// <summary>One metric's values for a period, oldest first (graphs, detail stats).</summary>
+    public List<double> Values(Metric m, TimeRange r) => Metrics.Values(History.Range(r, ShortMinutes, StepSeconds), m);
+
+    /// <summary>Average CPU over the last 30 s (status sentence, alerts).</summary>
+    public double Cpu30 => Metrics.Stats(Metrics.Values(History.Since(30, StepSeconds), Metric.Cpu)).Avg;
+
+    /// <summary>The status sentence (§8.5) for the current values.</summary>
+    public (string Text, int Level) Status => Last is { } s
+        ? StatusSentence.Of(s.Pressure, s.TempC, Cpu30, Prefs.Double("warnCPU"), Prefs.Double("warnTemp")) : (Strings.L("All calm"), 0);
+
+    public LiveHub()
+    {
+        Peaks.Closed += p =>
+        {
+            Blame(p);
+            peakLines.Append(PeakWatch.CsvLine(p));
+        };
+    }
 
     public void Start()
     {
@@ -45,34 +77,33 @@ public sealed partial class LiveHub
 
     async Task StartAsync()
     {
-        // Today's earlier minutes from the CSV (so "Today" is not empty after a restart); measuring starts right after.
-        var seeds = await Task.Run(() =>
+        // Today's earlier minutes from the CSV (so "Today" isn't empty after a restart), header migration and retention: off the UI thread.
+        var now = DateTime.Now;
+        var minutes = await Task.Run(() =>
         {
-            var d = new Dictionary<Metric, List<double>>();
-            try
-            {
-                var csv = File.ReadAllText(CsvLog.FileFor(DateTime.Now));
-                List<double> Col(string c) => CsvLog.MinuteAverages(csv, c);
-                List<double> Sum(string a, string b) { var x = Col(a); var y = Col(b); return x.Count == y.Count ? x.Zip(y, (p, q) => p + q).ToList() : x; }
-                d[Metric.Cpu] = Col("cpu_pct"); d[Metric.Gpu] = Col("gpu_pct"); d[Metric.Ram] = Col("ram_pct");
-                d[Metric.Net] = Sum("down_Bps", "up_Bps"); d[Metric.Ssd] = Sum("lezen_Bps", "schrijven_Bps"); d[Metric.Bat] = Col("batterij_pct");
-            }
-            catch { }
-            CsvLog.Prune(Prefs.Int("keepDays"));
-            return d;
+            CsvLog.MigrateHeader(CsvLog.FileFor(now), CsvLog.Header);
+            CsvLog.MigrateHeader(CsvLog.FileFor(now, "apps"), AppsLog.Header);
+            CsvLog.MigrateHeader(CsvLog.FileFor(now, "peaks"), PeakWatch.CsvHeader, PeakWatch.V1Columns);
+            CsvLog.Prune(Prefs.Int("keepDays"), now);
+            try { return SampleHistory.MinuteAverages(CsvLog.ReadSamples(File.ReadAllText(CsvLog.FileFor(now)))); }
+            catch { return []; }
         });
-        foreach (var (m, v) in seeds) Series[m].Seed(DateTime.Now, v);
+        History.Seed(minutes, DateTime.Now);
+        try { Peaks.Seed(PeakWatch.Parse(await File.ReadAllTextAsync(CsvLog.FileFor(now, "peaks"))), DateTime.Now); } catch { }
+        logDay = DateTime.Now.Date;
         timer = DispatcherQueue.GetForCurrentThread().CreateTimer();
         timer.Interval = Interval;
         timer.IsRepeating = true;
         timer.Tick += async (_, _) => await Tick();
         timer.Start();
+        _ = Task.Run(appSampler.Sample);   // zero point for the first minute's CPU per app
         await Tick();
     }
 
+    /// <summary>Low impact changed: new interval (the timer keeps one tick per interval, no extra wake-ups).</summary>
     public void ApplyInterval() { if (timer != null) timer.Interval = Interval; }
 
-    /// <summary>The window or panel just came back: show the newest values now instead of at the next tick.</summary>
+    /// <summary>The window or flyout just came back: show the newest values now instead of at the next tick.</summary>
     public void Refresh() { if (Last != null && Watched()) Updated?.Invoke(); }
 
     async Task Tick()
@@ -82,31 +113,76 @@ public sealed partial class LiveHub
         try
         {
             var s = await Task.Run(sampler.Sample);
+            s.Pressure = MemoryPressure.FromRamPercent(s.RamPercent);
             eta.Add(s.Time, s.Battery);
             if (s.Charging && double.IsNaN(s.BatteryMinutes)) s.BatteryMinutes = eta.ToFull(s.Time, s.Battery);
             Last = s;
-            foreach (var (m, series) in Series) series.Add(s.Time, Metrics.Value(m, s));
-            Peaks.Feed(s, StepSeconds);
+            History.Add(s);
+            if (s.Time.Date != logDay) Flush(s.Time);   // midnight: the old day's lines go to the old day's file
+            Peaks.Feed(s, StepSeconds, Prefs.Double("warnTemp"));
             samples.Append(CsvLog.Line(s));
-            if (s.Time.Minute != lastMinute) { if (lastMinute >= 0) Flush(s.Time); lastMinute = s.Time.Minute; }
+            ticks++;
+            if ((s.Time - lastMinute).TotalSeconds >= 59) Minute(s);
+            if ((s.Time - lastFlush).TotalSeconds >= 60) Flush(s.Time);
             Sampled?.Invoke();
-            if (Watched()) Updated?.Invoke();
+            if (ticks <= 5 || Watched()) Updated?.Invoke();
         }
+        catch { /* a failed sample skips this tick */ }
         finally { busy = false; }
     }
 
-    void Flush(DateTime day, bool wait = false)
+    /// <summary>Per-minute work: battery health (once a day), the app measurement + apps log, then <see cref="MinuteTick"/>.</summary>
+    void Minute(LiveSample s)
     {
-        if (samples.Length == 0 && peakLines.Length == 0) return;
-        string a = samples.ToString(), b = peakLines.ToString();
-        samples.Clear(); peakLines.Clear();
+        lastMinute = s.Time;
+        if (double.IsFinite(s.BatteryHealth)) _ = Task.Run(() => CsvLog.AppendBatteryHealth(s.Time, s.BatteryHealth, s.BatteryCycles));
+        if (appsBusy || ticks < 3) { MinuteTick?.Invoke(); return; }
+        appsBusy = true;
+        _ = MeasureApps(s.Time);
+    }
+
+    async Task MeasureApps(DateTime t)
+    {
+        try
+        {
+            var snap = await Task.Run(appSampler.Sample);
+            Apps = snap.Groups;
+            appLines.Append(AppsLog.Lines(t, snap.Groups));
+        }
+        catch { }
+        finally { appsBusy = false; }
+        MinuteTick?.Invoke();
+    }
+
+    /// <summary>Peak cause from the last minute's apps (Live agent: refine with a snapshot at the peak's start, §3.9).</summary>
+    void Blame(Peak p)
+    {
+        if (Apps == null || p.Kind == PeakKind.Io) return;
+        Func<AppGroup, double> by = p.Kind switch { PeakKind.Gpu => g => g.Gpu, PeakKind.Mem => g => g.Ram / 1073741824.0, _ => g => g.Cpu };
+        var top = Apps.Where(g => g.Kind != AppKind.Windows).MaxBy(by);
+        if (top != null && by(top) > 0) { p.App = top.Name; p.AppValue = by(top); }
+    }
+
+    void Flush(DateTime now, bool wait = false)
+    {
+        lastFlush = now;
+        var day = logDay;
+        logDay = now.Date;
+        if (samples.Length == 0 && peakLines.Length == 0 && appLines.Length == 0) return;
+        string a = samples.ToString(), b = peakLines.ToString(), c = appLines.ToString();
+        samples.Clear(); peakLines.Clear(); appLines.Clear();
         void Write()
         {
-            if (a.Length > 0) CsvLog.Append(CsvLog.FileFor(day), CsvLog.Header, a);
             if (b.Length > 0) CsvLog.Append(CsvLog.FileFor(day, "peaks"), PeakWatch.CsvHeader, b);
+            if (c.Length > 0) CsvLog.Append(CsvLog.FileFor(day, "apps"), AppsLog.Header, c);
+            // Disk full: keep the main log in memory (above 2 MB only the last 1 MB) and try again at the next flush.
+            if (a.Length > 0 && !CsvLog.Append(CsvLog.FileFor(day), CsvLog.Header, a) && !wait)
+                ui?.TryEnqueue(() => { samples.Insert(0, a); CsvLog.Cap(samples); });
         }
         if (wait) Write(); else _ = Task.Run(Write);
     }
+
+    readonly DispatcherQueue? ui = DispatcherQueue.GetForCurrentThread();
 
     /// <summary>On quit: write what is still buffered.</summary>
     public void Shutdown()

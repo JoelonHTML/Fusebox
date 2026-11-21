@@ -121,8 +121,8 @@ public sealed partial class CheckupPage : Page
 
         // Live numbers (read-only use of LiveHub, no extra measuring).
         var live = App.Live;
-        var cpu = live.Series[Metric.Cpu].Recent;
-        if (cpu.Count > 0) { inputs.CpuAvg = cpu.Average; inputs.CpuMax = cpu.Max; }
+        var cpu = Metrics.Stats(Metrics.Values(live.History.Recent, Metric.Cpu));
+        if (double.IsFinite(cpu.Avg)) { inputs.CpuAvg = cpu.Avg; inputs.CpuMax = cpu.Max; }
         if (live.Last is { RamTotal: > 0 } s && !double.IsNaN(s.RamUsed)) inputs.RamPct = s.RamUsed * 100 / s.RamTotal;
 
         Start(secHealth, healthBox, ct, () => (CheckupReader.PendingReboot(), CheckupReader.UptimeDays(), CheckupReader.CommitPct()),

@@ -11,12 +11,12 @@ public static class MetricText
 
     public static string Title(Metric m) => m switch
     {
-        Metric.Cpu => "CPU", Metric.Gpu => "GPU", Metric.Ram => L("Memory (RAM)"), Metric.Net => L("Network"), Metric.Ssd => "SSD", _ => L("Battery"),
+        Metric.Cpu => "CPU", Metric.Gpu => "GPU", Metric.Ram => L("Memory (RAM)"), Metric.Net => L("Network"), Metric.Ssd => "SSD", Metric.Io => "I/O", _ => L("Battery"),
     };
 
-    public static string Format(Metric m, double v) => double.IsNaN(v) ? "–" : m is Metric.Net or Metric.Ssd ? Fmt.Rate(v) : Fmt.Percent(v);
+    public static string Format(Metric m, double v) => double.IsNaN(v) ? "–" : m is Metric.Net or Metric.Io ? Fmt.Rate(v) : Fmt.Percent(v);
 
-    public static string PeriodTitle(Period p) => p switch { Period.Minutes5 => L("%lld min", 5), Period.Hour => L("1 hour"), _ => L("Today") };
+    public static string PeriodTitle(TimeRange p) => TimeRanges.Title(p, LiveHub.ShortMinutes);
 
     static string Gb(double bytes) => (bytes / 1e9).ToString(bytes < 100e9 ? "0.0" : "0", Culture);
     static string Dash(string s) => s.Length == 0 ? "–" : s;
@@ -44,6 +44,8 @@ public static class MetricText
                 return new(Gb(s.RamUsed), "GB", [.. ramFacts]);
             case Metric.Net:
                 return new("↓ " + Fmt.Rate(s.NetIn), "", ["↑ " + Fmt.Rate(s.NetOut)]);
+            case Metric.Io:
+                return new(Fmt.Rate(Metrics.Value(Metric.Io, s)), "", [$"{L("Reading now")} {Fmt.Rate(s.DiskRead)} · {L("Writing now")} {Fmt.Rate(s.DiskWrite)}"]);
             case Metric.Ssd:
                 double used = s.DiskTotal - s.DiskFree;
                 return new(L("%lld GB free", (long)(s.DiskFree / 1e9)), "",
@@ -81,6 +83,8 @@ public static class MetricText
                 return [(L("Download now"), Fmt.Rate(s.NetIn)), (L("Upload now"), Fmt.Rate(s.NetOut)),
                         (L("Downloaded (%@)", period), Fmt.Bytes(values.Sum() * secondsPerPoint)),
                         (L("Fastest download"), Fmt.Rate(values.Count > 0 ? values.Max() : 0))];
+            case Metric.Io:
+                return [(L("Reading now"), Fmt.Rate(s.DiskRead)), (L("Writing now"), Fmt.Rate(s.DiskWrite))];
             case Metric.Ssd:
                 double used = s.DiskTotal - s.DiskFree;
                 return [(L("Size"), $"{(long)(s.DiskTotal / 1e9)} GB"), (L("Used"), $"{(long)(used / 1e9)} GB · {Fmt.Percent(100 * used / s.DiskTotal)}"),

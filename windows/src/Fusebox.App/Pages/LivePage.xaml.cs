@@ -51,7 +51,7 @@ public sealed partial class LivePage : Page
     {
         if (App.Live.Last is not { } s) return;
         // Card order and visibility from settings; GPU and BAT only when this PC has them.
-        var want = Metrics.Parse(Prefs.Get("metrics", Metrics.DefaultOrder)).Where(m => !double.IsNaN(Metrics.Value(m, s))).ToList();
+        var want = Metrics.Parse(Prefs.Str("metrics")).Where(m => !double.IsNaN(Metrics.Value(m, s))).ToList();
         if (!want.SequenceEqual(shown))
         {
             shown = want;
@@ -69,7 +69,7 @@ public sealed partial class LivePage : Page
         }
         bool wide = columns > 1 || Cards.ActualWidth > 500;
         foreach (var m in shown)
-            cards[m].Update(MetricText.Summary(m, s, App.Live), App.Live.Series[m].Values(Period.Minutes5, LiveHub.StepSeconds), wide);
+            cards[m].Update(MetricText.Summary(m, s, App.Live), App.Live.Values(m, TimeRange.Short), wide);
     }
 
     void OnCardClicked(Metric m) => Frame.Navigate(typeof(DetailPage), m);

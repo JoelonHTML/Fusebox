@@ -75,7 +75,7 @@ public sealed partial class TrayPanel : Window
     void BuildRows()
     {
         var s = App.Live.Last;
-        var want = Metrics.Parse(Prefs.Get("metrics", Metrics.DefaultOrder)).Where(m => s == null || !double.IsNaN(Metrics.Value(m, s))).ToList();
+        var want = Metrics.Parse(Prefs.Str("metrics")).Where(m => s == null || !double.IsNaN(Metrics.Value(m, s))).ToList();
         if (want.SequenceEqual(shown)) return;
         shown = want;
         Rows.Children.Clear();
@@ -108,8 +108,8 @@ public sealed partial class TrayPanel : Window
         foreach (var m in shown)
         {
             var c = MetricText.Summary(m, s, App.Live);
-            rows[m].Value.Text = c.Facts.Length > 0 && m is Metric.Net or Metric.Bat ? $"{c.Value}  {c.Facts[0]}" : $"{c.Value} {c.Unit}".Trim();
-            rows[m].Graph.SetValues(App.Live.Series[m].Values(Period.Minutes5, LiveHub.StepSeconds), Metrics.Scale(m));
+            rows[m].Value.Text = c.Facts.Length > 0 && m is Metric.Net or Metric.Battery ? $"{c.Value}  {c.Facts[0]}" : $"{c.Value} {c.Unit}".Trim();
+            rows[m].Graph.SetValues(App.Live.Values(m, TimeRange.Short), Metrics.Scale(m));
         }
     }
 

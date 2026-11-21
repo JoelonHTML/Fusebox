@@ -10,7 +10,7 @@ namespace Fusebox.App.Pages;
 public sealed partial class DetailPage : Page
 {
     Metric metric;
-    Period period = Period.Minutes5;
+    TimeRange period = TimeRange.Short;
     readonly List<(TextBlock Label, TextBlock Value)> factRows = [];
     readonly List<(ProgressBar Bar, TextBlock Value)> coreRows = [];
 
@@ -18,7 +18,7 @@ public sealed partial class DetailPage : Page
     {
         InitializeComponent();
         Loaded += (_, _) => Loc.Apply(this);
-        var periods = new[] { Period.Minutes5, Period.Hour, Period.Today };
+        var periods = new[] { TimeRange.Short, TimeRange.Hour, TimeRange.Today };
         for (int i = 0; i < 3; i++) ((RadioButton)PeriodPick.Items[i]).Content = MetricText.PeriodTitle(periods[i]);
         PeriodPick.SelectedIndex = 0;
     }
@@ -37,16 +37,16 @@ public sealed partial class DetailPage : Page
 
     void Period_Changed(object sender, SelectionChangedEventArgs e)
     {
-        period = (Period)Math.Max(PeriodPick.SelectedIndex, 0);
+        period = (TimeRange)Math.Max(PeriodPick.SelectedIndex, 0);
         Render();
     }
 
     void Render()
     {
         if (App.Live.Last is not { } s) return;
-        var series = App.Live.Series[metric];
-        int step = period == Period.Today ? 60 : LiveHub.StepSeconds;
-        var values = series.Values(period, LiveHub.StepSeconds);
+
+        int step = period == TimeRange.Today ? 60 : LiveHub.StepSeconds;
+        var values = App.Live.Values(metric, period);
 
         var card = MetricText.Summary(metric, s, App.Live);
         ValueText.Text = card.Value;
@@ -54,7 +54,7 @@ public sealed partial class DetailPage : Page
 
         Graph.SetValues(values, Metrics.Scale(metric));
         Collecting.Visibility = values.Count < 2 ? Visibility.Visible : Visibility.Collapsed;
-        var (min, avg, max) = MetricSeries.Stats(values);
+        var (min, avg, max) = Metrics.Stats(values);
         MinText.Text = MetricText.Format(metric, min);
         AvgText.Text = MetricText.Format(metric, avg);
         MaxText.Text = MetricText.Format(metric, max);
@@ -121,7 +121,7 @@ public sealed partial class DetailPage : Page
         PeakKind? kind = metric switch { Metric.Cpu => PeakKind.Cpu, Metric.Gpu => PeakKind.Gpu, Metric.Ram => PeakKind.Mem, _ => null };
         PeaksCard.Visibility = kind == null ? Visibility.Collapsed : Visibility.Visible;
         if (kind == null) return;
-        var since = period switch { Period.Minutes5 => DateTime.Now.AddMinutes(-5), Period.Hour => DateTime.Now.AddHours(-1), _ => DateTime.Today };
+        var since = period switch { TimeRange.Short => DateTime.Now.AddMinutes(-LiveHub.ShortMinutes), TimeRange.Hour => DateTime.Now.AddHours(-1), _ => DateTime.Today };
         var list = App.Live.Peaks.Today.Where(p => p.Kind == kind && p.End >= since).OrderByDescending(p => p.Start).Take(8).ToList();
         PeaksPanel.Children.Clear();
         if (list.Count == 0) PeaksPanel.Children.Add(new TextBlock { Text = L("No peaks in this period"), Opacity = 0.6 });
