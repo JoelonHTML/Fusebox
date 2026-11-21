@@ -91,7 +91,7 @@ public sealed partial class MetricCard : UserControl   // Border is sealed in Wi
         ToolTipService.SetToolTip(row, L("Click for details"));
         row.Tapped += (_, _) => Clicked?.Invoke(Metric, null);
         dot.Tapped += (_, e) => { e.Handled = true; Clicked?.Invoke(Metric, dotPeak); };
-        spark.PeakClicked += (span, _) => Clicked?.Invoke(Metric, span.Tag as Peak);
+        spark.PeakClicked += (span, pos) => { if (span.Tag is Peak pk) PeakPopover.Show(spark, pos, pk); };
         row.SizeChanged += (_, _) => Columns();
         Loaded += (_, _) => { ThemeService.ThemeChanged += Restyle; Restyle(); };
         Unloaded += (_, _) => ThemeService.ThemeChanged -= Restyle;

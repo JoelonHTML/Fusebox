@@ -7,6 +7,7 @@ using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
+using static Fusebox.Core.Strings;
 
 namespace Fusebox.App.Pages;
 
@@ -109,6 +110,13 @@ public sealed partial class LivePage : Page
                 Grid.SetRow(sub, r); Grid.SetColumnSpan(sub, l.Cols);
                 Cards.Children.Add(sub);
             }
+        }
+        if (want.Count == 0)
+        {
+            // Nothing switched on: say where to change it instead of an empty page.
+            var hint = new TextBlock { Text = L("Nothing is switched on. Choose what to show in Settings › Live."), TextWrapping = TextWrapping.Wrap, Foreground = ThemeService.Brush("FuseboxSecondary"), HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center, TextAlignment = TextAlignment.Center };
+            Look.Label(hint, 13);
+            Cards.Children.Add(hint);
         }
         Advice.Visibility = advice && l.Tier > Tier.XS ? Visibility.Visible : Visibility.Collapsed;
         return true;

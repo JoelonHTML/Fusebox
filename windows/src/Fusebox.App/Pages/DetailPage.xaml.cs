@@ -144,7 +144,7 @@ public sealed partial class DetailPage : Page
         gg.Children.Add(spark); gg.Children.Add(collecting);
         graphCard.Child = gg;
         ThemedRow.Apply(graphCard, 0); graphCard.Padding = new Thickness(10); styled.Add((graphCard, 0));
-        spark.PeakClicked += (span, _) => { if (span.Tag is Peak p) Select(p); };
+        spark.PeakClicked += (span, pos) => { if (span.Tag is Peak p) { Select(p); PeakPopover.Show(spark, pos, p); } };
 
         // stats
         var st = new Grid { ColumnSpacing = 8 };

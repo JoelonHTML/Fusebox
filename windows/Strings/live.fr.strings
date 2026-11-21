@@ -1,3 +1,5 @@
 /* Fusebox for Windows — Live tab, detail screen, peaks, tray (fr). Mac wording; only "PC" instead of "Mac". */
 
 "%@ is heating up your PC" = "%@ fait chauffer votre PC";
+
+"Nothing is switched on. Choose what to show in Settings › Live." = "Rien n’est activé. Choisissez ce qui s’affiche dans Paramètres › Live.";
