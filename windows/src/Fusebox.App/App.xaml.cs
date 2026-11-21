@@ -1,6 +1,7 @@
 using Fusebox.Core;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.Windows.AppLifecycle;
 
 namespace Fusebox.App;
@@ -39,19 +40,40 @@ public partial class App : Application
         AppInstance.GetCurrent().Activated += (_, _) => Main.DispatcherQueue.TryEnqueue(ShowMain);
     }
 
-    /// <summary>CI only: visit every page (Live 20 s, then 5 s each, the workflow screenshots each one), then quit cleanly.</summary>
+    /// <summary>
+    /// CI only: visit every page (Live 20 s, then 5 s each; the workflow screenshots each one), then quit cleanly.
+    /// Writes per page how long Navigate took and the longest UI-thread stall (a 100 ms heartbeat that arrived late).
+    /// </summary>
     static void SmokeTour()
     {
         var items = Main!.Navigation.MenuItems.Cast<object>().Append(Main.Navigation.SettingsItem).ToList();
+        var report = new System.Text.StringBuilder();
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        long lastBeat = 0, worst = 0;
+        var beat = Main.DispatcherQueue.CreateTimer();
+        beat.Interval = TimeSpan.FromMilliseconds(100);
+        beat.Tick += (_, _) => { long now = clock.ElapsedMilliseconds; worst = Math.Max(worst, now - lastBeat - 100); lastBeat = now; };
+        lastBeat = clock.ElapsedMilliseconds;
+        beat.Start();
         int i = 0;
+        string Name(object o) => (o as NavigationViewItem)?.Tag as string ?? "Settings";
         var t = Main.DispatcherQueue.CreateTimer();
         t.Interval = TimeSpan.FromSeconds(20);   // first 20 s on Live: the workflow measures idle CPU there
         t.Tick += (_, _) =>
         {
             t.Interval = TimeSpan.FromSeconds(5);
-            if (++i < items.Count) { Main.Navigation.SelectedItem = items[i]; return; }
-            t.Stop();
-            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-ok.txt"), "ok");
+            report.AppendLine($"{Name(items[i])}: longest UI stall {worst} ms");
+            worst = 0;
+            if (++i < items.Count)
+            {
+                long t0 = clock.ElapsedMilliseconds;
+                Main.Navigation.SelectedItem = items[i];
+                report.Append($"{Name(items[i])}: opened at {t0 / 1000.0:0.0} s, navigate {clock.ElapsedMilliseconds - t0} ms; ");
+                lastBeat = clock.ElapsedMilliseconds;
+                return;
+            }
+            t.Stop(); beat.Stop();
+            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-ok.txt"), report.ToString());
             Quit();
         };
         t.Start();

@@ -122,6 +122,7 @@ jobs:
           }
           if (-not $p.WaitForExit(20000)) { Stop-Process -Id $p.Id -Force; Fail "Fusebox did not quit after the tour" }
           if (-not (Test-Path out/Fusebox/smoke-ok.txt)) { Fail "Tour did not finish (exit code $($p.ExitCode))" }
+          Get-Content out/Fusebox/smoke-ok.txt | Tee-Object -Append smoke.txt
           Remove-Item out/Fusebox/smoke-ok.txt
           "Visited all pages, quit cleanly." | Tee-Object -Append smoke.txt
 
