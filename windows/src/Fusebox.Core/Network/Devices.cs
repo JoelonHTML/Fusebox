@@ -10,6 +10,9 @@ public static class Devices
 {
     static Dictionary<uint, string>? table;
 
+    /// <summary>True once the maker list is loaded (never triggers the load: UI code asks this first).</summary>
+    public static bool TableReady => table != null;
+
     /// <summary>Lazy load of the embedded oui.tsv (~40k lines, tens of ms; call from a background thread).</summary>
     public static Dictionary<uint, string> Table
     {
@@ -55,25 +58,28 @@ public static class Devices
     }
 
     /// <summary>Guess the device type from open ports, names and maker. ponytail: plain keywords, order decides; no Bonjour here so ports stand in for services.</summary>
-    public static DeviceKind Guess(string name, string vendor, ICollection<ushort> ports, bool isRouter, bool isMe, bool privateMac)
+    public static DeviceKind Guess(string name, string vendor, ICollection<ushort> ports, bool isRouter, bool isMe, bool privateMac, ICollection<string>? services = null)
     {
+        services ??= [];
+        bool Offers(params string[] t) => t.Any(services.Contains);
         if (isRouter) return DeviceKind.Router;
         if (isMe) return DeviceKind.Computer;
         string n = name.ToLowerInvariant(), v = vendor.ToLowerInvariant();
         bool Has(params string[] w) => w.Any(n.Contains);
         bool Open(params ushort[] p) => p.Any(ports.Contains);
         bool Made(params string[] p) => p.Any(v.StartsWith);
-        if (Open(631, 9100) || Made("hp", "hewlett packard", "canon", "epson", "seiko epson", "brother", "xerox", "lexmark", "kyocera")) return DeviceKind.Printer;
+        if (Open(631, 9100) || Offers("_ipp._tcp", "_printer._tcp", "_scanner._tcp") || Made("hp", "hewlett packard", "canon", "epson", "seiko epson", "brother", "xerox", "lexmark", "kyocera")) return DeviceKind.Printer;
         if (Has("xbox", "playstation", "nintendo") || Made("nintendo")) return DeviceKind.Console;
         if (Has("iphone", "ipad", "galaxy", "pixel", "android", "phone")) return DeviceKind.Phone;
         if (Has("mac", "laptop", "desktop", "thinkpad", "-pc", "windows")) return DeviceKind.Computer;
         if (Has("homepod", "audioaccessory", "sonos", "speaker", "echo", "nest mini", "home mini", "soundbar", "zoneplayer") || Made("sonos", "bose")) return DeviceKind.Speaker;
-        if (Has("appletv", "apple tv", "tv", "chromecast", "roku", "bravia", "fire", "mediarenderer") || Open(8009) || Made("roku")) return DeviceKind.Tv;
+        if (Has("appletv", "apple tv", "tv", "chromecast", "roku", "bravia", "fire", "mediarenderer") || Open(8009) || Offers("_googlecast._tcp") || Made("roku")) return DeviceKind.Tv;
+        if (Offers("_sonos._tcp", "_spotify-connect._tcp", "_raop._tcp")) return DeviceKind.Speaker;
         if (Has("internetgatewaydevice", "router", "access point")) return DeviceKind.Router;
-        if (Has("hue", "plug", "bulb", "thermostat", "camera", "doorbell", "esp", "bridge")
+        if (Offers("_hap._tcp", "_hap._udp", "_homekit._tcp", "_matter._tcp", "_meshcop._udp") || Has("hue", "plug", "bulb", "thermostat", "camera", "doorbell", "esp", "bridge")
             || Made("signify", "philips lighting", "espressif", "ring", "google nest", "nest labs", "tado", "shelly", "tuya", "ikea", "lumi")) return DeviceKind.SmartHome;
         if (Has("nas", "diskstation", "synology", "qnap") || Made("synology", "qnap") || Open(5000, 5001)) return DeviceKind.Nas;
-        if (Open(445, 22) || Made("intel", "asus", "microsoft", "raspberry pi", "dell", "lenovo", "hon hai", "liteon", "azurewave")) return DeviceKind.Computer;
+        if (Open(445, 22) || Offers("_rfb._tcp", "_workstation._tcp", "_ssh._tcp", "_sftp-ssh._tcp", "_afpovertcp._tcp", "_smb._tcp") || Made("intel", "asus", "microsoft", "raspberry pi", "dell", "lenovo", "hon hai", "liteon", "azurewave")) return DeviceKind.Computer;
         if (Made("tp-link", "ubiquiti", "netgear", "avm", "eero", "zyxel", "sagemcom", "arcadyan", "technicolor")) return DeviceKind.Router;
         if (privateMac) return DeviceKind.Phone;
         return DeviceKind.Unknown;
@@ -87,14 +93,17 @@ public static class Devices
         _ => L("Unknown"),
     };
 
-    /// <summary>Ports we check for the device-type guess.</summary>
-    public static readonly ushort[] ProbePorts = [80, 443, 22, 445, 631, 9100, 8009, 5000, 5001];
+    /// <summary>"Check ports": the 15 common ports (Mac NetProbe.ports), 0.3 s each.</summary>
+    public static readonly ushort[] Ports = [22, 80, 443, 445, 548, 554, 631, 1883, 3389, 5000, 5001, 8080, 9100, 32400, 62078];
+
+    /// <summary>Ports that answer for a device that ignores ping: their connect time stands in for ms.</summary>
+    public static readonly ushort[] LatencyPorts = [62078, 80, 443, 7000];
 
     public static string PortName(ushort p) => p switch
     {
-        22 => "SSH", 80 => "Web", 443 => L("Web (secure)"), 445 => L("File sharing"), 631 => L("Printing"),
-        5000 => L("NAS / web"), 5001 => L("NAS (secure)"), 8009 => "Chromecast", 9100 => L("Printer"),
-        _ => L("Port %@", p),
+        22 => "SSH", 80 => "Web", 443 => L("Web (secure)"), 445 => L("File sharing"), 548 => L("File sharing (AFP)"), 554 => L("Camera stream"),
+        631 => L("Printing"), 1883 => "MQTT", 3389 => L("Remote desktop"), 5000 => L("NAS / web"), 5001 => L("NAS (secure)"), 8080 => L("Web (alt)"),
+        9100 => L("Printer"), 32400 => "Plex", 62078 => L("iPhone sync"), _ => L("Port %@", p),
     };
 
     /// <summary>Clickable web page for an open port, else null.</summary>
@@ -103,7 +112,7 @@ public static class Devices
         var h = NetAddress.IpString(ip);
         return port switch
         {
-            80 => $"http://{h}/", 443 => $"https://{h}/", 631 or 5000 or 8080 => $"http://{h}:{port}/", 5001 => $"https://{h}:5001/", _ => null,
+            80 => $"http://{h}/", 443 => $"https://{h}/", 631 or 5000 or 8080 => $"http://{h}:{port}/", 5001 => $"https://{h}:5001/", 32400 => $"http://{h}:32400/web", _ => null,
         };
     }
 

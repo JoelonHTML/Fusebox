@@ -22,8 +22,8 @@ public readonly record struct RangeResult(uint First, uint Last, RangeError Erro
 /// <summary>IPv4/MAC parsing and range logic, ported from the Mac's NetScanner (same tests). IPs are host-order uints.</summary>
 public static class NetAddress
 {
-    /// <summary>Windows cap: a /22 block (1024 addresses). The Mac allows 4096.</summary>
-    public const int MaxRange = 1024;
+    /// <summary>Most addresses in one custom range (a /20), as on the Mac.</summary>
+    public const int MaxRange = 4096;
 
     public static uint? ParseIp(string? s)
     {
@@ -59,12 +59,12 @@ public static class NetAddress
     public static uint MaskFromPrefix(int bits) => bits <= 0 ? 0 : bits >= 32 ? uint.MaxValue : uint.MaxValue << (32 - bits);
 
     /// <summary>
-    /// Addresses to scan in our own subnet: the whole subnet down to a /22; anything bigger → the /22 around our address.
+    /// Addresses to scan in our own subnet: the whole subnet down to a /24; anything bigger → the /24 around our address (max 254 hosts).
     /// No network/broadcast address; /31 and /32 have no neighbours.
     /// </summary>
     public static List<uint> Hosts(uint ip, int prefix)
     {
-        uint m = MaskFromPrefix(Math.Max(prefix, 22));
+        uint m = MaskFromPrefix(Math.Max(prefix, 24));
         uint net = ip & m, broadcast = net | ~m;
         var l = new List<uint>();
         if (broadcast <= net + 1) return l;
