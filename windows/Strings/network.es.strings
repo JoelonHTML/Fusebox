@@ -1,0 +1,8 @@
+/* Network tab (Windows-only wording) — es */
+"Domain (a work network)" = "Dominio (una red de trabajo)";
+"Encrypted DNS" = "DNS cifrado";
+"Private (a trusted network, this PC can be found)" = "Privada (una red de confianza, este PC puede encontrarse)";
+"Public (this PC hides from other devices)" = "Pública (este PC se oculta de otros dispositivos)";
+"Windows is blocking the scan. Allow Fusebox in Windows Security under Firewall & network protection, then press Scan." = "Windows está bloqueando el escaneo. Permite Fusebox en Seguridad de Windows, en Firewall y protección de red, y pulsa Escanear.";
+"Yes: Windows and apps may hold back big downloads" = "Sí: Windows y las apps pueden aplazar descargas grandes";
+"this network (found automatically)" = "esta red (encontrada automáticamente)";

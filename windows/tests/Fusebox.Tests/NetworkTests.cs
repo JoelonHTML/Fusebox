@@ -21,9 +21,9 @@ public class NetAddressTests
         Assert.Equal(254, h24.Count);
         Assert.Equal(Ip("192.168.1.1"), h24[0]);
         Assert.Equal(Ip("192.168.1.254"), h24[^1]);
-        Assert.Equal(1022, NetAddress.Hosts(Ip("10.0.5.9"), 22).Count);          // /22 = the cap
-        Assert.Equal(1022, NetAddress.Hosts(Ip("10.0.5.9"), 16).Count);          // bigger → /22 around us
-        Assert.Equal(Ip("10.0.4.1"), NetAddress.Hosts(Ip("10.0.5.9"), 16)[0]);
+        Assert.Equal(254, NetAddress.Hosts(Ip("10.0.5.9"), 22).Count);           // /24 = the cap
+        Assert.Equal(254, NetAddress.Hosts(Ip("10.0.5.9"), 16).Count);           // bigger → the /24 around us
+        Assert.Equal(Ip("10.0.5.1"), NetAddress.Hosts(Ip("10.0.5.9"), 16)[0]);
         Assert.Equal(14, NetAddress.Hosts(Ip("192.168.1.5"), 28).Count);
         Assert.Empty(NetAddress.Hosts(Ip("192.168.1.5"), 32));
         Assert.Empty(NetAddress.Hosts(Ip("192.168.1.5"), 31));
@@ -51,15 +51,15 @@ public class NetAddressTests
     }
 
     [Fact]
-    public void CapsRangesAt1024()
+    public void CapsRangesAt4096()
     {
         var big = NetAddress.ParseRange("10.0.0.0/16");
         Assert.Equal(RangeError.TooLarge, big.Error);
         Assert.Equal(65_534, big.Count);
-        Assert.Equal(RangeError.TooLarge, NetAddress.ParseRange("10.0.0.0-10.0.4.1").Error);
-        Assert.True(NetAddress.ParseRange("10.0.0.0-10.0.3.255").Ok);   // exactly 1024
-        Assert.Equal(1022, NetAddress.ParseRange("10.0.0.0/22").Count);
-        Assert.Equal(RangeError.TooLarge, NetAddress.ParseRange("10.0.0.0/21").Error);
+        Assert.Equal(RangeError.TooLarge, NetAddress.ParseRange("10.0.0.0-10.0.16.1").Error);
+        Assert.True(NetAddress.ParseRange("10.0.0.0-10.0.15.255").Ok);   // exactly 4096
+        Assert.Equal(4094, NetAddress.ParseRange("10.0.0.0/20").Count);
+        Assert.Equal(RangeError.TooLarge, NetAddress.ParseRange("10.0.0.0/19").Error);
     }
 
     [Fact]

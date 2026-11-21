@@ -16,11 +16,10 @@ public static class Troubleshooter
             return (Diagnosis.Find(none), Diagnosis.Steps(none), none);
         }
         var wifi = net.IsWifi ? await Task.Run(Wifi.Read, ct) : null;
-        const int n = 10;
+        const int n = 20;   // 20 pings 0.25 s apart, as on the Mac
         var dns = NetProbe.FreshDns(ct);
-        var router = net.Gateway is { } g ? NetProbe.PingSeries(NetProbe.ToAddress(g), n, 200, ct) : Task.FromResult<PingStats>(null!);
-        var inetT = NetProbe.PingSeries(Cloudflare, n, 200, ct);
-        var https = CheckHttps(ct);
+        var router = net.Gateway is { } g ? NetProbe.PingSeries(NetProbe.ToAddress(g), n, 250, ct) : Task.FromResult<PingStats>(null!);
+        var inetT = NetProbe.PingSeries(Cloudflare, n, 250, ct);
         var inet = await inetT;
         if (inet.Got == 0)   // ICMP blocked: TCP 443 instead (like the Mac)
         {
@@ -28,21 +27,8 @@ public static class Troubleshooter
             for (int i = 0; i < 5; i++) if (await NetProbe.TcpConnect(Cloudflare, 443, 1000, ct) is { } ms) tcp.Add(ms);
             if (tcp.Count > 0) inet = PingStats.From(tcp, 5);
         }
-        var d = new DiagInput(true, NetAddress.IpString(net.Ip), net.Gateway != null, await router, inet, await dns, await https, net.Wired,
+        var d = new DiagInput(true, NetAddress.IpString(net.Ip), net.Gateway != null, await router, inet, await dns, null, net.Wired,
             wifi?.Rssi, null, wifi?.Band, wifi?.Channel);
         return (Diagnosis.Find(d), Diagnosis.Steps(d), d);
-    }
-
-    /// <summary>Windows' own connectivity-check page.</summary>
-    static async Task<bool?> CheckHttps(CancellationToken ct)
-    {
-        try
-        {
-            using var c = new HttpClient { Timeout = TimeSpan.FromSeconds(5) };
-            using var r = await c.GetAsync("https://www.msftconnecttest.com/connecttest.txt", ct);
-            return r.IsSuccessStatusCode;
-        }
-        catch (OperationCanceledException) when (ct.IsCancellationRequested) { throw; }
-        catch { return false; }
     }
 }
