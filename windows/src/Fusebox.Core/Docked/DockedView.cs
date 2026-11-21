@@ -64,7 +64,7 @@ public static class DockedText
         var (nv, nu) = SpeedParts(now, bytes);
         if (max <= now) return new(null, nv, nu, false);
         var (mv, mu) = SpeedParts(max, bytes);
-        return new(null, nv, nu == mu ? $"/ {mv} {mu}" : $"{nu} {L("of")} {mv} {mu}", slow);
+        return new(null, nv, nu == mu ? $"/ {mv} {mu}" : L("%@ of %@ %@", nu, mv, mu), slow);
     }
 
     public static RightValue Hertz(double now, double max)

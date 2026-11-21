@@ -152,9 +152,7 @@ public static class DockedBuilder
     }
 
     // ----- ports -----
-    const string SlowDevice = "Runs at USB 2 speed, but it can do USB 3. Try another cable or port.";
-
-    static string SlowText(UsbNode d) => d.Bps <= 480_000_000 && d.MaxBps >= 5_000_000_000 ? L(SlowDevice) : L("Runs slower than the port, cable and device allow. Try another cable.");
+    static string SlowText(UsbNode d) => d.Bps <= 480_000_000 && d.MaxBps >= 5_000_000_000 ? L("Runs at USB 2 speed, but it can do USB 3. Try another cable or port.") : L("Runs slower than the port, cable and device allow. Try another cable.");
 
     static N PortNode(U r, int number, DockedOptions o, U? link, List<DisplayInfo>? viaLink)
     {
@@ -259,7 +257,7 @@ public static class DockedBuilder
         if (d.Slow && d.Max != null) facts.Add(new(L("Can do"), d.Max));
         if (d.TypeC is bool tc && d.Depth == 0) facts.Add(new("USB-C", tc ? L("Yes") : L("No")));
         if (d.Ma is int ma) facts.Add(new(L("Power"), L("%lld mA power budget", ma)));
-        if (d.Maker is { Length: > 0 }) facts.Add(new(L("Maker"), d.Maker));
+        if (d.Maker is { Length: > 0 }) facts.Add(new(L("Vendor"), d.Maker));
         if (d.Vid is int v) facts.Add(new(L("IDs"), d.Pid is int p ? L("vendor %@ · product %@", v.ToString("X4"), p.ToString("X4")) : L("vendor %@", v.ToString("X4"))));
         var notes = new List<Note>();
         if (d.Slow) notes.Add(new(NoteLevel.Warn, SlowText(d)));
@@ -301,7 +299,7 @@ public static class DockedBuilder
             pic.Add(new(L("Resolution"), $"{d.Width} × {d.Height}" + (d.NativeW == 0 ? "" : native ? L(" (native)") : L(" (native %@)", $"{d.NativeW} × {d.NativeH}"))));
             if (d.Scale is int sc && sc != 100 && sc > 0) pic.Add(new(L("Looks like"), $"{d.Width * 100 / sc} × {d.Height * 100 / sc}"));
         }
-        if (d.Hz > 0) pic.Add(new(L("Refresh"), DisplayMap.HzText(d.Hz) + (d.MaxHz > d.Hz + 1 ? " (" + L("can do %@", DisplayMap.HzText(d.MaxHz)) + ")" : "")));
+        if (d.Hz > 0) pic.Add(new(L("Refresh"), DisplayMap.HzText(d.Hz) + (d.MaxHz > d.Hz + 1 ? L(" (can do %@)", DisplayMap.HzText(d.MaxHz)) : "")));
         if (d.Scale is int sc2) pic.Add(new(L("Scale"), sc2 + " %"));
         pic.Add(new("HDR", d.Hdr == null ? L("No") : d.Hdr == true ? L("On") : L("Off (supported)")));
         if (d.Bits is int bits and > 0) pic.Add(new(L("Color"), L("%lld bits per channel", bits)));
