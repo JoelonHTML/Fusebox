@@ -11,7 +11,7 @@ public static class Program
         // Elevated one-off task (see Fusebox.Platform.Elevated): no UI at all.
         if (args.Length == 3 && args[0] == "--elevated") return Fusebox.Platform.Elevated.RunTask(args[1], args[2]);
         WinRT.ComWrappersSupport.InitializeComWrappers();
-        Application.Start(_ =>
+        Application.Start(p =>
         {
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
             _ = new App();

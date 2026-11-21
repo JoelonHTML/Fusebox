@@ -17,9 +17,9 @@ public static class Loc
         {
             case TextBlock t when t.Inlines.Count <= 1 && !string.IsNullOrEmpty(t.Text): t.Text = Strings.L(t.Text); break;
             case ToggleSwitch ts:
-                if (ts.Header is string h) ts.Header = Strings.L(h);
+                if (ts.Header is string tsh) ts.Header = Strings.L(tsh);
                 break;
-            case ComboBox cb when cb.Header is string h: cb.Header = Strings.L(h); break;
+            case ComboBox cb when cb.Header is string cbh: cb.Header = Strings.L(cbh); break;
             case TextBox tb:
                 if (tb.Header is string th) tb.Header = Strings.L(th);
                 if (!string.IsNullOrEmpty(tb.PlaceholderText)) tb.PlaceholderText = Strings.L(tb.PlaceholderText);
