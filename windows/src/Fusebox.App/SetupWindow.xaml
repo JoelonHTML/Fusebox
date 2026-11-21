@@ -1,23 +1,44 @@
 <Window x:Class="Fusebox.App.SetupWindow"
         xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
-        Title="Setup">
-    <Window.SystemBackdrop>
-        <MicaBackdrop />
-    </Window.SystemBackdrop>
-    <Grid Padding="32" RowSpacing="16">
+        Title="Set up Fusebox">
+    <!-- First-run setup (FEATURES.md §11.7): fixed 560×480, "Step n of N" + progress, one question per step, grouped Settings look. -->
+    <Grid x:Name="Root">
         <Grid.RowDefinitions>
-            <RowDefinition Height="Auto" />
             <RowDefinition Height="Auto" />
             <RowDefinition Height="*" />
             <RowDefinition Height="Auto" />
         </Grid.RowDefinitions>
-        <TextBlock x:Name="TitleText" Grid.Row="0" Style="{StaticResource TitleTextBlockStyle}" />
-        <TextBlock x:Name="BodyText" Grid.Row="1" TextWrapping="Wrap" Opacity="0.8" />
-        <ScrollViewer Grid.Row="2"><StackPanel x:Name="Host" Spacing="8" /></ScrollViewer>
-        <Grid Grid.Row="3">
-            <Button x:Name="BackButton" HorizontalAlignment="Left" Click="Back_Click" />
-            <Button x:Name="NextButton" HorizontalAlignment="Right" Style="{StaticResource AccentButtonStyle}" Click="Next_Click" />
+        <StackPanel Grid.Row="0" Padding="20,20,20,8" Spacing="6">
+            <Grid ColumnSpacing="12">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <TextBlock x:Name="StepText" FontSize="12" Opacity="0.75" VerticalAlignment="Center" />
+                <ProgressBar x:Name="Progress" Grid.Column="1" Minimum="0" Maximum="12" Height="4" VerticalAlignment="Center" />
+            </Grid>
+            <Grid ColumnSpacing="12" Margin="0,6,0,0">
+                <Grid.ColumnDefinitions>
+                    <ColumnDefinition Width="Auto" />
+                    <ColumnDefinition Width="*" />
+                </Grid.ColumnDefinitions>
+                <Image x:Name="AppIcon" Source="ms-appx:///Assets/Fusebox-256.png" Width="48" Height="48" Visibility="Collapsed" />
+                <StackPanel Grid.Column="1" Spacing="4" VerticalAlignment="Center">
+                    <TextBlock x:Name="TitleText" FontSize="20" FontWeight="SemiBold" TextWrapping="Wrap" />
+                    <TextBlock x:Name="HelpText" Opacity="0.75" TextWrapping="Wrap" />
+                </StackPanel>
+            </Grid>
+        </StackPanel>
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+            <StackPanel x:Name="BodyHost" Padding="20,4,20,12" Spacing="4" />
+        </ScrollViewer>
+        <Grid Grid.Row="2" Padding="20,8,20,20">
+            <Button x:Name="SkipButton" HorizontalAlignment="Left" Click="Skip_Click" />
+            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+                <Button x:Name="BackButton" Click="Back_Click" />
+                <Button x:Name="NextButton" Style="{StaticResource AccentButtonStyle}" Click="Next_Click" />
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>
