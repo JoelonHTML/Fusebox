@@ -228,6 +228,7 @@ internal sealed class TwoUp : Grid
     public readonly StackPanel Left = new() { Spacing = 10 }, Right = new() { Spacing = 10 };
     readonly double min;
     bool? wide;
+    bool lastWide;
 
     public TwoUp(double minWidth, double width, double spacing = 12)
     {
@@ -245,15 +246,22 @@ internal sealed class TwoUp : Grid
 
     void Arrange(bool w)
     {
+        lastWide = w;
         if (wide == w) return;
         wide = w;
-        SetRow(Left, 0); SetColumn(Left, 0); SetColumnSpan(Left, w ? 1 : 2);
+        bool alone = Right.Children.Count == 0;   // nothing on the right: the left column takes the whole width
+        SetRow(Left, 0); SetColumn(Left, 0); SetColumnSpan(Left, w && !alone ? 1 : 2);
         SetRow(Right, w ? 0 : 1); SetColumn(Right, w ? 1 : 0); SetColumnSpan(Right, w ? 1 : 2);
         Right.Visibility = Right.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
     }
 
     /// <summary>Hide the empty right column after the cards are added.</summary>
-    public TwoUp Done() { Right.Visibility = Right.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible; return this; }
+    public TwoUp Done()
+    {
+        Right.Visibility = Right.Children.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
+        wide = null; Arrange(lastWide);
+        return this;
+    }
 }
 
 /// <summary>Peak timeline (§5.6.4): axis, ticks and one rounded bar per peak, coloured by kind. Redrawn on size change only.</summary>
