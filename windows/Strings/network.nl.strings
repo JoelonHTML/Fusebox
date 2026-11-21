@@ -1,0 +1,8 @@
+/* Network tab (Windows-only wording) — nl */
+"Domain (a work network)" = "Domein (een werknetwerk)";
+"Encrypted DNS" = "Versleutelde DNS";
+"Private (a trusted network, this PC can be found)" = "Privé (een vertrouwd netwerk, deze pc kan worden gevonden)";
+"Public (this PC hides from other devices)" = "Openbaar (deze pc verbergt zich voor andere apparaten)";
+"Windows is blocking the scan. Allow Fusebox in Windows Security under Firewall & network protection, then press Scan." = "Windows blokkeert de scan. Sta Fusebox toe in Windows-beveiliging onder Firewall- en netwerkbeveiliging en druk dan op Scan.";
+"Yes: Windows and apps may hold back big downloads" = "Ja: Windows en apps houden grote downloads mogelijk tegen";
+"this network (found automatically)" = "dit netwerk (automatisch gevonden)";
