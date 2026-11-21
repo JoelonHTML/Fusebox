@@ -350,7 +350,7 @@
 "Collecting data…" = "Recopilando datos…";
 "Collecting…" = "Recopilando…";
 "Color" = "Color";
-"Color blocks" = "Bloques de color";
+"Color blocks" = "Color blocks";
 "Columns" = "Columnas";
 "Columns appear when the window is wide enough." = "Las columnas aparecen cuando la ventana es lo bastante ancha.";
 "Columns appear when the window is wide enough. Network: download and upload per app, read on this Mac only while you look at Fusebox. Also shows the busiest app on the Live NET card." = "Las columnas aparecen cuando la ventana es lo bastante ancha. Red: descarga y subida por app, medidas en este Mac solo mientras miras Fusebox. También muestra la app más activa en la tarjeta NET de Live.";
@@ -506,7 +506,7 @@
 "Gbit/s shows 40 Gbit/s · GB/s shows 5 GB/s (handy to compare with a drive)" = "Gbit/s muestra 40 Gbit/s · GB/s muestra 5 GB/s (útil para comparar con un disco)";
 "Get a notification when a new device shows up on your network (while this page scans)" = "Recibe una notificación cuando aparezca un dispositivo nuevo en tu red (mientras esta página escanea)";
 "GitHub answered %lld" = "GitHub respondió %lld";
-"Glass" = "Cristal";
+"Glass" = "Glass";
 "Good" = "Buena";
 "Graphics chip (GPU)" = "Chip gráfico (GPU)";
 "Graphs" = "Gráficas";
@@ -580,7 +580,7 @@
 "Installing…" = "Instalando…";
 "Install…" = "Instalar…";
 "Instant" = "Instantáneo";
-"Instrument" = "Instrumento";
+"Instrument" = "Instrument";
 "Intel (running via Rosetta now)" = "Intel (ahora con Rosetta)";
 "Intel (runs via Rosetta)" = "Intel (funciona con Rosetta)";
 "Interface" = "Interfaz";
@@ -698,7 +698,7 @@
 "Menu bar" = "Barra de menús";
 "Metered" = "Medida";
 "Min" = "Mín.";
-"Minimal light" = "Minimal claro";
+"Minimal light" = "Minimal light";
 "Missing: %@" = "Falta: %@";
 "Mode" = "Modo";
 "Model: %@" = "Modelo: %@";

@@ -33,7 +33,7 @@ Address: nl "je", de "du", fr "vous", es "tú". Path separator: ` › `.
 | menu bar | menubalk | Menüleiste | barre des menus | barra de menús | mchl50f94f8f |
 | Focus | Focus | Fokus | Concentration | Modos de concentración | mchl50f94f8f / mchl211c911f |
 | Notifications | Meldingen | Mitteilungen | Notifications | Notificaciones | [MacBook Pro guide nl](https://support.apple.com/nl-be/guide/macbook-pro/notification-center-apd6d7eb47b9/mac) |
-| GB / TB | GB / TB | GB / TB | Go / To | GB / TB | [apple.com/fr specs](https://www.apple.com/fr/macbook-air/specs/) |
+| GB / TB | GB / TB | GB / TB | GB / TB (Apple fr writes Go/To, but Fusebox code prints GB itself, so fr keeps GB to avoid a mix) | GB / TB | [apple.com/fr specs](https://www.apple.com/fr/macbook-air/specs/) |
 | Default | Standaard | Standard | Par défaut | Predeterminado | Apple es "predeterminado" |
 
 ## Fusebox's own terms
@@ -46,4 +46,4 @@ Address: nl "je", de "du", fr "vous", es "tú". Path separator: ` › `.
 | Average (card label) | Gem. | Mittel | Moy. | Media | "Ø" reads badly with VoiceOver |
 | Graph | grafiek | Diagramm | graphique | gráfica | de "Grafik" reads as GPU/graphics |
 
-Never translated: Fusebox, Live, Checkup, Docked, CPU, GPU, RAM, SSD, NET, BAT, I/O. Xcode menu paths stay English (Xcode has no localized UI).
+Never translated: theme names (Glass, Minimal light, Color blocks, Instrument, Terminal), Fusebox, Live, Checkup, Docked, CPU, GPU, RAM, SSD, NET, BAT, I/O. Xcode menu paths stay English (Xcode has no localized UI).

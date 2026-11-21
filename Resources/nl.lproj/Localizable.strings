@@ -350,7 +350,7 @@
 "Collecting data…" = "Gegevens verzamelen…";
 "Collecting…" = "Verzamelen…";
 "Color" = "Kleur";
-"Color blocks" = "Kleurvlakken";
+"Color blocks" = "Color blocks";
 "Columns" = "Kolommen";
 "Columns appear when the window is wide enough." = "Kolommen verschijnen als het venster breed genoeg is.";
 "Columns appear when the window is wide enough. Network: download and upload per app, read on this Mac only while you look at Fusebox. Also shows the busiest app on the Live NET card." = "Kolommen verschijnen als het venster breed genoeg is. Netwerk: download en upload per app, alleen op deze Mac gelezen terwijl je naar Fusebox kijkt. Toont ook de drukste app op de Live-kaart NET.";
@@ -506,7 +506,7 @@
 "Gbit/s shows 40 Gbit/s · GB/s shows 5 GB/s (handy to compare with a drive)" = "Gbit/s toont 40 Gbit/s · GB/s toont 5 GB/s (handig om met een schijf te vergelijken)";
 "Get a notification when a new device shows up on your network (while this page scans)" = "Krijg een melding als er een nieuw apparaat op je netwerk verschijnt (terwijl deze pagina scant)";
 "GitHub answered %lld" = "GitHub antwoordde %lld";
-"Glass" = "Glas";
+"Glass" = "Glass";
 "Good" = "Goed";
 "Graphics chip (GPU)" = "Grafische chip (GPU)";
 "Graphs" = "Grafieken";
@@ -698,7 +698,7 @@
 "Menu bar" = "Menubalk";
 "Metered" = "Datalimiet";
 "Min" = "Min.";
-"Minimal light" = "Minimaal licht";
+"Minimal light" = "Minimal light";
 "Missing: %@" = "Ontbreekt: %@";
 "Mode" = "Modus";
 "Model: %@" = "Model: %@";
