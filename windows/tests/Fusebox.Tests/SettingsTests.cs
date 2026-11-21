@@ -1,6 +1,7 @@
 using Fusebox.Core;
 using Fusebox.Core.Alerts;
 using Fusebox.Core.Settings;
+using Fusebox.Core.Update;
 
 public class AlertTests
 {
@@ -240,5 +241,34 @@ public class SelfLogTests
         Assert.Contains("11 minutes measured", r);
         Assert.Contains("Right now: 1.0% CPU", r);
         Assert.Equal(10, SelfLog.Percentile(Enumerable.Range(1, 10).Select(i => (double)i).ToList(), 0.95));
+    }
+}
+
+public class MiniMarkdownTests
+{
+    [Fact]
+    public void BulletsBoldAndLinks()
+    {
+        var l = MiniMarkdown.Parse("## New\n- **Docked**: see [what](https://example.com/x) is plugged in\n\nPlain `code` line\n* second");
+        Assert.Equal(4, l.Count);
+        Assert.True(l[0].Heading);
+        Assert.True(l[0].Spans[0].Bold);
+        Assert.Equal("New", l[0].Spans[0].Text);
+        Assert.True(l[1].Bullet);
+        Assert.Equal(new MdSpan("Docked", true), l[1].Spans[0]);
+        Assert.Equal(": see ", l[1].Spans[1].Text);
+        Assert.Equal("https://example.com/x", l[1].Spans[2].Url);
+        Assert.Equal("what", l[1].Spans[2].Text);
+        Assert.False(l[2].Bullet);
+        Assert.Contains(l[2].Spans, s => s.Text == "code");
+        Assert.True(l[3].Bullet);
+    }
+
+    [Fact]
+    public void OnlyHttpsLinksAreLinks()
+    {
+        var l = MiniMarkdown.Parse("[run](file:///c:/x.exe) [web](http://a.b) [ok](https://a.b)");
+        Assert.All(l[0].Spans.Where(s => s.Text is "run" or "web"), s => Assert.Null(s.Url));
+        Assert.Equal("https://a.b", l[0].Spans.Single(s => s.Text == "ok").Url);
     }
 }
