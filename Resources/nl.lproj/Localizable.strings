@@ -1526,3 +1526,6 @@
 "The test couldn't finish." = "De test kon niet worden afgerond.";
 "Writes and reads 1 GB in a temporary file (a few seconds), then deletes it." = "Schrijft en leest 1 GB in een tijdelijk bestand (een paar seconden) en verwijdert het daarna.";
 "Writing a test file…" = "Testbestand schrijven…";
+/* feat-menubar */
+"Rich menu bar panel" = "Uitgebreid menubalkpaneel";
+"Health score, live values, the most important tip and quick buttons." = "Gezondheidsscore, live waarden, de belangrijkste tip en snelknoppen.";

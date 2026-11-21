@@ -1526,3 +1526,6 @@
 "The test couldn't finish." = "Der Test konnte nicht abgeschlossen werden.";
 "Writes and reads 1 GB in a temporary file (a few seconds), then deletes it." = "Schreibt und liest 1 GB in einer temporären Datei (ein paar Sekunden) und löscht sie danach.";
 "Writing a test file…" = "Testdatei wird geschrieben …";
+/* feat-menubar */
+"Rich menu bar panel" = "Ausführliches Menüleistenfeld";
+"Health score, live values, the most important tip and quick buttons." = "Gesundheitswert, Live-Werte, der wichtigste Tipp und Schnelltasten.";
