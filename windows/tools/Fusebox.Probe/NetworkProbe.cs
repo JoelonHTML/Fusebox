@@ -30,7 +30,7 @@ public static class NetworkProbe
         var w = Wifi.Read();
         n["wifi"] = w == null ? null : new JsonObject
         {
-            ["connected"] = w.Connected, ["ssid"] = w.Ssid, ["signal"] = w.SignalPercent, ["rssi"] = w.Rssi,
+            ["connected"] = w.Connected, ["signal"] = w.SignalPercent, ["rssi"] = w.Rssi,
             ["channel"] = w.Channel, ["band"] = w.Band, ["nameHidden"] = w.NameHidden,
         };
     }

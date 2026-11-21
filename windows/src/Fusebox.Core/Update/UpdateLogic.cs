@@ -4,7 +4,8 @@ using System.Text.Json.Nodes;
 namespace Fusebox.Core.Update;
 
 public sealed record ReleaseInfo(string Tag, string Title, DateTimeOffset? Date, string Notes, List<string> Builds);
-public sealed record UpdateOffer(string Tag, long Build, Uri Zip, Uri Sig);
+/// <summary>Sha256 = lowercase hex from GitHub's own asset digest; Sig = null when the release has no signature (no key configured).</summary>
+public sealed record UpdateOffer(string Tag, long Build, Uri Zip, Uri? Sig, string Sha256);
 
 /// <summary>Port of the Mac Updater's pure parts (pretty, buildNumber, summary, merged, parseRelease) for win- releases.</summary>
 public static class UpdateLogic
@@ -81,9 +82,14 @@ public static class UpdateLogic
         return o;
     }
 
-    /// <summary>Newest non-draft win- release (not <c>skipBuild</c>, a build that failed to install) that has Fusebox-Windows-&lt;arch&gt;.zip and .sig, downloadable only from this repo.</summary>
-    public static UpdateOffer? PickUpdate(string? json, string arch, string repo = Repo, long skipBuild = 0)
+    /// <summary>
+    /// Newest non-draft win- release (not <c>skipBuild</c>, a build that failed to install) that has Fusebox-Windows-&lt;arch&gt;.zip
+    /// with GitHub's SHA-256 digest, downloadable only from this repo. With <paramref name="requireSig"/> (a release key is built in)
+    /// the .sig must be there too, so a release without signature can never be installed by an app that expects one.
+    /// </summary>
+    public static UpdateOffer? PickUpdate(string? json, string arch, string repo = Repo, long skipBuild = 0, bool? requireSig = null)
     {
+        bool needSig = requireSig ?? Signing.HasKey;
         if (Array(json) is not { } a) return null;
         UpdateOffer? best = null;
         var zipName = $"Fusebox-Windows-{arch}.zip";
@@ -93,21 +99,26 @@ public static class UpdateLogic
             if (j["draft"]?.GetValue<bool>() == true || BuildNumber(tag) is not { } build) continue;
             if (build == skipBuild || (best != null && build <= best.Build)) continue;
             if (j["assets"] is not JsonArray assets) continue;
-            var zip = Asset(assets, zipName, repo);
-            var sig = Asset(assets, zipName + ".sig", repo);
-            if (zip != null && sig != null) best = new(tag, build, zip, sig);
+            var (zip, sha) = Asset(assets, zipName, repo);
+            var (sig, _) = Asset(assets, zipName + ".sig", repo);
+            if (zip == null || sha == null || (needSig && sig == null)) continue;
+            best = new(tag, build, zip, sig, sha);
         }
         return best;
     }
 
-    static Uri? Asset(JsonArray assets, string name, string repo)
+    static (Uri? Url, string? Sha256) Asset(JsonArray assets, string name, string repo)
     {
         foreach (var a in assets)
             if (a?["name"]?.GetValue<string>() == name && Uri.TryCreate(a["browser_download_url"]?.GetValue<string>(), UriKind.Absolute, out var u)
                 && u.Scheme == "https" && u.Host == "github.com" && u.AbsolutePath.StartsWith($"/{repo}/releases/download/", StringComparison.Ordinal))
-                return u;
-        return null;
+                return (u, Sha256Of(a["digest"]?.GetValue<string>()));
+        return (null, null);
     }
+
+    /// <summary>"sha256:&lt;64 hex&gt;" → lowercase hex, anything else → null.</summary>
+    public static string? Sha256Of(string? digest) =>
+        digest is { Length: 71 } d && d.StartsWith("sha256:", StringComparison.Ordinal) && d[7..].All(Uri.IsHexDigit) ? d[7..].ToLowerInvariant() : null;
 
     /// <summary>Low impact: "on", "off" or (default) automatic = Energy saver, or on battery below 20%.</summary>
     public static bool LowImpact(string? setting, bool energySaver, double? battery, bool charging) => setting switch

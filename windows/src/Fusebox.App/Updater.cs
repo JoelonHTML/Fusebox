@@ -152,14 +152,24 @@ public static partial class Updater
         try
         {
             Directory.CreateDirectory(tmp);
-            await Fetch(o.Sig, Path.Combine(tmp, "update.sig"), 4096);
-            var sig = File.ReadAllText(Path.Combine(tmp, "update.sig"));
+            string? sig = null;
+            if (Signing.HasKey)
+            {
+                if (o.Sig == null) throw new InvalidDataException(Strings.L("Update isn't signed by the Fusebox maker"));
+                await Fetch(o.Sig, Path.Combine(tmp, "update.sig"), 4096);
+                sig = File.ReadAllText(Path.Combine(tmp, "update.sig"));
+            }
             var zip = Path.Combine(tmp, "update.zip");
             await Fetch(o.Zip, zip);
             string root = await Task.Run(() =>
             {
+                // Same bytes GitHub stored for this release asset (its digest came from the API over https).
                 using (var f = File.OpenRead(zip))
-                    if (!Signing.Verify(f, sig)) throw new InvalidDataException(Strings.L("Update isn't signed by the Fusebox maker"));
+                    if (!string.Equals(Convert.ToHexStringLower(System.Security.Cryptography.SHA256.HashData(f)), o.Sha256, StringComparison.Ordinal))
+                        throw new InvalidDataException(Strings.L("Update isn't signed by the Fusebox maker"));
+                if (sig != null)
+                    using (var f = File.OpenRead(zip))
+                        if (!Signing.Verify(f, sig)) throw new InvalidDataException(Strings.L("Update isn't signed by the Fusebox maker"));
                 if (Directory.Exists(staging)) Directory.Delete(staging, true);
                 using (var za = ZipFile.OpenRead(zip))
                 {

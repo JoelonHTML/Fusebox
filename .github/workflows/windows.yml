@@ -23,27 +23,48 @@ permissions:
 
 concurrency:
   group: windows-${{ github.ref }}
-  cancel-in-progress: true
+  # Never cancel a running build on the windows branch: it may be publishing a release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 env:
   DOTNET_NOLOGO: 1
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
 jobs:
-  # One build number for both architectures: UTC yyyyMMddHHmm for a release, 0 for ordinary (dev) builds.
+  # Decides whether this run publishes a release, and fixes one build number for both architectures:
+  # UTC yyyyMMddHHmm for a release, 0 for ordinary (dev) builds, which never auto-update.
+  # A release happens when windows/RELEASE_NOTES.md changes on the windows branch (like release.sh on the Mac),
+  # or via "Run workflow" with release = true once this workflow is on the default branch.
   meta:
     runs-on: ubuntu-latest
     outputs:
       build: ${{ steps.m.outputs.build }}
       version: ${{ steps.m.outputs.version }}
+      release: ${{ steps.m.outputs.release }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
       - id: m
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DISPATCH_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
+          BEFORE: ${{ github.event.before }}
         run: |
-          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.release }}" = "true" ]; then build=$(date -u +%Y%m%d%H%M); else build=0; fi
+          release=false
+          if [ "$REF" = "refs/heads/windows" ]; then
+            if [ "$DISPATCH_RELEASE" = "true" ]; then release=true; fi
+            if [ "$EVENT" = "push" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+               && git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qx 'windows/RELEASE_NOTES.md'; then release=true; fi
+          fi
+          if [ "$release" = "true" ]; then build=$(date -u +%Y%m%d%H%M); else build=0; fi
           version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' windows/Directory.Build.props | head -1)
+          echo "release=$release" >> "$GITHUB_OUTPUT"
           echo "build=$build" >> "$GITHUB_OUTPUT"
           echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release build=$build version=$version"
 
   build:
     needs: meta
@@ -144,11 +165,10 @@ jobs:
             windows/shots/
           if-no-files-found: ignore
 
-  # The maker must create the GitHub Environment "release" (Settings > Environments) with themselves as required reviewer,
-  # and put FUSEBOX_WIN_SIGNING_KEY in that Environment's secrets (not as a repository secret).
+  # Publishes the signed-or-digest-checked zips. The app checks every update against GitHub's own SHA-256 digest of the asset;
+  # when a release key is configured (Signing.ReleaseKey + secret FUSEBOX_WIN_SIGNING_KEY) it also requires the .sig.
   release:
-    # Only from the windows branch; add `|| github.ref == 'refs/heads/main'` once Windows moves to main.
-    if: github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/windows'
+    if: needs.meta.outputs.release == 'true'
     environment: release
     needs: [meta, build]
     runs-on: ubuntu-latest
@@ -171,25 +191,26 @@ jobs:
           path: dist
       - name: Build the signer (no secret in this step)
         run: dotnet build windows/tools/Fusebox.Sign -c Release -o signer
-      - name: Sign (ECDSA P-256, key from the release Environment secret) and check against the key built into the app
+      - name: Sign when a release key is configured
         env:
           FUSEBOX_WIN_SIGNING_KEY: ${{ secrets.FUSEBOX_WIN_SIGNING_KEY }}
         run: |
-          if [ -z "$FUSEBOX_WIN_SIGNING_KEY" ]; then
-            echo "::error::Environment secret FUSEBOX_WIN_SIGNING_KEY (Environment release) is missing. Create it with: dotnet run --project windows/tools/Fusebox.Sign keygen (and put the PUBLIC key in Signing.ReleaseKey)."
-            exit 1
-          fi
+          haskey=$(grep -c 'ReleaseKey = "[A-Za-z0-9+/=]\{60,\}"' windows/src/Fusebox.Core/Update/Signing.cs || true)
+          if [ "$haskey" = "0" ]; then echo "No release key in the app: publishing with GitHub's SHA-256 digests only."; exit 0; fi
+          if [ -z "$FUSEBOX_WIN_SIGNING_KEY" ]; then echo "::error::The app has a release key but the secret FUSEBOX_WIN_SIGNING_KEY is missing."; exit 1; fi
           for a in x64 arm64; do
             dotnet signer/Fusebox.Sign.dll sign "dist/Fusebox-Windows-$a.zip"
             dotnet signer/Fusebox.Sign.dll verify "dist/Fusebox-Windows-$a.zip" "dist/Fusebox-Windows-$a.zip.sig"
           done
-      - name: Create release (never latest, the Mac updater reads releases/latest)
+      - name: Create release (beta, never marked latest because the Mac updater reads releases/latest)
         env:
           GH_TOKEN: ${{ github.token }}
-          NOTES: ${{ inputs.notes }}
+          DISPATCH_NOTES: ${{ inputs.notes }}
           TAG: win-v${{ needs.meta.outputs.version }}-beta-${{ needs.meta.outputs.build }}
           VERSION: ${{ needs.meta.outputs.version }}
         run: |
+          if [ -n "$DISPATCH_NOTES" ]; then printf '%s\n' "$DISPATCH_NOTES" > dist/notes.md; else cp windows/RELEASE_NOTES.md dist/notes.md; fi
           cd dist
-          gh release create "$TAG" Fusebox-Windows-x64.zip Fusebox-Windows-x64.zip.sig Fusebox-Windows-arm64.zip Fusebox-Windows-arm64.zip.sig \
-            --title "Fusebox for Windows $VERSION beta" --notes "$NOTES" --latest=false --target "$GITHUB_SHA"
+          gh release create "$TAG" Fusebox-Windows-*.zip* \
+            --title "Fusebox for Windows $VERSION beta" --notes-file notes.md --latest=false --target "$GITHUB_SHA"
+          gh release view "$TAG" --json tagName,isLatest,isPrerelease,assets --jq '{tag: .tagName, latest: .isLatest, assets: [.assets[].name]}'

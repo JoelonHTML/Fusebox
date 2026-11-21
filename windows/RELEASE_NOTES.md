@@ -1,0 +1,3 @@
+- First Windows beta: Live, Processes, Checkup, Network and Docked, with a tray icon
+- Updates itself: checks every 15 minutes, only installs releases from this project
+- Light: about 0.5% of one core while idle

@@ -21,9 +21,9 @@ public class UpdateTests
 
     const string Base = "https://github.com/JoelonHTML/Fusebox/releases/download/";
 
-    static string Rel(string tag, string url, bool draft = false, bool sig = true) =>
+    static string Rel(string tag, string url, bool draft = false, bool sig = true, bool digest = true) =>
         "{\"tag_name\":\"" + tag + "\",\"draft\":" + (draft ? "true" : "false") + ",\"name\":\"Fusebox for Windows\",\"body\":\"- A\",\"published_at\":\"2026-11-21T10:00:00Z\",\"assets\":["
-        + "{\"name\":\"Fusebox-Windows-x64.zip\",\"browser_download_url\":\"" + url + "\"}"
+        + "{\"name\":\"Fusebox-Windows-x64.zip\",\"browser_download_url\":\"" + url + "\"" + (digest ? ",\"digest\":\"sha256:" + new string('a', 64) + "\"" : "") + "}"
         + (sig ? ",{\"name\":\"Fusebox-Windows-x64.zip.sig\",\"browser_download_url\":\"" + url + ".sig\"}" : "") + "]}";
 
     [Fact]
@@ -36,8 +36,12 @@ public class UpdateTests
             Rel("win-v0.2-beta-202611220000", Base + "x/Fusebox-Windows-x64.zip", draft: true),
             Rel("win-v0.3-beta-202611230000", "http://evil.example/Fusebox-Windows-x64.zip"),
             Rel("win-v0.4-beta-202611240000", "https://github.com/someone/else/releases/download/t/Fusebox-Windows-x64.zip"),
-            Rel("win-v0.5-beta-202611250000", Base + "t/Fusebox-Windows-x64.zip", sig: false)) + "]";
-        Assert.Equal(202611211200, UpdateLogic.PickUpdate(json, "x64")?.Build);
+            Rel("win-v0.5-beta-202611250000", Base + "t/Fusebox-Windows-x64.zip", sig: false),
+            Rel("win-v0.6-beta-202611260000", Base + "u/Fusebox-Windows-x64.zip", digest: false)) + "]";
+        // With a release key: the unsigned 0.5 is skipped; without a digest (0.6) never.
+        Assert.Equal(202611211200, UpdateLogic.PickUpdate(json, "x64", requireSig: true)?.Build);
+        Assert.Equal(202611250000, UpdateLogic.PickUpdate(json, "x64", requireSig: false)?.Build);
+        Assert.Equal(new string('a', 64), UpdateLogic.PickUpdate(json, "x64", requireSig: true)?.Sha256);
         Assert.Null(UpdateLogic.PickUpdate(json, "arm64"));
         Assert.Null(UpdateLogic.PickUpdate("garbage", "x64"));
     }
@@ -78,7 +82,10 @@ public class UpdateTests
         Assert.False(Signing.Verify(new MemoryStream("Fusebox.zip!"u8.ToArray()), sig, pub));
         Assert.False(Signing.Verify(new MemoryStream(data), sig));   // other key
         Assert.False(Signing.Verify(new MemoryStream(data), "not base64", pub));
-        Assert.True(Convert.FromBase64String(Signing.ReleaseKey).Length > 60);
+        Assert.False(Signing.HasKey && Convert.FromBase64String(Signing.ReleaseKey).Length < 60);
+        Assert.Null(UpdateLogic.Sha256Of("sha256:xyz"));
+        Assert.Null(UpdateLogic.Sha256Of("md5:" + new string('a', 64)));
+        Assert.Equal(new string('b', 64), UpdateLogic.Sha256Of("sha256:" + new string('B', 64)));
     }
 
     [Fact]

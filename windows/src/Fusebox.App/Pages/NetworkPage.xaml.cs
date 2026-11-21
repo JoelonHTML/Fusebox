@@ -102,7 +102,7 @@ public sealed partial class NetworkPage : Page
         if (w == null) return;
         if (!w.Connected) { WifiText.Text = L("Not connected to a network"); WifiHint.Visibility = WifiLocationButton.Visibility = Visibility.Collapsed; return; }
         var lines = new List<string>();
-        if (!string.IsNullOrEmpty(w.Ssid)) lines.Add(L("Network name") + ": " + w.Ssid);
+        // Privacy: never the Wi-Fi name (SSID) or BSSID, same as the Mac.
         if (w.Rssi is { } r) lines.Add(L("Signal") + $": {r} dBm ({WifiMath.Word(r)})" + (w.SignalPercent is { } q ? $" · {q}%" : ""));
         else if (w.SignalPercent is { } q2) lines.Add(L("Signal") + $": {q2}%");
         if (w.RxMbps is > 0) lines.Add(L("Link speed") + $": {w.RxMbps} Mbit/s" + (w.TxMbps is > 0 && w.TxMbps != w.RxMbps ? $" ↓ · {w.TxMbps} Mbit/s ↑" : ""));
@@ -110,7 +110,7 @@ public sealed partial class NetworkPage : Page
         if (w.Phy != null) lines.Add(L("Standard") + ": " + w.Phy);
         WifiText.Text = string.Join("\n", lines);
         // Windows 11 24H2+ hides the name until the user allows location access
-        WifiHint.Visibility = WifiLocationButton.Visibility = w.NameHidden ? Visibility.Visible : Visibility.Collapsed;
+        WifiHint.Visibility = WifiLocationButton.Visibility = Visibility.Collapsed;
     }
 
     void WifiLocationClick(object sender, RoutedEventArgs e) => _ = Windows.System.Launcher.LaunchUriAsync(new Uri("ms-settings:privacy-location"));
@@ -285,7 +285,7 @@ public sealed partial class NetworkPage : Page
             Grid? keep = null;
             foreach (var d in devices.OrderBy(x => x.Ip))
             {
-                if (!Devices.Matches(q, d.DisplayName, d.Vendor ?? "", d.IpText, d.MacText)) continue;
+                if (!Devices.Matches(q, d.DisplayName, d.Vendor ?? "", d.IpText, "")) continue;   // privacy: no search on MAC
                 var row = Row(d);
                 DeviceList.Items.Add(row);
                 if (d == selected) keep = row;
@@ -330,7 +330,7 @@ public sealed partial class NetworkPage : Page
         if (d.Mac == null) DetailPanel.Children.Add(T(L("No hardware address or maker: this address is outside your own network, and routers don't pass those on"), 0.75));
         else
         {
-            DetailPanel.Children.Add(T(L("Hardware address %@", d.MacText)));
+            // Privacy: the MAC is used for the maker lookup only and never shown (v2 adds a hidden-by-default column).
             DetailPanel.Children.Add(T(d.PrivateMac
                 ? L("Private address: a phone or laptop that hides its real address (Wi-Fi privacy). The maker can't be seen.")
                 : d.Vendor == null ? L("Made by an unknown maker") : L("Made by %@", d.Vendor)));

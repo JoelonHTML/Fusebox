@@ -8,8 +8,14 @@ namespace Fusebox.Core.Update;
 /// </summary>
 public static class Signing
 {
-    /// <summary>Public half of the release key. DEVELOPMENT KEY: replace with the output of `Fusebox.Sign keygen`.</summary>
-    public const string ReleaseKey = "MFkwEwYHKoZIzj0CAQYIKoZIzj0DAQcDQgAEZBL4yr+Nm/8+eu3IEl6KEZOiG2lxxJV9FTb5OJG58Iqxo1kGZyp+12JQo2xnz7pFcVXIrD0MIikMUhqtDmOqfg==";
+    /// <summary>
+    /// Public half of the release key (base64 SPKI). Empty = no key yet: updates are then checked against GitHub's own SHA-256
+    /// digest of the asset (plus repo-only https URL, build number, CPU type). Once a key is set here and the matching private key
+    /// is the CI secret FUSEBOX_WIN_SIGNING_KEY, every update must also be signed.
+    /// </summary>
+    public const string ReleaseKey = "";
+
+    public static bool HasKey => ReleaseKey.Length > 0;
 
     const DSASignatureFormat Format = DSASignatureFormat.IeeeP1363FixedFieldConcatenation;
 
