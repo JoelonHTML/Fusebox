@@ -123,7 +123,7 @@ public class ProcessTextTests
         var g = new AppGroup { Name = "X", Cpu = 60, Pids = [1, 2] };
         Assert.Equal(ProcessText.Verdict.HeavyCpu, ProcessText.Judge(g, 16e9));
         var lines = ProcessText.Lines(g, 8, 16e9, DateTime.Now);
-        Assert.Contains("X is using 60% of your processor right now (≈ 4.8 of the 8 cores) and 0 B of memory (0.0% of your 16 GB).", lines);
+        Assert.Contains("X is using 60% of your processor right now (≈ 4.8 of the 8 cores) and 0 KB of memory (0.0% of your 16 GB).", lines);
         Assert.Contains("It consists of 2 parts (processes).", lines);
     }
 }

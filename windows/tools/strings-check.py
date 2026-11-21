@@ -13,7 +13,7 @@ WIN = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 MAC = os.path.join(os.path.dirname(WIN), "Resources")
 LANGS = ["nl", "de", "fr", "es"]
 NEVER = {"Windows", "Assets", "Fusebox.ico", "Fusebox", "Live", "Checkup", "Docked", "CPU", "GPU", "RAM", "SSD", "NET", "BAT", "I/O",
-         "Glass", "Minimal light", "Color blocks", "Instrument", "Terminal"}
+         "Glass", "Minimal light", "Color blocks", "Instrument", "Terminal", "Liquid Glass"}
 PH = re.compile(r"%(?:\d+\$)?[-+ 0#]*\d*(?:\.\d+)?(?:ll|l|h)?([@dDiuf%s])")
 
 

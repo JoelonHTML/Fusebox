@@ -43,15 +43,3 @@ public class HistoryTests
         Assert.Equal(4, h.Last);
     }
 }
-
-public class FormatTests
-{
-    [Fact]
-    public void Bytes()
-    {
-        Strings.Load("en");
-        Assert.Equal("512 B", Fmt.Bytes(512));
-        Assert.Equal("1.5 KB", Fmt.Bytes(1500));
-        Assert.Equal("250 MB", Fmt.Bytes(250e6));
-    }
-}

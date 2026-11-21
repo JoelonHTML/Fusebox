@@ -193,3 +193,8 @@
 "Virtual" = "Virtueel";
 "Windows doesn't share charger and cable details with apps." = "Windows deelt geen gegevens over lader en kabel met apps.";
 "Wireless (Miracast)" = "Draadloos (Miracast)";
+
+/* Status sentence (PC wording) */
+"Your PC is busy" = "Je pc heeft het druk";
+"Your PC is getting warm" = "Je pc wordt warm";
+"Your PC is very hot — it's slowing itself down" = "Je pc is erg heet — hij remt zichzelf af";

@@ -193,3 +193,8 @@
 "Virtual" = "Virtuell";
 "Windows doesn't share charger and cable details with apps." = "Windows gibt keine Informationen zu Ladegerät und Kabel an Apps weiter.";
 "Wireless (Miracast)" = "Drahtlos (Miracast)";
+
+/* Status sentence (PC wording) */
+"Your PC is busy" = "Dein PC ist ausgelastet";
+"Your PC is getting warm" = "Dein PC wird warm";
+"Your PC is very hot — it's slowing itself down" = "Dein PC ist sehr heiß — er drosselt sich";
