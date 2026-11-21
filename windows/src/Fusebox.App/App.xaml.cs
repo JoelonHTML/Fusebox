@@ -34,8 +34,27 @@ public partial class App : Application
             });
         };
         Boot.OnLaunched();
+        if (Environment.GetEnvironmentVariable("FUSEBOX_SMOKE") == "1") SmokeTour();
         // A second Fusebox start redirects here (Program.Main): bring this window back.
         AppInstance.GetCurrent().Activated += (_, _) => Main.DispatcherQueue.TryEnqueue(ShowMain);
+    }
+
+    /// <summary>CI only: visit every page (Live 20 s, then 5 s each, the workflow screenshots each one), then quit cleanly.</summary>
+    static void SmokeTour()
+    {
+        var items = Main!.Nav.MenuItems.Cast<object>().Append(Main.Nav.SettingsItem).ToList();
+        int i = 0;
+        var t = Main.DispatcherQueue.CreateTimer();
+        t.Interval = TimeSpan.FromSeconds(20);   // first 20 s on Live: the workflow measures idle CPU there
+        t.Tick += (_, _) =>
+        {
+            t.Interval = TimeSpan.FromSeconds(5);
+            if (++i < items.Count) { Main.Nav.SelectedItem = items[i]; return; }
+            t.Stop();
+            File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-ok.txt"), "ok");
+            Quit();
+        };
+        t.Start();
     }
 
     /// <summary>Bring the main window back (tray, second launch).</summary>

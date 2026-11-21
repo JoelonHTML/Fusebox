@@ -80,28 +80,47 @@ jobs:
           Set-Content -NoNewline -Path out/Fusebox/build.txt -Value '${{ needs.meta.outputs.build }}'
           (Get-Item out/Fusebox/Fusebox.exe).VersionInfo.ProductVersion | Tee-Object version.txt
 
-      - name: Smoke test (starts, stays up, screenshot)
+      - name: Smoke test (starts, visits every page, idle CPU, screenshots)
         env:
           FUSEBOX_NO_INSTALL: "1"
+          FUSEBOX_SMOKE: "1"
         run: |
-          $p = Start-Process out/Fusebox/Fusebox.exe -PassThru
-          Start-Sleep -Seconds 15
-          if ($p.HasExited) {
-            Get-ChildItem out/Fusebox -Filter *.pri | Format-Table Name, Length
+          New-Item -ItemType Directory -Force "$env:LOCALAPPDATA/Fusebox", shots | Out-Null
+          '{"setupDone":true}' | Set-Content "$env:LOCALAPPDATA/Fusebox/settings.json"
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Shot($name) {
+            try {
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("$PWD/shots/$name.png")
+            } catch { Write-Warning "No screenshot: $_" }
+          }
+          function Fail($why) {
             Get-Content "$env:LOCALAPPDATA/Fusebox/crash.log" -ErrorAction SilentlyContinue
             Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=(Get-Date).AddMinutes(-5)} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, ProviderName, Message
-            Write-Error "Fusebox exited with code $($p.ExitCode)"; exit 1
+            Write-Error $why; exit 1
           }
+          $p = Start-Process out/Fusebox/Fusebox.exe -PassThru
+          Start-Sleep -Seconds 10
+          if ($p.HasExited) { Fail "Fusebox exited at start with code $($p.ExitCode)" }
+          $p.Refresh(); $c1 = $p.TotalProcessorTime.TotalSeconds
+          Start-Sleep -Seconds 8
+          if ($p.HasExited) { Fail "Fusebox exited on Live with code $($p.ExitCode)" }
           $p.Refresh()
-          "Working set: {0:N0} MB, CPU time after 15 s: {1:N2} s" -f ($p.WorkingSet64 / 1MB), $p.TotalProcessorTime.TotalSeconds | Tee-Object smoke.txt
-          try {
-            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
-            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
-            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
-            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
-            $bmp.Save("$PWD/screenshot.png")
-          } catch { Write-Warning "No screenshot: $_" }
-          Stop-Process -Id $p.Id -Force
+          "Working set: {0:N0} MB, idle CPU on Live: {1:N2}% of one core" -f ($p.WorkingSet64 / 1MB), (($p.TotalProcessorTime.TotalSeconds - $c1) / 8 * 100) | Tee-Object smoke.txt
+          Shot "0-live"
+          $pages = "1-processes", "2-checkup", "3-network", "4-docked", "5-settings"
+          Start-Sleep -Seconds 5
+          foreach ($pg in $pages) {
+            if ($p.HasExited) { Fail "Fusebox exited before $pg with code $($p.ExitCode)" }
+            Shot $pg
+            Start-Sleep -Seconds 5
+          }
+          if (-not $p.WaitForExit(20000)) { Stop-Process -Id $p.Id -Force; Fail "Fusebox did not quit after the tour" }
+          if (-not (Test-Path out/Fusebox/smoke-ok.txt)) { Fail "Tour did not finish (exit code $($p.ExitCode))" }
+          Remove-Item out/Fusebox/smoke-ok.txt
+          "Visited all pages, quit cleanly." | Tee-Object -Append smoke.txt
 
       - name: Zip
         run: Compress-Archive -Path out/Fusebox -DestinationPath Fusebox-Windows-${{ matrix.arch }}.zip
@@ -118,7 +137,7 @@ jobs:
             windows/probe.json
             windows/smoke.txt
             windows/version.txt
-            windows/screenshot.png
+            windows/shots/
           if-no-files-found: ignore
 
   release:
