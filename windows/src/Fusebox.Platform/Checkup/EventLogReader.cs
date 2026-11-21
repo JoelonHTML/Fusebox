@@ -59,13 +59,13 @@ public static unsafe class EventLogReader
     const string Days30 = "2592000000", Days7 = "604800000";
     static string Within(string ms) => $"TimeCreated[timediff(@SystemTime) <= {ms}]";
 
-    /// <summary>Last 30 days: app crashes (1000), hangs (1002), blue screens (WER 1001), unexpected shutdowns (Kernel-Power 41).</summary>
+    /// <summary>Last 30 days: app crashes (1000), hangs (1002), blue screens (WER 1001), unexpected shutdowns (Kernel-Power 41), low memory (Resource-Exhaustion-Detector 2004). Works from day one: Windows keeps this history itself.</summary>
     public static List<EventInfo> Crashes()
     {
         var all = Query("Application",
             $"*[System[Provider[@Name='Application Error' or @Name='Application Hang'] and (EventID=1000 or EventID=1002) and {Within(Days30)}]]");
         all.AddRange(Query("System",
-            $"*[System[((Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting'] and EventID=1001) or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41)) and {Within(Days30)}]]"));
+            $"*[System[((Provider[@Name='Microsoft-Windows-WER-SystemErrorReporting'] and EventID=1001) or (Provider[@Name='Microsoft-Windows-Kernel-Power'] and EventID=41) or (Provider[@Name='Microsoft-Windows-Resource-Exhaustion-Detector'] and EventID=2004)) and {Within(Days30)}]]"));
         return all.OrderByDescending(e => e.Time).ToList();
     }
 

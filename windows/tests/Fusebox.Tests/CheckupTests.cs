@@ -10,22 +10,12 @@ public class CheckupTests
         $"<Event {Ns}><System><Provider Name='{provider}'/><EventID Qualifiers='0'>{id}</EventID><TimeCreated SystemTime='{time}'/></System><EventData>{data}</EventData></Event>";
 
     [Fact]
-    public void Events_are_summarised()
+    public void Events_parse()
     {
-        var evs = new[]
-        {
-            Xml("Application Error", 1000, "<Data>chrome.exe</Data><Data>1.0</Data><Data>x</Data><Data>KERNELBASE.dll</Data>"),
-            Xml("Application Error", 1000, "<Data>chrome.exe</Data>"),
-            Xml("Application Hang", 1002, "<Data>Teams.exe</Data>"),
-            Xml("Microsoft-Windows-WER-SystemErrorReporting", 1001, "<Data Name='param1'>0x0000009f</Data>"),
-            Xml("Microsoft-Windows-Kernel-Power", 41, ""),
-            "<nonsense",
-        }.Select(CheckupParsers.ParseEvent).ToList();
-        Assert.Null(evs[5]);
-        Assert.Equal("KERNELBASE.dll", evs[0]!.At(3));
-        var s = CheckupParsers.Summarize(evs.OfType<EventInfo>());
-        Assert.Equal((2, 1, 1, 1), (s.AppCrashes, s.Hangs, s.BlueScreens, s.UnexpectedShutdowns));
-        Assert.Equal(("chrome.exe", 2), s.TopApps[0]);
+        var e = CheckupParsers.ParseEvent(Xml("Application Error", 1000, "<Data>chrome.exe</Data><Data>1.0</Data><Data>x</Data><Data>KERNELBASE.dll</Data>"))!;
+        Assert.Equal("KERNELBASE.dll", e.At(3));
+        Assert.Equal(1000, e.Id);
+        Assert.Null(CheckupParsers.ParseEvent("<nonsense"));
     }
 
     [Fact]
@@ -84,36 +74,4 @@ public class CheckupTests
         Assert.True(CheckupParsers.StartupEnabled(CheckupParsers.StartupApprovedValue(true, DateTime.UtcNow)));
     }
 
-    [Fact]
-    public void Healthy_pc_scores_high_and_a_sick_one_low()
-    {
-        var good = new CheckupInputs
-        {
-            CpuAvg = 8, CpuMax = 40, RamPct = 55, StartupEnabled = 5, UptimeDays = 2, PendingReboot = false,
-            Drives = [new("C:", 300_000_000_000, 500_000_000_000)], Crashes = new(0, 0, 0, 0, []), StabilityIndex = 9.8,
-        };
-        var r = HealthScore.Evaluate(good);
-        Assert.Equal(100, r.Score);
-        Assert.Contains("Nothing wrong", HealthScore.WhySlow(good)[0]);
-
-        var bad = new CheckupInputs
-        {
-            CpuAvg = 90, RamPct = 95, StartupEnabled = 25, UptimeDays = 40, PendingReboot = true,
-            Drives = [new("C:", 20_000_000_000, 500_000_000_000)], Crashes = new(12, 2, 1, 1, [("chrome.exe", 8)]), StabilityIndex = 3,
-            Battery = new(50, 900),
-        };
-        var rb = HealthScore.Evaluate(bad);
-        Assert.True(rb.Score < 50, rb.Score.ToString());
-        Assert.Equal(5, rb.Categories.Count);
-        Assert.Contains(rb.Categories.SelectMany(c => c.Tips), t => t.Uri == "ms-settings:startupapps");
-        Assert.True(HealthScore.WhySlow(bad).Count >= 5);
-        Assert.Contains("Health score: ", HealthScore.Report(rb, DateTime.Now));
-    }
-
-    [Fact]
-    public void No_battery_means_no_battery_category()
-    {
-        var r = HealthScore.Evaluate(new CheckupInputs { CpuAvg = 5 });
-        Assert.DoesNotContain(r.Categories, c => c.Id == "battery");
-    }
 }

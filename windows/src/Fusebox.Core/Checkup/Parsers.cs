@@ -31,30 +31,6 @@ public static class CheckupParsers
         catch (Exception e) when (e is System.Xml.XmlException or FormatException) { return null; }
     }
 
-    /// <summary>Application Error 1000 / Application Hang 1002, WER bugcheck 1001, Kernel-Power 41.</summary>
-    public static CrashStats Summarize(IEnumerable<EventInfo> events)
-    {
-        int crashes = 0, hangs = 0, blue = 0, power = 0;
-        var apps = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
-        foreach (var e in events)
-        {
-            switch (e.Provider, e.Id)
-            {
-                case ("Application Error", 1000):
-                    crashes++;
-                    if (e.At(0) is { Length: > 0 } a) apps[a] = apps.GetValueOrDefault(a) + 1;
-                    break;
-                case ("Application Hang", 1002):
-                    hangs++;
-                    if (e.At(0) is { Length: > 0 } h) apps[h] = apps.GetValueOrDefault(h) + 1;
-                    break;
-                case ("Microsoft-Windows-WER-SystemErrorReporting", 1001): blue++; break;
-                case ("Microsoft-Windows-Kernel-Power", 41): power++; break;
-            }
-        }
-        return new(crashes, hangs, blue, power, apps.OrderByDescending(p => p.Value).Select(p => (p.Key, p.Value)).ToList());
-    }
-
     /// <summary>Kernel-Power 42 = entering sleep, Power-Troubleshooter 1 = woke up (with the wake source).</summary>
     public static SleepSummary SummarizeSleep(IEnumerable<EventInfo> events)
     {

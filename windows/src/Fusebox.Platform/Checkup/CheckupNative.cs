@@ -37,6 +37,9 @@ internal static unsafe partial class CheckupNative
 
     public const int FindExInfoBasic = 1, FindExSearchNameMatch = 0, FindFirstExLargeFetch = 2;
     public const uint AttrDirectory = 0x10, AttrReparsePoint = 0x400;
+    /// <summary>Cloud placeholders (OneDrive "online only"): reading them would download the file, so they are never counted or opened.</summary>
+    public const uint AttrOffline = 0x1000, AttrRecallOnOpen = 0x40000, AttrRecallOnDataAccess = 0x400000;
+    public static bool IsPlaceholder(uint attrs) => (attrs & (AttrOffline | AttrRecallOnOpen | AttrRecallOnDataAccess)) != 0;
 
     [LibraryImport("kernel32.dll", EntryPoint = "FindFirstFileExW", SetLastError = true, StringMarshalling = StringMarshalling.Utf16)]
     public static partial IntPtr FindFirstFileExW(string fileName, int infoLevel, out WIN32_FIND_DATAW data, int searchOp, IntPtr filter, int flags);
@@ -58,6 +61,19 @@ internal static unsafe partial class CheckupNative
     [LibraryImport("kernel32.dll", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool SetThreadPriority(IntPtr thread, int priority);
+
+    // ---- Display name of the signed-in user (report scrubber) ----
+    [LibraryImport("secur32.dll", EntryPoint = "GetUserNameExW", SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetUserNameEx(int format, char* buffer, ref uint size);
+
+    /// <summary>"Jane Doe" (NameDisplay), empty when the account has none.</summary>
+    public static string DisplayName()
+    {
+        char* buf = stackalloc char[256];
+        uint n = 256;
+        return GetUserNameEx(3, buf, ref n) ? new string(buf, 0, (int)n) : "";
+    }
 
     // ---- Battery presence ----
     [StructLayout(LayoutKind.Sequential)]
