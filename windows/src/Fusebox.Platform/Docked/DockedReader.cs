@@ -18,13 +18,23 @@ public static unsafe class DockedReader
             Try("usb", Usb.Read, new List<UsbNode>()),
             Try("displays", Displays.Read, new List<DisplayInfo>()),
             Try<List<BtDevice>?>("bluetooth", Bluetooth.Read, null),
-            Try("audio", Audio.Read, new List<AudioEndpoint>()));
+            Try("audio", Audio.Read, new List<AudioEndpoint>()),
+            Try("uplink", UplinkReader.Read, null));
     }
 
     static PowerInfo ReadPower()
     {
         SYSTEM_POWER_STATUS s;
         if (!GetSystemPowerStatus(&s)) throw new InvalidOperationException("GetSystemPowerStatus failed");
-        return PowerMap.From(s.ACLineStatus, s.BatteryFlag, s.BatteryLifePercent);
+        var p = PowerMap.From(s.ACLineStatus, s.BatteryFlag, s.BatteryLifePercent);
+        if (!p.HasBattery) return p;
+        // Charge rate and minutes from the battery device (the same reader Live uses). Windows has no charger wattage: only what flows into the battery.
+        var ls = new Fusebox.Core.LiveSample();
+        lock (battery) battery.Read(ls);
+        double? watts = p.Charging && p.OnAc == true && double.IsFinite(ls.BatteryMw) && ls.BatteryMw > 0 ? ls.BatteryMw / 1000 : null;
+        int? minutes = double.IsFinite(ls.BatteryMinutes) && ls.BatteryMinutes > 0 ? (int)Math.Round(ls.BatteryMinutes) : null;
+        return p with { Watts = watts, Minutes = minutes };
     }
+
+    static readonly BatteryReader battery = new();
 }

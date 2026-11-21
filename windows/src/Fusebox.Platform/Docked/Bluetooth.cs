@@ -5,7 +5,7 @@ namespace Fusebox.Platform.Docked;
 
 /// <summary>
 /// Paired Bluetooth devices from PnP (BTHENUM classic, BTHLE low energy) with the battery Windows Settings shows.
-/// Not done: BLE GATT Battery Service (WinRT, async); only the PnP battery property is read.
+/// Kind from the class-of-device property (name as fallback). Not done: BLE GATT Battery Service (WinRT, async), left/right/case batteries; only the PnP battery property is read.
 /// </summary>
 internal static unsafe class Bluetooth
 {
@@ -23,7 +23,8 @@ internal static unsafe class Bluetooth
             var name = DevProps.String(set, d, DevProps.FriendlyName) ?? DevProps.String(set, d, DevProps.DeviceDesc);
             if (name == null) return;
             var conn = DevProps.Bytes(set, d, DevProps.BtIsConnected);
-            list.Add(new BtDevice(name, conn is { Length: >= 1 } && conn[0] != 0, BtBattery.Parse(DevProps.Bytes(set, d, DevProps.BtBattery))));
+            var cod = DevProps.UInt(set, d, DevProps.BtClassOfDevice);
+            list.Add(new BtDevice(name, conn is { Length: >= 1 } && conn[0] != 0, BtBattery.Parse(DevProps.Bytes(set, d, DevProps.BtBattery)), BtKind.From(cod, name)));
         });
         if (!radio && list.Count == 0) return null;
         return list.OrderByDescending(x => x.Connected).ThenBy(x => x.Name).ToList();

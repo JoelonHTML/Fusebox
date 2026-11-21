@@ -76,6 +76,18 @@ internal static unsafe partial class DockedNative
     [LibraryImport("user32.dll")]
     public static partial int DisplayConfigGetDeviceInfo(byte* packet);
 
+    /// <summary>devMode = DEVMODEW (220 bytes, dmSize set by the caller).</summary>
+    [LibraryImport("user32.dll", EntryPoint = "EnumDisplaySettingsExW", StringMarshalling = StringMarshalling.Utf16)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool EnumDisplaySettingsEx(string? deviceName, uint modeNum, byte* devMode, uint flags);
+
+    [LibraryImport("user32.dll")]
+    public static partial IntPtr MonitorFromPoint(int x, int y, uint flags);
+
+    /// <summary>scale = DEVICE_SCALE_FACTOR (the percent: 100, 125, 150 …).</summary>
+    [LibraryImport("shcore.dll")]
+    public static partial int GetScaleFactorForMonitor(IntPtr monitor, int* scale);
+
     [StructLayout(LayoutKind.Sequential)]
     public struct SYSTEM_POWER_STATUS
     {

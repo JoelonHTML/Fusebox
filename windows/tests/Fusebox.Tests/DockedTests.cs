@@ -29,7 +29,7 @@ public class DockedTests
     {
         Assert.Equal("HDMI", DisplayMap.Connection(5));
         Assert.Equal("DisplayPort", DisplayMap.Connection(10));
-        Assert.Equal("DisplayPort over USB-C", DisplayMap.Connection(18));
+        Assert.Equal("USB-C (DP alt mode)", DisplayMap.Connection(18));
         Assert.Equal("Built-in", DisplayMap.Connection(0x80000000));
         Assert.Equal(59.94, DisplayMap.Hz(60000, 1001));
         Assert.Equal(0, DisplayMap.Hz(1, 0));

@@ -8,6 +8,11 @@ internal static unsafe class DevProps
     public static readonly DEVPROPKEY DeviceDesc = new("a45c254e-df1c-4efd-8020-67d146a850e0", 2);
     public static readonly DEVPROPKEY Manufacturer = new("a45c254e-df1c-4efd-8020-67d146a850e0", 13);
     public static readonly DEVPROPKEY FriendlyName = new("a45c254e-df1c-4efd-8020-67d146a850e0", 14);
+    public static readonly DEVPROPKEY HardwareIds = new("a45c254e-df1c-4efd-8020-67d146a850e0", 3);
+    public static readonly DEVPROPKEY Service = new("a45c254e-df1c-4efd-8020-67d146a850e0", 6);
+    public static readonly DEVPROPKEY ClassName = new("a45c254e-df1c-4efd-8020-67d146a850e0", 9);
+    public static readonly DEVPROPKEY LocationInfo = new("a45c254e-df1c-4efd-8020-67d146a850e0", 15);
+    public static readonly DEVPROPKEY BtClassOfDevice = new("2BD67D8B-8BEB-48D5-87E0-6CDA3428040A", 10);
     public static readonly DEVPROPKEY Address = new("a45c254e-df1c-4efd-8020-67d146a850e0", 30);
     public static readonly DEVPROPKEY BusReportedDesc = new("540b947e-8b40-45bc-a8a2-6a0b894cbda2", 4);
     public static readonly DEVPROPKEY BtBattery = new("104EA319-6EE2-4701-BD47-8DDBF425BBE5", 2);

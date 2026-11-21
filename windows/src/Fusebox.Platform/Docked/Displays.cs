@@ -30,17 +30,20 @@ internal static unsafe class Displays
                 // path: source{luid 8, id 4, modeIdx 4, status 4} @0; target{luid 8 @20, id 4 @28, modeIdx @32, tech u32 @36, rotation @40, scaling @44, refresh num @48 den @52, scanline @56, available @60, status @64}, flags @68
                 uint srcId = *(uint*)(path + 8), tgtId = *(uint*)(path + 28), tech = *(uint*)(path + 36);
                 uint num = *(uint*)(path + 48), den = *(uint*)(path + 52);
-                int w = 0, h = 0;
+                int w = 0, h = 0, px = 0, py = 0;
                 for (uint j = 0; j < nm; j++)
                 {
                     byte* mode = pm + j * ModeSize;   // infoType @0, id @4, luid @8, union @16
                     uint type = *(uint*)mode;
-                    if (type == 1 && *(uint*)(mode + 4) == srcId && *(long*)(mode + 8) == *(long*)path) { w = *(int*)(mode + 16); h = *(int*)(mode + 20); }
+                    if (type == 1 && *(uint*)(mode + 4) == srcId && *(long*)(mode + 8) == *(long*)path) { w = *(int*)(mode + 16); h = *(int*)(mode + 20); px = *(int*)(mode + 28); py = *(int*)(mode + 32); }
                     // target mode: vSyncFreq rational @16+24, used when the path has no refresh rate
                     if (type == 2 && num == 0 && *(uint*)(mode + 4) == tgtId && *(long*)(mode + 8) == *(long*)(path + 20))
                     { num = *(uint*)(mode + 40); den = *(uint*)(mode + 44); }
                 }
-                res.Add(new DisplayInfo(TargetName(path + 20, tgtId), DisplayMap.Connection(tech), w, h, DisplayMap.Hz(num, den), Hdr(path + 20, tgtId)));
+                var name = TargetName(path + 20, tgtId);
+                var (nw, nh, maxHz) = Modes(SourceName(path, srcId), name);
+                var (hdr, bits) = Color(path + 20, tgtId);
+                res.Add(new DisplayInfo(name, DisplayMap.Connection(tech), w, h, DisplayMap.Hz(num, den), hdr, tech, nw, nh, maxHz, Scale(px, py), bits));
             }
         }
         return res;
@@ -63,13 +66,51 @@ internal static unsafe class Displays
         return s.Length > 0 ? s : "Display";
     }
 
-    static bool? Hdr(byte* luid, uint id)
+    /// <summary>DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO (32 bytes): header 20, value @20 (bit0 supported, bit1 enabled), color encoding @24, bits per channel @28.</summary>
+    static (bool? Hdr, int? Bits) Color(byte* luid, uint id)
     {
-        // DISPLAYCONFIG_GET_ADVANCED_COLOR_INFO (32 bytes): header 20, value @20 (bit0 supported, bit1 enabled)
         byte* b = stackalloc byte[32];
         Header(b, 9, 32, luid, id);
-        if (DisplayConfigGetDeviceInfo(b) != 0) return null;
-        uint v = *(uint*)(b + 20);
-        return (v & 1) == 0 ? null : (v & 2) != 0;
+        if (DisplayConfigGetDeviceInfo(b) != 0) return (null, null);
+        uint v = *(uint*)(b + 20), bits = *(uint*)(b + 28);
+        return ((v & 1) == 0 ? null : (v & 2) != 0, bits is > 0 and <= 16 ? (int)bits : null);
+    }
+
+    /// <summary>DISPLAYCONFIG_SOURCE_DEVICE_NAME (84 bytes): header 20, GDI name WCHAR[32] @20 (like "\\.\DISPLAY1").</summary>
+    static string? SourceName(byte* path, uint srcId)
+    {
+        byte* b = stackalloc byte[84];
+        Header(b, 1, 84, path, srcId);
+        return DisplayConfigGetDeviceInfo(b) == 0 ? new string((char*)(b + 20)) : null;
+    }
+
+    /// <summary>Largest mode the monitor supports (native) and the highest refresh at that size. DEVMODEW: dmSize u16 @68, bits @168 (unused), width @172, height @176, frequency @184.</summary>
+    static readonly Dictionary<string, (int, int, double)> modeCache = new();   // the list only changes with another monitor: key = GDI name + monitor name
+
+    static (int W, int H, double Hz) Modes(string? gdiName, string monitor)
+    {
+        if (gdiName == null) return (0, 0, 0);
+        lock (modeCache) if (modeCache.TryGetValue(gdiName + "|" + monitor, out var c)) return c;
+        byte* dm = stackalloc byte[220];
+        int bw = 0, bh = 0; uint hz = 0;
+        for (uint i = 0; i < 4000; i++)
+        {
+            new Span<byte>(dm, 220).Clear();
+            *(ushort*)(dm + 68) = 220;
+            if (!EnumDisplaySettingsEx(gdiName, i, dm, 0)) break;
+            int w = *(int*)(dm + 172), h = *(int*)(dm + 176); uint f = *(uint*)(dm + 184);
+            if ((long)w * h > (long)bw * bh) { bw = w; bh = h; hz = f; }
+            else if (w == bw && h == bh && f > hz) hz = f;
+        }
+        lock (modeCache) modeCache[gdiName + "|" + monitor] = (bw, bh, hz);
+        return (bw, bh, hz);
+    }
+
+    /// <summary>DPI scaling in percent of the monitor at the source's desktop position; null when unknown.</summary>
+    static int? Scale(int x, int y)
+    {
+        var mon = MonitorFromPoint(x, y, 0 /*MONITOR_DEFAULTTONULL*/);
+        int pct = 0;
+        return mon != IntPtr.Zero && GetScaleFactorForMonitor(mon, &pct) == 0 && pct > 0 ? pct : null;
     }
 }
