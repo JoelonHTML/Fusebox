@@ -29,7 +29,7 @@ public static partial class Updater
     public static long CurrentBuild => BuildInfo.Build;
     public static string CurrentVersion => $"{BuildInfo.Version}{(BuildInfo.Version.StartsWith("0.") ? " beta" : "")} ({CurrentBuild})";
     static string Arch => RuntimeInformation.ProcessArchitecture == Architecture.Arm64 ? "arm64" : "x64";
-    static bool Auto => Prefs.Get("autoUpdate", true);
+    static bool Auto => Prefs.Bool("autoUpdate");
 
     static readonly HttpClient Http = Make(TimeSpan.FromSeconds(20));
     static readonly HttpClient Download = Make(TimeSpan.FromMinutes(10));
@@ -92,7 +92,7 @@ public static partial class Updater
         catch (Exception e) { why = e.Message; }
         LastCheck = DateTime.UtcNow;
         // A build that failed to install is skipped (unless the user clicks), so one bad release doesn't freeze updates.
-        var offer = UpdateLogic.PickUpdate(json, Arch, skipBuild: userInitiated ? 0 : Prefs.Get("failedUpdateBuild", 0L));
+        var offer = UpdateLogic.PickUpdate(json, Arch, skipBuild: userInitiated ? 0 : Prefs.Long("failedUpdateBuild"));
         if (offer == null)
         {
             if (json == null) Set(userInitiated ? State.Failed : State.Idle, userInitiated ? why : null);
@@ -117,7 +117,7 @@ public static partial class Updater
 
     static void NotifyOnce(string tag)
     {
-        if (Prefs.Get("notifiedUpdate", "") == tag) return;
+        if (Prefs.Str("notifiedUpdate") == tag) return;
         Prefs.Set("notifiedUpdate", tag);
         Notify.Send(Strings.L("Fusebox %@ is available", UpdateLogic.Pretty(tag)),
             AutoInstall ? Strings.L("Installing now. Fusebox restarts in a moment.") : Strings.L("Open Settings › About to install it."));
@@ -126,10 +126,10 @@ public static partial class Updater
     /// <summary>First start after an update: one notification with what is new.</summary>
     static async void AnnounceIfUpdated()
     {
-        long seen = Prefs.Get("lastSeenBuild", 0L), now = CurrentBuild;
+        long seen = Prefs.Long("lastSeenBuild"), now = CurrentBuild;
         if (now == 0) return;
         Prefs.Set("lastSeenBuild", now);
-        if (now <= seen || !(seen > 0 || Prefs.Get("setupDone", false)) || !Prefs.Get("notify", true)) return;
+        if (now <= seen || !(seen > 0 || Prefs.Bool("setupDone")) || !Prefs.Bool("notify")) return;
         try
         {
             var list = UpdateLogic.ParseReleases(await Http.GetStringAsync($"https://api.github.com/repos/{UpdateLogic.Repo}/releases?per_page=10"));

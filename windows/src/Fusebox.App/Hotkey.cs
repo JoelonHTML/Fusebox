@@ -5,7 +5,8 @@ using Microsoft.UI.Xaml;
 namespace Fusebox.App;
 
 /// <summary>
-/// Ctrl+Alt+Win+F shows or hides the main window (Prefs "hotkey", default on). RegisterHotKey posts WM_HOTKEY to the window,
+/// Global shortcut (Prefs "hotkeyCode" = virtual key, −1 = off; "hotkeyMods" = MOD_* flags; default Ctrl+Alt+F) shows or hides
+/// the main window. RegisterHotKey posts WM_HOTKEY to the window,
 /// which we read through a comctl32 window subclass (no message loop of our own).
 /// </summary>
 public static unsafe class Hotkey
@@ -22,7 +23,7 @@ public static unsafe class Hotkey
     {
         window = w;
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(w);
-        Prefs.Changed += k => { if (k == "hotkey") Apply(); };
+        Prefs.Changed += k => { if (k is "hotkeyCode" or "hotkeyMods") window?.DispatcherQueue.TryEnqueue(Apply); };
         Apply();
     }
 
@@ -31,8 +32,8 @@ public static unsafe class Hotkey
         if (hwnd == 0) return;
         if (!installed) installed = SettingsNative.SetWindowSubclass(hwnd, &WndProc, 1, 0);
         if (registered) { SettingsNative.UnregisterHotKey(hwnd, Id); registered = false; }
-        if (Prefs.Get("hotkey", true))
-            registered = SettingsNative.RegisterHotKey(hwnd, Id, SettingsNative.MOD_CONTROL | SettingsNative.MOD_ALT | SettingsNative.MOD_WIN | SettingsNative.MOD_NOREPEAT, 'F');
+        int code = Prefs.Int("hotkeyCode"), mods = Prefs.Int("hotkeyMods") & 0xF;   // MOD_ALT|CONTROL|SHIFT|WIN
+        if (code > 0 && mods != 0) registered = SettingsNative.RegisterHotKey(hwnd, Id, (uint)mods | SettingsNative.MOD_NOREPEAT, (uint)code);
     }
 
     [UnmanagedCallersOnly]   // platform default = stdcall on x64/arm64, matches delegate* unmanaged

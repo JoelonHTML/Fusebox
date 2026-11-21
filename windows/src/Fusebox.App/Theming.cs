@@ -74,7 +74,7 @@ public static class Theming
         }
         catch { }
         if (w.Content is not FrameworkElement root) return;
-        root.RequestedTheme = Prefs.Get("appearance", "system") switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
+        root.RequestedTheme = Prefs.Str("appearanceMode") switch { "light" => ElementTheme.Light, "dark" => ElementTheme.Dark, _ => ElementTheme.Default };
         if (root is Control c)
         {
             c.FontFamily = new FontFamily(FamilyFor(s));

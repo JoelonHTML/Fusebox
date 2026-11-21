@@ -32,7 +32,7 @@ public sealed partial class LiveHub
     /// <summary>Set by App: true when the main window or the tray panel is on screen.</summary>
     public Func<bool> Watched { get; set; } = () => true;
 
-    public static int StepSeconds => Prefs.Get("lowImpact", false) ? 5 : 2;
+    public static int StepSeconds => LowImpact.On ? 5 : 2;
     public static TimeSpan Interval => TimeSpan.FromSeconds(StepSeconds);
 
     public LiveHub() => Peaks.Closed += p => peakLines.Append(PeakWatch.CsvLine(p));
@@ -58,7 +58,7 @@ public sealed partial class LiveHub
                 d[Metric.Net] = Sum("down_Bps", "up_Bps"); d[Metric.Ssd] = Sum("lezen_Bps", "schrijven_Bps"); d[Metric.Bat] = Col("batterij_pct");
             }
             catch { }
-            CsvLog.Prune(Prefs.Get("logDays", 0));
+            CsvLog.Prune(Prefs.Int("keepDays"));
             return d;
         });
         foreach (var (m, v) in seeds) Series[m].Seed(DateTime.Now, v);

@@ -30,7 +30,7 @@ public static class ProcessMonitor
     {
         if (busy) return;
         long now = Stopwatch.GetTimestamp();
-        if (!force && Last != null && Prefs.Get("lowImpact", false) && Stopwatch.GetElapsedTime(lastRun, now).TotalSeconds < 10) return;
+        if (!force && Last != null && LowImpact.On && Stopwatch.GetElapsedTime(lastRun, now).TotalSeconds < 10) return;
         busy = true;
         try
         {

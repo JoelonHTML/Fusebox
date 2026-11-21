@@ -22,7 +22,7 @@ public static class Notify
     /// <summary>Follows the "Show notifications" switch (Prefs "notify", default on).</summary>
     public static void Send(string title, string body)
     {
-        if (!registered || !Prefs.Get("notify", true)) return;
+        if (!registered || !Prefs.Bool("notify")) return;
         try { AppNotificationManager.Default.Show(new AppNotificationBuilder().AddText(title).AddText(body).BuildNotification()); }
         catch { }
     }

@@ -10,7 +10,7 @@ public static class Boot
     /// <summary>Started with --background (start at login): window stays out of the way.</summary>
     public static bool Background { get; private set; }
 
-    public static bool NeedsSetup => !Prefs.Get("setupDone", false);
+    public static bool NeedsSetup => !Prefs.Bool("setupDone");
 
     /// <summary>Program.Main, before Application.Start (no UI yet; may start the moved copy and exit).</summary>
     public static void BeforeUi(string[] args)
@@ -23,7 +23,7 @@ public static class Boot
             try { using var old = Process.GetProcessById(pid); old.WaitForExit(120_000); } catch { }
         }
         if (Updater.RollBackIfNeverConfirmed()) Environment.Exit(0);
-        Strings.Load(Prefs.Get("language", "system"));
+        Strings.Load(Prefs.Str("appLanguage"));
         Installer.CheckOnLaunch();
     }
 
@@ -40,7 +40,7 @@ public static class Boot
         else if (Background)
         {
             // Started at login: no window in your face. With the tray icon on it hides there, otherwise it is minimized.
-            if (Prefs.Get("tray", true)) main.AppWindow.Hide();
+            if ((Prefs.Str("menubarStyle") != "off")) main.AppWindow.Hide();
             else if (main.AppWindow.Presenter is OverlappedPresenter p) p.Minimize();
         }
         // Still running after 3 s = this build starts: confirms an update (no rollback) and removes its leftovers.

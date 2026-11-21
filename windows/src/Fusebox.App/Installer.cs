@@ -11,7 +11,7 @@ public static class Installer
     {
         try
         {
-            if (BuildInfo.Build == 0 || Environment.GetEnvironmentVariable("FUSEBOX_NO_INSTALL") != null || Prefs.Get("installAsked", false)) return;
+            if (BuildInfo.Build == 0 || Environment.GetEnvironmentVariable("FUSEBOX_NO_INSTALL") != null || Prefs.Bool("installAsked")) return;
             string me = AppContext.BaseDirectory.TrimEnd('\\', '/');
             string programs = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs");
             string target = Path.Combine(programs, "Fusebox");

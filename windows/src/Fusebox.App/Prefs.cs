@@ -1,56 +1,35 @@
-using System.Text.Json.Nodes;
+using Fusebox.Core.Settings;
 
 namespace Fusebox.App;
 
-/// <summary>Settings in %LOCALAPPDATA%\Fusebox\settings.json (unpackaged apps have no ApplicationData). JsonNode = AOT-safe.</summary>
+/// <summary>
+/// Settings façade over one <see cref="PrefStore"/> at %LOCALAPPDATA%\Fusebox\settings.json (unpackaged apps have no
+/// ApplicationData). Every key and default lives in <see cref="PrefTable"/> (Fusebox.Core/Settings/PrefTable.cs):
+/// use the typed reads (<c>Prefs.Bool("onTop")</c>), which return the table default when nothing is stored.
+/// A unit test checks that every literal key used with Prefs.* in src/ is in the table.
+/// </summary>
 public static class Prefs
 {
-    static readonly string Path = System.IO.Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Fusebox", "settings.json");
-    static readonly object Gate = new();
-    static JsonObject? data;
+    public static readonly PrefStore Store = new(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Fusebox", "settings.json"));
 
-    /// <summary>Raised after a value was written, with its key. May run on any thread that called Set.</summary>
-    public static event Action<string>? Changed;
+    /// <summary>Raised after a value changed, with its key, on the thread that called Set (marshal to the UI yourself).</summary>
+    public static event Action<string>? Changed { add => Store.Changed += value; remove => Store.Changed -= value; }
 
-    static JsonObject Data
-    {
-        get
-        {
-            if (data != null) return data;
-            try { data = JsonNode.Parse(File.ReadAllText(Path)) as JsonObject; } catch { }
-            return data ??= new JsonObject();
-        }
-    }
+    public static bool Bool(string key) => Store.Bool(key);
+    public static int Int(string key) => Store.Int(key);
+    public static long Long(string key) => Store.Long(key);
+    public static double Double(string key) => Store.Double(key);
+    public static string Str(string key) => Store.String(key);
+    public static List<string> List(string key) => Store.List(key);
 
-    public static T Get<T>(string key, T fallback)
-    {
-        try { lock (Gate) return Data[key] is JsonValue v && v.TryGetValue<T>(out var t) ? t : fallback; } catch { return fallback; }
-    }
+    /// <summary>Read with an explicit fallback (v1 style). Prefer the typed reads above.</summary>
+    public static T Get<T>(string key, T fallback) => Store.Get(key, fallback);
 
-    public static void Set<T>(string key, T value)
-    {
-        // Explicit node types: JsonValue.Create<T> would need reflection (not AOT-safe).
-        JsonNode? node = value switch
-        {
-            bool b => JsonValue.Create(b),
-            string s => JsonValue.Create(s),
-            int i => JsonValue.Create(i),
-            long l => JsonValue.Create(l),
-            double d => JsonValue.Create(d),
-            _ => throw new NotSupportedException(typeof(T).Name),
-        };
-        lock (Gate)
-        {
-            Data[key] = node;
-            try
-            {
-                Directory.CreateDirectory(System.IO.Path.GetDirectoryName(Path)!);
-                var tmp = Path + ".tmp";
-                File.WriteAllText(tmp, Data.ToJsonString());
-                File.Move(tmp, Path, overwrite: true);
-            }
-            catch { /* disk full / read-only: keep the in-memory value */ }
-        }
-        Changed?.Invoke(key);
-    }
+    public static void Set(string key, bool v) => Store.Set(key, v);
+    public static void Set(string key, int v) => Store.Set(key, v);
+    public static void Set(string key, long v) => Store.Set(key, v);
+    public static void Set(string key, double v) => Store.Set(key, v);
+    public static void Set(string key, string v) => Store.Set(key, v);
+    public static void SetList(string key, IEnumerable<string> items) => Store.SetList(key, items);
+    public static void Reset(string key) => Store.Reset(key);
 }

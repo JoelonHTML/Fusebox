@@ -17,19 +17,18 @@ public partial class App : Application
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Strings.Load(Prefs.Get("language", "system"));
-        Main = new MainWindow();
+                Main = new MainWindow();
         Live.Watched = () => (Main?.IsOnScreen ?? false) || (Tray?.PanelOpen ?? false);
         Main.Activate();
         Live.Start();
         // One setting "tray": icon in the system tray, and closing the window hides it there.
-        if (Prefs.Get("tray", true)) Tray = new Tray();
+        if ((Prefs.Str("menubarStyle") != "off")) Tray = new Tray();
         Prefs.Changed += k =>
         {
-            if (k != "tray") return;
+            if (k != "menubarStyle") return;
             Main.DispatcherQueue.TryEnqueue(() =>
             {
-                bool on = Prefs.Get("tray", true);
+                bool on = (Prefs.Str("menubarStyle") != "off");
                 if (on && Tray == null) Tray = new Tray();
                 else Tray?.SetVisible(on);
             });

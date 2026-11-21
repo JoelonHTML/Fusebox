@@ -63,30 +63,32 @@ public sealed partial class SettingsPage : Page
     {
         // Style / Mode / Font. Style, font and language names are never translated.
         Pick(ThemeBox, "theme", "glass", Theming.Styles.Select(s => (s.Id, s.Name)).ToArray());
-        Pick(ModeBox, "appearance", "system", [("system", Strings.L("System")), ("light", Strings.L("Light")), ("dark", Strings.L("Dark"))]);
+        Pick(ModeBox, "appearanceMode", "system", [("system", Strings.L("System")), ("light", Strings.L("Light")), ("dark", Strings.L("Dark"))]);
         Pick(FontBox, "font", "style", [("style", Strings.L("Matches style")), ("segoe", "Segoe UI Variable"), ("cascadia", "Cascadia Mono"), ("montserrat", "Montserrat"), ("ubuntu", "Ubuntu")]);
 
-        var startLanguage = Prefs.Get("language", "system");
-        Pick(LanguageBox, "language", "system",
-            [("system", Strings.L("System")), ("en", "English"), ("nl", "Nederlands"), ("de", "Deutsch"), ("fr", "Français"), ("es", "Español")],
-            () => RestartButton.Visibility = Prefs.Get("language", "system") != startLanguage ? Visibility.Visible : Visibility.Collapsed);
+        var startLanguage = Prefs.Str("appLanguage");
+        Pick(LanguageBox, "appLanguage", "",
+            [("", Strings.L("System")), ("en", "English"), ("nl", "Nederlands"), ("de", "Deutsch"), ("fr", "Français"), ("es", "Español")],
+            () => RestartButton.Visibility = Prefs.Str("appLanguage") != startLanguage ? Visibility.Visible : Visibility.Collapsed);
 
         MetricsHost.Children.Add(MetricsEditor.Create());
 
-        Switch(TrayToggle, "tray", true);
+        TrayToggle.IsOn = Prefs.Str("menubarStyle") != "off"; TrayToggle.Toggled += (_, _) => { if (TrayToggle.IsOn) Prefs.Reset("menubarStyle"); else Prefs.Set("menubarStyle", "off"); };
         LoginToggle.IsOn = StartAtLogin.Enabled;
         LoginToggle.Toggled += (_, _) => StartAtLogin.Set(LoginToggle.IsOn);
-        Switch(HotkeyToggle, "hotkey", true, () =>
+        HotkeyToggle.IsOn = Prefs.Int("hotkeyCode") > 0;
+        HotkeyToggle.Toggled += (_, _) =>
         {
+            if (HotkeyToggle.IsOn) Prefs.Reset("hotkeyCode"); else Prefs.Set("hotkeyCode", -1);
             bool taken = HotkeyToggle.IsOn && !Hotkey.Registered;
             HotkeyNote.Text = taken ? Strings.L("Another app already uses this shortcut.") : "";
             HotkeyNote.Visibility = taken ? Visibility.Visible : Visibility.Collapsed;
-        });
+        };
 
         Switch(NotifyToggle, "notify", true, () => TestButton.IsEnabled = NotifyToggle.IsOn);
         TestButton.IsEnabled = NotifyToggle.IsOn;
 
-        Pick(LowBox, "lowImpactMode", "auto", [("off", Strings.L("Off")), ("on", Strings.L("On")), ("auto", Strings.L("Automatic"))]);
+        Pick(LowBox, "lowImpact", "auto", [("off", Strings.L("Off")), ("on", Strings.L("On")), ("auto", Strings.L("Automatic"))]);
         ShowLow();
 
         FolderText.Text = Strings.L("Folder") + ": " + LogDir();

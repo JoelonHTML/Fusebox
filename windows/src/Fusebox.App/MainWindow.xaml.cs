@@ -32,7 +32,7 @@ public sealed partial class MainWindow : Window
     {
         SaveRect();
         if (App.Quitting) return;
-        if (!Prefs.Get("tray", true) || App.Tray is not { Visible: true }) { App.Quit(); return; }
+        if (!(Prefs.Str("menubarStyle") != "off") || App.Tray is not { Visible: true }) { App.Quit(); return; }
         e.Cancel = true;
         sender.Hide();
     }
@@ -41,7 +41,7 @@ public sealed partial class MainWindow : Window
     void RestoreRect()
     {
         var size = new Windows.Graphics.SizeInt32(1100, 720);
-        var p = Prefs.Get("windowRect", "").Split(',');
+        var p = Prefs.Str("windowTopLeft").Split(',');
         if (p.Length == 4 && p.All(x => int.TryParse(x, out _)))
         {
             var r = new Windows.Graphics.RectInt32(int.Parse(p[0]), int.Parse(p[1]), Math.Max(int.Parse(p[2]), 480), Math.Max(int.Parse(p[3]), 360));
@@ -57,7 +57,7 @@ public sealed partial class MainWindow : Window
         // Maximized/minimized windows are skipped: their size is not what we want to restore.
         if (AppWindow.Presenter is OverlappedPresenter { State: not OverlappedPresenterState.Restored }) return;
         var pos = AppWindow.Position; var size = AppWindow.Size;
-        Prefs.Set("windowRect", $"{pos.X},{pos.Y},{size.Width},{size.Height}");
+        Prefs.Set("windowTopLeft", $"{pos.X},{pos.Y}");
     }
 
     static Type PageFor(string? tag) => tag switch
