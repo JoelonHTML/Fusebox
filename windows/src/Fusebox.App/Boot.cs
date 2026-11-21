@@ -45,7 +45,7 @@ public static class Boot
         }
         // Still running after 10 s = this build starts: confirms an update (no rollback) and removes its leftovers.
         var t = App.Main!.DispatcherQueue.CreateTimer();
-        t.Interval = TimeSpan.FromSeconds(10);
+        t.Interval = TimeSpan.FromSeconds(3);
         t.IsRepeating = false;
         t.Tick += (_, _) => Updater.Confirm();
         t.Start();
