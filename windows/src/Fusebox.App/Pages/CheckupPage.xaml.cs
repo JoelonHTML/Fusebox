@@ -1,407 +1,354 @@
-using System.Diagnostics;
+using Fusebox.App.Controls;
 using Fusebox.Core;
 using Fusebox.Core.Checkup;
-using Fusebox.Platform;
-using Fusebox.Platform.Checkup;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Navigation;
 using static Fusebox.Core.Strings;
 
 namespace Fusebox.App.Pages;
 
 /// <summary>
-/// Checkup: everything is read once, on background threads, when the page opens (or on Refresh). Nothing runs on a timer.
-/// Each card has its own ProgressRing; the score and "why is my PC slow" are recomputed whenever a card finishes.
+/// Checkup (§5): period picker, health score 1–10, five collapsible groups (Fluent Expanders, content built only when opened), tips,
+/// "Why is my PC slow?", cards, export bar. Reads the CSV logs and Windows' own history off the UI thread when the page opens, the period
+/// changes or Reload is pressed; the cached report shows instantly first. Nothing here runs on a timer.
 /// </summary>
 public sealed partial class CheckupPage : Page
 {
-    sealed class Section
+    sealed class Grp
     {
-        readonly ProgressRing ring = new() { Width = 16, Height = 16, Visibility = Visibility.Collapsed };
-        readonly StackPanel body = new() { Spacing = 8 };
-        int pending;
-        public Border Card { get; }
-
-        public Section(string title)
-        {
-            var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-            head.Children.Add(new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, FontSize = 16 });
-            head.Children.Add(ring);
-            var all = new StackPanel { Spacing = 8 };
-            all.Children.Add(head);
-            all.Children.Add(body);
-            Card = new Border { Child = all, Style = (Style)Application.Current.Resources["FuseboxCard"] };
-        }
-
-        public void Reset() { pending = 0; ring.IsActive = false; ring.Visibility = Visibility.Collapsed; }
-
-        public StackPanel Box() { var b = new StackPanel { Spacing = 6 }; body.Children.Add(b); return b; }
-
-        public void Loading(bool on)
-        {
-            pending = Math.Max(0, pending + (on ? 1 : -1));
-            ring.IsActive = pending > 0;
-            ring.Visibility = pending > 0 ? Visibility.Visible : Visibility.Collapsed;
-        }
+        public string Id = "";
+        public Expander Exp = null!;
+        public TextBlock Summary = null!;
+        public bool Built;
     }
 
-    readonly Section secHealth = new(L("Health")), secWhy = new(L("Why is my PC slow?")), secCrash = new(L("Crashes & stability")),
-        secStartup = new(L("Startup apps")), secStorage = new(L("Startup & storage")), secSsd = new(L("SSD health")),
-        secSleep = new(L("Sleep & wake")), secBattery = new(L("Battery health"));
-    readonly StackPanel healthBox, whyBox, stabBox, crashBox, startupBox, driveBox, foldersBox, diskBox, ssdBox, sleepBox, reqBox, batteryBox;
-    readonly Button scanBtn, ssdBtn, reqBtn;
+    static readonly string[] Order = ["perf", "power", "stability", "storage", "history"];
 
-    CancellationTokenSource cts = new(), scanCts = null!;
-    CheckupInputs inputs = new();
-    CheckupResult? result;
-    int busy;
-    bool scanning;
+    Period period = Period.Today;
+    CheckupBundle? bundle;
+    CancellationTokenSource? cts;
+    bool visible, suppress, groupsDirty = true;
+    HashSet<string> open = [];
+    readonly Dictionary<string, Grp> groups = [];
 
     public CheckupPage()
     {
         InitializeComponent();
-        Loaded += (_, _) => Loc.Apply(Header);
-
-        healthBox = secHealth.Box(); whyBox = secWhy.Box();
-        stabBox = secCrash.Box(); crashBox = secCrash.Box();
-        startupBox = secStartup.Box();
-        driveBox = secStorage.Box(); foldersBox = secStorage.Box();
-        diskBox = secSsd.Box(); ssdBox = secSsd.Box();
-        sleepBox = secSleep.Box(); reqBox = secSleep.Box();
-        batteryBox = secBattery.Box();
-
-        scanBtn = Btn(L("Scan large folders"), OnScan);
-        ssdBtn = Btn(L("Check SSD health"), OnSsd);
-        reqBtn = Btn(L("What keeps it awake?"), OnRequests);
-        secStorage.Card.Child.AsStack().Children.Insert(1, scanBtn);   // under the title, above the drive list
-        secSsd.Card.Child.AsStack().Children.Add(ssdBtn);
-        secSleep.Card.Child.AsStack().Children.Add(reqBtn);
-        secStartup.Card.Child.AsStack().Children.Add(Btn(L("Open Startup apps"), () => Open("ms-settings:startupapps")));
-
-        foreach (var s in new[] { secHealth, secWhy, secCrash, secStartup, secStorage, secSsd, secSleep, secBattery }) Sections.Children.Add(s.Card);
-        secBattery.Card.Visibility = Visibility.Collapsed;   // shown only when this PC has a battery
+        foreach (var p in new[] { Period.Today, Period.Yesterday, Period.Week })
+            PeriodBar.Items.Add(new SelectorBarItem { Text = Periods.Title(p), Tag = Periods.Id(p) });
+        ToolTipService.SetToolTip(ReloadBtn, L("Reload"));
+        AutomationProperties.SetName(ReloadBtn, L("Reload"));
     }
 
-    protected override void OnNavigatedTo(NavigationEventArgs e) => LoadAll();
-    protected override void OnNavigatedFrom(NavigationEventArgs e) => cts.Cancel();
+    bool HasBattery => App.Live.Last is { } l && double.IsFinite(l.Battery);
 
-    void OnRefresh(object sender, RoutedEventArgs e) => LoadAll();
+    // ---- lifecycle ----
 
-    void OnCopy(object sender, RoutedEventArgs e)
+    protected override void OnNavigatedTo(NavigationEventArgs e)
     {
-        if (result == null) return;
-        var dp = new Windows.ApplicationModel.DataTransfer.DataPackage();
-        dp.SetText(HealthScore.Report(result, DateTime.Now));
-        Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
-        CopyBtn.Content = L("Copied");
-        _ = ResetCopy();
+        visible = true;
+        var start = Prefs.Str("checkupStart");
+        period = e.Parameter is string pid ? Periods.Parse(pid, Period.Today)
+            : Periods.Parse(start == "last" ? Prefs.Str("analysisPeriod") : start, Period.Today);
+        suppress = true;
+        PeriodBar.SelectedItem = PeriodBar.Items.First(i => (string)i.Tag == Periods.Id(period));
+        suppress = false;
+        open = LoadOpen();
+        ThemeService.ThemeChanged += OnTheme;
+        bundle = CheckupData.Cached(period);
+        Render();
+        _ = ReloadAsync();
     }
 
-    async Task ResetCopy() { await Task.Delay(2000); CopyBtn.Content = L("Copy report"); }
-
-    // ---- loading ----
-
-    void LoadAll()
+    protected override void OnNavigatedFrom(NavigationEventArgs e)
     {
-        cts.Cancel();
-        cts = new();
-        var ct = cts.Token;
-        inputs = new();
-        busy = 0;
-        scanning = false;
-        foreach (var sec in new[] { secHealth, secWhy, secCrash, secStartup, secStorage, secSsd, secSleep, secBattery }) sec.Reset();
-        foldersBox.Children.Clear();
-        ssdBox.Children.Clear();
-        reqBox.Children.Clear();
-        scanBtn.Content = L("Scan large folders");
-        ssdBtn.IsEnabled = reqBtn.IsEnabled = true;
-
-        // Live numbers (read-only use of LiveHub, no extra measuring).
-        var live = App.Live;
-        var cpu = Metrics.Stats(Metrics.Values(live.History.Recent, Metric.Cpu));
-        if (double.IsFinite(cpu.Avg)) { inputs.CpuAvg = cpu.Avg; inputs.CpuMax = cpu.Max; }
-        if (live.Last is { RamTotal: > 0 } s && !double.IsNaN(s.RamUsed)) inputs.RamPct = s.RamUsed * 100 / s.RamTotal;
-
-        Start(secHealth, healthBox, ct, () => (CheckupReader.PendingReboot(), CheckupReader.UptimeDays(), CheckupReader.CommitPct()),
-            r => { inputs.PendingReboot = r.Item1; inputs.UptimeDays = r.Item2; inputs.CommitPct = double.IsNaN(r.Item3) ? null : r.Item3; });
-
-        Start(secCrash, crashBox, ct, EventLogReader.Crashes, events =>
-        {
-            var st = CheckupParsers.Summarize(events);
-            inputs.Crashes = st;
-            crashBox.Children.Add(Text(L("Last 30 days") + $": {st.AppCrashes} " + L("app crashes") + $", {st.Hangs} " + L("hangs") + $", {st.BlueScreens} " + L("blue screens") + $", {st.UnexpectedShutdowns} " + L("unexpected shutdowns")));
-            foreach (var e in events.Take(10)) crashBox.Children.Add(Row(null, $"{e.Time.ToString("g", Culture)} · {Describe(e)}"));
-        });
-        Start(secCrash, stabBox, ct, CheckupReader.StabilityIndex, si =>
-        {
-            inputs.StabilityIndex = si;
-            if (si is { } v) stabBox.Children.Add(Text(L("Windows stability index: %.1f out of 10", v)));
-        });
-
-        Start(secStartup, startupBox, ct, CheckupReader.StartupItems, RenderStartup);
-
-        Start(secStorage, driveBox, ct, CheckupReader.Drives, drives =>
-        {
-            inputs.Drives = drives;
-            foreach (var d in drives)
-            {
-                driveBox.Children.Add(Text(L("Drive %@: %@ free of %@", d.Name, Fmt.Bytes(d.Free), Fmt.Bytes(d.Total))));
-                driveBox.Children.Add(new ProgressBar { Minimum = 0, Maximum = 100, Value = 100 - d.FreePct });
-            }
-        });
-
-        Start(secSsd, diskBox, ct, CheckupReader.Disks, disks =>
-        {
-            inputs.Disks = disks;
-            foreach (var d in disks) diskBox.Children.Add(Row(Health(d.Health), $"{d.Name} · {(d.MediaType == "" ? "?" : d.MediaType)} · {d.Health} · {Fmt.Bytes(d.Size)}"));
-            if (disks.Count == 0) diskBox.Children.Add(Text(L("No disk information available")));
-        });
-
-        Start(secSleep, sleepBox, ct, EventLogReader.Sleep, events =>
-        {
-            var sl = CheckupParsers.SummarizeSleep(events);
-            inputs.Sleep = sl;
-            sleepBox.Children.Add(Text(L("Last 7 days") + $": {sl.Sleeps} " + L("times to sleep") + $", {sl.Wakes.Count} " + L("wake-ups") + $", {sl.NightWakes} " + L("at night (00:00–06:00)")));
-            foreach (var w in sl.Wakes.Take(10)) sleepBox.Children.Add(Row(w.Time.Hour < 6 ? Level.Warning : null, $"{w.Time.ToString("g", Culture)} · " + L("woke up: %@", w.Source)));
-        });
-
-        Start(secBattery, batteryBox, ct, CheckupReader.Battery, b =>
-        {
-            inputs.Battery = b;
-            if (b == null) return;
-            secBattery.Card.Visibility = Visibility.Visible;
-            batteryBox.Children.Add(b.Percent is { } p
-                ? Row(p < 60 ? Level.Bad : p < 80 ? Level.Warning : Level.Good, L("Your battery holds %lld%% of its original charge", p))
-                : Text(L("This PC doesn't report its battery capacity")));
-            if (b.Cycles is { } c) batteryBox.Children.Add(Text(L("%lld charge cycles", c)));
-            batteryBox.Children.Add(Btn(L("Open Battery"), () => Open("ms-settings:batterysaver")));
-        });
-
-        Recompute();
+        visible = false;
+        cts?.Cancel();
+        DiskCard.Cancel();       // leaving the page cancels the disk scan and the speed test (the temp file is deleted)
+        SsdSpeedCard.Cancel();
+        ThemeService.ThemeChanged -= OnTheme;
     }
 
-    /// <summary>Runs work off the UI thread, then apply on it. A failing reader only fills its own card with the error.</summary>
-    async void Start<T>(Section sec, StackPanel box, CancellationToken ct, Func<T> work, Action<T> apply)
+    void OnTheme() { groupsDirty = true; if (visible) Render(); }
+
+    static HashSet<string> LoadOpen()
     {
-        busy++;
-        sec.Loading(true);
-        box.Children.Clear();
+        // Default: only Performance. "-" = the user closed every group.
+        if (!Prefs.Store.IsSet("checkupOpen")) return ["perf"];
+        return [.. Prefs.List("checkupOpen").Where(Order.Contains)];
+    }
+
+    void SaveOpen() => Prefs.Set("checkupOpen", open.Count == 0 ? "-" : string.Join(',', Order.Where(open.Contains)));
+
+    // ---- period and reload ----
+
+    void OnPeriod(SelectorBar sender, SelectorBarSelectionChangedEventArgs args)
+    {
+        if (suppress || sender.SelectedItem?.Tag is not string id) return;
+        period = Periods.Parse(id, Period.Today);
+        Prefs.Set("analysisPeriod", id);
+        bundle = CheckupData.Cached(period);   // the cached report shows at once, then the reload replaces it
+        groupsDirty = bundle == null || groupsDirty;
+        Render();
+        _ = ReloadAsync();
+    }
+
+    void OnReload(object sender, RoutedEventArgs e) => _ = ReloadAsync();
+
+    async Task ReloadAsync()
+    {
+        cts?.Cancel();
+        var mine = cts = new();
+        var p = period;
+        ReloadBtn.IsEnabled = false; ReloadBtn.Opacity = 0.4;
         try
         {
-            var r = await Task.Run(work, ct);
-            if (ct.IsCancellationRequested) return;
-            apply(r);
-        }
-        catch (OperationCanceledException) { return; }
-        catch (Exception e)
-        {
-            if (!ct.IsCancellationRequested) box.Children.Add(Text(L("Couldn't read this: %@", e.Message)));
-        }
-        finally { if (!ct.IsCancellationRequested) { sec.Loading(false); busy--; } }
-        if (!ct.IsCancellationRequested) Recompute();
-    }
-
-    // ---- score ----
-
-    void Recompute()
-    {
-        var r = result = HealthScore.Evaluate(inputs);
-        ScoreText.Text = r.Score.ToString();
-        ScoreText.Foreground = Br(r.Score >= 80 ? Level.Good : r.Score >= 50 ? Level.Warning : Level.Bad);
-        ScoreSub.Text = busy > 0 ? L("Measuring…") : L("out of 100");
-
-        healthBox.Children.Clear();
-        foreach (var c in r.Categories)
-        {
-            healthBox.Children.Add(new TextBlock { Text = $"{c.Name} — {c.Score}", FontWeight = FontWeights.SemiBold, Margin = new Thickness(0, 6, 0, 0) });
-            foreach (var f in c.Findings) healthBox.Children.Add(Row(f.Level, f.Text));
-            foreach (var t in c.Tips) healthBox.Children.Add(TipRow(t));
-        }
-
-        whyBox.Children.Clear();
-        foreach (var line in HealthScore.WhySlow(inputs)) whyBox.Children.Add(Row(null, line));
-        // Tips with a Settings page are shown once in the Health card above; the buttons here are the same ones.
-    }
-
-    UIElement TipRow(Tip t)
-    {
-        var text = Text("→ " + t.Text);
-        if (t.Uri == null) return text;
-        var sp = new StackPanel { Spacing = 4 };
-        sp.Children.Add(text);
-        sp.Children.Add(Btn(t.Button ?? L("Open Settings"), () => Open(t.Uri)));
-        return sp;
-    }
-
-    // ---- startup ----
-
-    void RenderStartup(List<StartupItem> items)
-    {
-        inputs.StartupEnabled = items.Count(i => i.Enabled);
-        if (items.Count == 0) startupBox.Children.Add(Text(L("No startup apps found")));
-        for (int idx = 0; idx < items.Count; idx++)
-        {
-            int at = idx;
-            var item = items[idx];
-            var name = new StackPanel();
-            name.Children.Add(new TextBlock { Text = item.Name, TextTrimming = TextTrimming.CharacterEllipsis });
-            name.Children.Add(new TextBlock { Text = item.Command, Opacity = 0.6, FontSize = 11, TextTrimming = TextTrimming.CharacterEllipsis });
-            UIElement trail;
-            if (item.CanToggle)
-            {
-                var ts = new ToggleSwitch { IsOn = item.Enabled, OnContent = "", OffContent = "", MinWidth = 0 };
-                bool revert = false;
-                ts.Toggled += async (_, _) =>
-                {
-                    if (revert) { revert = false; return; }
-                    bool on = ts.IsOn;
-                    try
-                    {
-                        if (!await Task.Run(() => CheckupReader.SetStartupEnabled(items[at], on))) return;
-                        items[at] = items[at] with { Enabled = on };
-                        inputs.StartupEnabled = items.Count(i => i.Enabled);
-                        Recompute();
-                    }
-                    catch (Exception) { revert = true; ts.IsOn = !on; }
-                };
-                trail = ts;
-            }
-            else trail = new TextBlock { Text = item.Enabled ? L("All users") : L("All users · off"), Opacity = 0.6, VerticalAlignment = VerticalAlignment.Center };
-            startupBox.Children.Add(Line(null, name, trail));
-        }
-    }
-
-    // ---- large folders ----
-
-    async void OnScan()
-    {
-        if (scanning) { scanCts.Cancel(); return; }
-        scanning = true;
-        scanCts = CancellationTokenSource.CreateLinkedTokenSource(cts.Token);
-        var sc = scanCts;
-        scanBtn.Content = L("Cancel");
-        foldersBox.Children.Clear();
-        secStorage.Loading(true);
-        try
-        {
-            var rows = await LargeFolders.ScanAsync(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), sc.Token);
-            foreach (var r in rows)
-            {
-                var open = Btn(L("Show in Explorer"), () => Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "\"" + r.Path + "\"")));
-                foldersBox.Children.Add(Line(null, Text($"{r.Path}   {Fmt.Bytes(r.Bytes)}"), open));
-            }
+            var b = await CheckupData.LoadAsync(p, mine.Token);
+            if (mine.IsCancellationRequested || !visible || p != period) return;
+            bundle = b;
+            Render();
         }
         catch (OperationCanceledException) { }
-        catch (Exception e) { foldersBox.Children.Add(Text(L("Couldn't read this: %@", e.Message))); }
-        finally
-        {
-            sc.Dispose();
-            scanning = false;
-            scanBtn.Content = L("Scan large folders");
-            secStorage.Loading(false);
-        }
+        finally { if (!mine.IsCancellationRequested) { ReloadBtn.IsEnabled = true; ReloadBtn.Opacity = 1; } }
     }
 
-    // ---- admin-only checks (UAC prompt, only on click) ----
+    // ---- rendering ----
 
-    async void OnSsd()
+    CardCtx NewCtx() => new()
     {
-        ssdBtn.IsEnabled = false;
-        secSsd.Loading(true);
-        ssdBox.Children.Clear();
-        try
-        {
-            var json = await Elevated.RequestAsync("ssd");
-            if (json == null) { ssdBox.Children.Add(Text(L("Couldn't check: administrator permission was declined."))); return; }
-            var (disks, counters, err) = CheckupParsers.ParseSsd(json);
-            if (err != null) { ssdBox.Children.Add(Text(L("Couldn't read this: %@", err))); return; }
-            inputs.Ssd = counters;
-            if (disks.Count > 0) inputs.Disks = disks;
-            if (counters.Count == 0) ssdBox.Children.Add(Text(L("This disk doesn't report wear or temperature.")));
-            foreach (var c in counters)
-            {
-                var parts = new List<string>();
-                if (c.Wear is { } w) parts.Add(L("Wear: %lld%%", w));
-                if (c.Temperature is { } t) parts.Add($"{Math.Round(t)} °C");
-                if (c.ReadErrors is { } re) parts.Add(L("Read errors: %lld", re));
-                if (c.PowerOnHours is { } h) parts.Add(L("Powered on: %lld hours", h));
-                ssdBox.Children.Add(Row(c.Wear is >= 90 ? Level.Bad : c.Wear is >= 70 ? Level.Warning : Level.Good, L("Disk %@", c.Disk) + ": " + string.Join(" · ", parts)));
-            }
-            Recompute();
-        }
-        catch (Exception e) { ssdBox.Children.Add(Text(L("Couldn't read this: %@", e.Message))); }
-        finally { secSsd.Loading(false); ssdBtn.IsEnabled = true; }
-    }
-
-    async void OnRequests()
-    {
-        reqBtn.IsEnabled = false;
-        secSleep.Loading(true);
-        reqBox.Children.Clear();
-        try
-        {
-            var text = await Elevated.RequestAsync("requests");
-            if (text == null) { reqBox.Children.Add(Text(L("Couldn't check: administrator permission was declined."))); return; }
-            var reqs = CheckupParsers.ParsePowercfgRequests(text);
-            if (reqs.Count == 0) reqBox.Children.Add(Text(L("Nothing is keeping your PC awake right now.")));
-            foreach (var r in reqs) reqBox.Children.Add(Row(Level.Warning, $"{r.Section}: {r.Who}" + (r.Reason.Length > 0 ? $" — {r.Reason}" : "")));
-            reqBox.Children.Add(Btn(L("Open Power & sleep"), () => Open("ms-settings:powersleep")));
-        }
-        catch (Exception e) { reqBox.Children.Add(Text(L("Couldn't read this: %@", e.Message))); }
-        finally { secSleep.Loading(false); reqBtn.IsEnabled = true; }
-    }
-
-    // ---- small UI helpers ----
-
-    static string Describe(EventInfo e) => (e.Provider, e.Id) switch
-    {
-        ("Application Error", 1000) => L("%@ crashed", e.At(0) ?? "?") + (e.At(3) is { Length: > 0 } m ? $" ({m})" : ""),
-        ("Application Hang", 1002) => L("%@ stopped responding", e.At(0) ?? "?"),
-        ("Microsoft-Windows-WER-SystemErrorReporting", 1001) => L("Blue screen (Windows restarted after a serious error)"),
-        ("Microsoft-Windows-Kernel-Power", 41) => L("Unexpected shutdown (power loss or crash)"),
-        _ => e.Provider,
+        R = bundle!.Report, Tips = bundle.Tips, Root = XamlRoot, Alive = () => visible, Width = Math.Max(ActualWidth - 32, 0), Summaries = RefreshSummaries,
+        Hide = [.. Prefs.List("checkupHide")], HasBattery = HasBattery,
     };
 
-    static Level Health(string h) => h is "Healthy" or "" ? Level.Good : h == "Warning" ? Level.Warning : Level.Bad;
-
-    static void Open(string uri) { try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri(uri)); } catch (Exception) { } }
-
-    Brush Br(Level l) => l switch { Level.Good => GoodSwatch.Fill, Level.Warning => WarnSwatch.Fill, _ => BadSwatch.Fill };
-
-    static TextBlock Text(string s) => new() { Text = s, TextWrapping = TextWrapping.Wrap };
-
-    static Button Btn(string content, Action click)
+    void Render()
     {
-        var b = new Button { Content = content };
-        b.Click += (_, _) => click();
-        return b;
+        ScoreHost.Children.Clear();
+        ExportHost.Children.Clear();
+        if (bundle == null)
+        {
+            // First open: the "Why is my PC slow?" card is usable at once, with a small spinner underneath.
+            GroupsHost.Children.Clear(); groups.Clear(); groupsDirty = true;
+            ScoreHost.Children.Add(CheckupCards.Why(new CardCtx { Root = XamlRoot, Alive = () => visible, Width = Math.Max(ActualWidth - 32, 0) }));
+            var ring = Ui.Spinner(); ring.HorizontalAlignment = HorizontalAlignment.Center; ring.Margin = new Thickness(0, 20, 0, 20);
+            ScoreHost.Children.Add(ring);
+            return;
+        }
+        var ctx = NewCtx();
+        if (ctx.Show("score")) ScoreHost.Children.Add(ScoreCard(bundle.Report));
+        if (groupsDirty) { BuildGroups(ctx); groupsDirty = false; }
+        else foreach (var g in groups.Values.Where(g => g.Exp.IsExpanded)) Fill(g, ctx);
+        RefreshSummaries();
+        if (!groups.ContainsKey("history")) ExportHost.Children.Add(ExportBar());
     }
 
-    /// <summary>A coloured dot (or none) and wrapping text.</summary>
-    UIElement Row(Level? l, string text)
+    UIElement ScoreCard(Report r)
     {
-        var dot = new TextBlock { Text = "●", FontSize = 10, VerticalAlignment = VerticalAlignment.Center, Opacity = l == null ? 0.3 : 1, Margin = new Thickness(0, 2, 0, 0) };
-        if (l is { } lv) dot.Foreground = Br(lv);
-        return Line(dot, Text(text), null);
+        var level = HealthScore.Level(r.Score);
+        var grid = new Grid { ColumnSpacing = 10 };
+        grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        grid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        var num = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+        var color = level is { } lv ? Ui.Tone(lv == 0 ? 3 : lv == 1 ? 1 : 2, false) : Ui.OnRow(true);
+        var score = Ui.Num(r.Score?.ToString() ?? "–", 40, color: Ui.Blocks ? Ui.OnRow() : color);
+        num.Children.Add(score);
+        var of = Ui.Num("/10", 14, secondary: true); of.VerticalAlignment = VerticalAlignment.Bottom; of.Margin = new Thickness(0, 0, 0, 8);
+        num.Children.Add(of);
+        grid.Children.Add(num);
+        var text = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        text.Children.Add(Ui.Label(L("Health"), 14, bold: true));
+        text.Children.Add(Ui.Label(r.Reason, 12, secondary: true));
+        var cmp = HealthScore.Compare(r.Score, r.PrevScore, Periods.PreviousName(r.Period));
+        if (cmp.Length > 0) text.Children.Add(Ui.Label(cmp, 11, secondary: true));
+        if (r.Minutes < 60) text.Children.Add(Ui.Label(L("Fusebox has only just started measuring. Windows' own history fills in Stability and Battery."), 11, secondary: true));
+        Grid.SetColumn(text, 1);
+        grid.Children.Add(text);
+        return Ui.Card(0, grid);
     }
 
-    static Grid Line(UIElement? lead, UIElement main, UIElement? trail)
-    {
-        var g = new Grid { ColumnSpacing = 8 };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        if (lead != null) { Grid.SetColumn((FrameworkElement)lead, 0); g.Children.Add(lead); }
-        Grid.SetColumn((FrameworkElement)main, 1); g.Children.Add(main);
-        if (trail != null) { Grid.SetColumn((FrameworkElement)trail, 2); g.Children.Add(trail); }
-        return g;
-    }
-}
+    // ---- groups (§5.2, §5.8) ----
 
-static class CheckupPageExtensions
-{
-    public static StackPanel AsStack(this UIElement? e) => (StackPanel)e!;
+    bool Visible(string id, CardCtx c) => id switch
+    {
+        "perf" => new[] { "tops", "busy", "peaks", "background" }.Any(c.Show),
+        "power" => new[] { "battery", "drain", "sleep", "awake", "health" }.Any(c.Show) && (c.HasBattery || c.Show("awake")),
+        "stability" => c.Show("crashes"),
+        "storage" => new[] { "startup", "disk", "ssdBench" }.Any(c.Show),
+        _ => c.Show("runtime") || c.Show("log"),
+    };
+
+    (string Title, string Glyph, bool Warn, string Summary) Info(string id, CardCtx c)
+    {
+        var r = c.R;
+        int tips = c.Tips.Count(t => t.Group == (id == "perf" ? "perf" : id));
+        string Join(IEnumerable<string> parts) => string.Join(" · ", (tips > 0 && c.Show("tips") ? [tips == 1 ? L("1 tip") : L("%lld tips", tips)] : Array.Empty<string>()).Concat(parts));
+        switch (id)
+        {
+            case "perf":
+                var busiest = r.TopCpu.FirstOrDefault(a => a.Name != "Windows");
+                return (L("Performance"), "", r.Busy.Count > 0, Join(new[]
+                {
+                    busiest != null ? L("%@ busiest", busiest.Name) : L("No app data yet"),
+                    r.Busy.Count == 0 ? "" : r.Busy.Count == 1 ? L("1 busy moment") : L("%lld busy moments", r.Busy.Count),
+                    r.Peaks.Count == 0 ? L("no peaks") : r.Peaks.Count == 1 ? L("1 peak") : L("%lld peaks", r.Peaks.Count),
+                }.Where(s => s.Length > 0)));
+            case "power":
+            {
+                var parts = new List<string>();
+                if (SleepCard.LastLoss is { } loss) parts.Add(L("lost %lld%% while asleep", loss));
+                if (BatteryHealthCard.Percent is { } p) parts.Add(L("%lld%% capacity", p));
+                if (BatteryHealthCard.Cycles is { } cy) parts.Add(L("%lld cycles", cy));
+                if (parts.Count == 0) parts.Add(L("What uses energy and what keeps your PC awake"));
+                return (c.HasBattery ? L("Battery & power") : L("Power"), c.HasBattery ? "" : "", BatteryHealthCard.Worn, Join(parts));
+            }
+            case "stability":
+            {
+                var k = r.Crashes;
+                var parts = new List<string>();
+                if (k.Crashed > 0) parts.Add(k.Crashed == 1 ? L("1 app crashed") : L("%lld apps crashed", k.Crashed));
+                if (k.Hung > 0) parts.Add(L("%lld stopped responding", k.Hung));
+                if (k.OutOfMemory > 0) parts.Add(L("out of memory %lld×", k.OutOfMemory));
+                if (parts.Count == 0) parts.Add(L("No crashes or hangs %@", r.When));
+                return (L("Stability"), "", k.Apps.Count > 0 || k.BlueScreens > 0, Join(parts));
+            }
+            case "storage":
+            {
+                var parts = new List<string>();
+                if (StartupCard.Count is { } n) parts.Add(L("%lld items start at login", n));
+                if (StartupCard.Orphans > 0) parts.Add(L("%lld left behind", StartupCard.Orphans));
+                parts.Add(L("%lld GB free", (long)DiskCard.FreeGb));
+                return (L("Startup & storage"), "", StartupCard.Orphans > 0 || DiskCard.Low, Join(parts));
+            }
+            default:
+                return (L("History & export"), "", false, Join([L("Measured %@ · %@", CheckupFmt.Duration(r.Minutes),
+                    r.Events.Count == 0 ? L("nothing unusual") : r.Events.Count == 1 ? L("1 event") : L("%lld events", r.Events.Count))]));
+        }
+    }
+
+    void BuildGroups(CardCtx c)
+    {
+        GroupsHost.Children.Clear();
+        groups.Clear();
+        foreach (var id in Order)
+        {
+            if (!Visible(id, c)) continue;
+            var (title, glyph, warn, summary) = Info(id, c);
+            var g = new Grp { Id = id };
+            var head = new Grid { ColumnSpacing = 10, Padding = new Thickness(0, 10, 0, 10) };
+            head.ColumnDefinitions.Add(new() { Width = new GridLength(22) });
+            head.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+            var icon = new FontIcon { Glyph = glyph, FontSize = Ui.T.Size(15), VerticalAlignment = VerticalAlignment.Center, Foreground = warn ? Ui.B("FuseboxWarn") : Ui.Blocks ? Ui.B("FuseboxText") : Ui.B("FuseboxAccent") };
+            head.Children.Add(icon);
+            var texts = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
+            var t = new TextBlock { Text = title, Foreground = Ui.B("FuseboxText"), FontWeight = FontWeights.Bold };
+            Look.Label(t, 15); t.FontWeight = FontWeights.Bold;
+            g.Summary = new TextBlock { Text = summary, Foreground = Ui.B(warn ? "FuseboxWarn" : "FuseboxSecondary"), TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
+            Look.Label(g.Summary, 11);
+            texts.Children.Add(t); texts.Children.Add(g.Summary);
+            Grid.SetColumn(texts, 1);
+            head.Children.Add(texts);
+            g.Exp = new Expander
+            {
+                Header = head, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+                BorderBrush = Ui.B("FuseboxLine"), BorderThickness = new Thickness(0, 1, 0, 0), CornerRadius = new CornerRadius(0), Padding = new Thickness(0),
+            };
+            g.Exp.IsExpanded = open.Contains(id);
+            AutomationProperties.SetName(g.Exp, $"{title}, {(g.Exp.IsExpanded ? L("expanded") : L("collapsed"))}");
+            var gid = id;
+            g.Exp.Expanding += (_, _) => { open.Add(gid); SaveOpen(); AutomationProperties.SetName(g.Exp, $"{Info(gid, NewCtx()).Title}, {L("expanded")}"); if (!g.Built && bundle != null) Fill(g, NewCtx()); };
+            g.Exp.Collapsed += (_, _) => { open.Remove(gid); SaveOpen(); g.Exp.Content = null; g.Built = false; AutomationProperties.SetName(g.Exp, $"{Info(gid, NewCtx()).Title}, {L("collapsed")}"); };
+            groups[id] = g;
+            GroupsHost.Children.Add(g.Exp);
+            if (g.Exp.IsExpanded) Fill(g, c);
+        }
+    }
+
+    /// <summary>Builds the content of an open group (tips first, then the cards). Collapsed groups are never built.</summary>
+    void Fill(Grp g, CardCtx c)
+    {
+        var s = new StackPanel { Spacing = 10, Margin = new Thickness(0, 0, 0, 12) };
+        if (CheckupCards.TipsList(c, g.Id) is { } tips) s.Children.Add(tips);
+        double w = c.Width;
+        switch (g.Id)
+        {
+            case "perf":
+                s.Children.Add(CheckupCards.Why(c));
+                if (c.Show("tops"))
+                {
+                    var tops = new TwoUp(388, w, 8);
+                    tops.Left.Children.Add(CheckupCards.Top(c, true)); tops.Right.Children.Add(CheckupCards.Top(c, false));
+                    s.Children.Add(tops);
+                }
+                var cols = new TwoUp(588, w);
+                if (c.Show("peaks")) cols.Left.Children.Add(CheckupCards.Peaks(c));
+                if (c.Show("busy")) cols.Right.Children.Add(CheckupCards.Busy(c));
+                if (c.Show("background")) cols.Right.Children.Add(CheckupCards.Background(c));
+                s.Children.Add(cols.Done());
+                break;
+            case "power":
+            {
+                var p = new TwoUp(588, w);
+                if (c.Show("health") && c.HasBattery) p.Left.Children.Add(BatteryHealthCard.Build(c));
+                else if (c.Show("battery") && c.HasBattery) p.Left.Children.Add(CheckupCards.BatterySimple(c));
+                if (c.Show("drain") && c.HasBattery) p.Left.Children.Add(DrainCard.Build(c));
+                if (c.Show("sleep") && c.HasBattery) p.Right.Children.Add(SleepCard.Build(c));
+                if (c.Show("awake")) p.Right.Children.Add(AwakeCard.Build(c));
+                s.Children.Add(p.Done());
+                break;
+            }
+            case "stability":
+            {
+                var p = new TwoUp(588, w);
+                p.Left.Children.Add(CheckupCards.Crashes(c));
+                p.Right.Children.Add(CheckupCards.Stability(c));
+                s.Children.Add(p.Done());
+                break;
+            }
+            case "storage":
+            {
+                var p = new TwoUp(588, w);
+                if (c.Show("startup")) p.Left.Children.Add(StartupCard.Build(c));
+                if (c.Show("disk")) { p.Right.Children.Add(DiskCard.Build(c)); p.Right.Children.Add(SsdHealthCard.Build(c)); }
+                if (c.Show("ssdBench")) p.Right.Children.Add(SsdSpeedCard.Build(c));
+                s.Children.Add(p.Done());
+                break;
+            }
+            default:
+            {
+                var p = new TwoUp(588, w);
+                if (c.Show("runtime")) p.Left.Children.Add(CheckupCards.Running(c));
+                if (c.Show("log")) p.Right.Children.Add(CheckupCards.Log(c));
+                s.Children.Add(p.Done());
+                s.Children.Add(ExportBar());
+                break;
+            }
+        }
+        g.Exp.Content = s;
+        g.Built = true;
+    }
+
+    /// <summary>Header summaries from what is already known (report and caches); nothing is loaded for them.</summary>
+    void RefreshSummaries()
+    {
+        if (bundle == null || !visible) return;
+        var c = NewCtx();
+        foreach (var g in groups.Values)
+        {
+            var (_, _, warn, summary) = Info(g.Id, c);
+            g.Summary.Text = summary;
+            g.Summary.Foreground = Ui.B(warn ? "FuseboxWarn" : "FuseboxSecondary");
+        }
+    }
+
+    // ---- export bar (§5.9) ----
+
+    UIElement ExportBar()
+    {
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 0, 0) };
+        bar.Children.Add(Ui.Pill(L("Share report…"), Ui.B("FuseboxSecondary"), () => { if (bundle != null && XamlRoot != null) _ = CheckupShare.ShareAsync(XamlRoot, bundle); }));
+        bar.Children.Add(Ui.Pill(L("Export CSV"), Ui.B("FuseboxSecondary"), () => { if (XamlRoot != null) _ = CheckupShare.ExportCsvAsync(XamlRoot, period); }));
+        return bar;
+    }
 }
