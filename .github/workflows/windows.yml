@@ -144,14 +144,20 @@ jobs:
             windows/shots/
           if-no-files-found: ignore
 
+  # The maker must create the GitHub Environment "release" (Settings > Environments) with themselves as required reviewer,
+  # and put FUSEBOX_WIN_SIGNING_KEY in that Environment's secrets (not as a repository secret).
   release:
-    if: github.event_name == 'workflow_dispatch' && inputs.release
+    # Only from the windows branch; add `|| github.ref == 'refs/heads/main'` once Windows moves to main.
+    if: github.event_name == 'workflow_dispatch' && inputs.release && github.ref == 'refs/heads/windows'
+    environment: release
     needs: [meta, build]
     runs-on: ubuntu-latest
     permissions:
       contents: write
     steps:
       - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
       - uses: actions/setup-dotnet@v4
         with:
           global-json-file: windows/global.json
@@ -163,17 +169,19 @@ jobs:
         with:
           name: Fusebox-Windows-arm64
           path: dist
-      - name: Sign (ECDSA P-256, key from repo secret) and check against the key built into the app
+      - name: Build the signer (no secret in this step)
+        run: dotnet build windows/tools/Fusebox.Sign -c Release -o signer
+      - name: Sign (ECDSA P-256, key from the release Environment secret) and check against the key built into the app
         env:
           FUSEBOX_WIN_SIGNING_KEY: ${{ secrets.FUSEBOX_WIN_SIGNING_KEY }}
         run: |
           if [ -z "$FUSEBOX_WIN_SIGNING_KEY" ]; then
-            echo "::error::Repository secret FUSEBOX_WIN_SIGNING_KEY is missing. Create it with: dotnet run --project windows/tools/Fusebox.Sign keygen (and put the PUBLIC key in Signing.ReleaseKey)."
+            echo "::error::Environment secret FUSEBOX_WIN_SIGNING_KEY (Environment release) is missing. Create it with: dotnet run --project windows/tools/Fusebox.Sign keygen (and put the PUBLIC key in Signing.ReleaseKey)."
             exit 1
           fi
           for a in x64 arm64; do
-            dotnet run --project windows/tools/Fusebox.Sign -c Release -- sign "dist/Fusebox-Windows-$a.zip"
-            dotnet run --project windows/tools/Fusebox.Sign -c Release -- verify "dist/Fusebox-Windows-$a.zip" "dist/Fusebox-Windows-$a.zip.sig"
+            dotnet signer/Fusebox.Sign.dll sign "dist/Fusebox-Windows-$a.zip"
+            dotnet signer/Fusebox.Sign.dll verify "dist/Fusebox-Windows-$a.zip" "dist/Fusebox-Windows-$a.zip.sig"
           done
       - name: Create release (never latest, the Mac updater reads releases/latest)
         env:

@@ -290,7 +290,7 @@ public sealed partial class CheckupPage : Page
             var rows = await LargeFolders.ScanAsync(Environment.GetFolderPath(Environment.SpecialFolder.UserProfile), sc.Token);
             foreach (var r in rows)
             {
-                var open = Btn(L("Show in Explorer"), () => Process.Start(new ProcessStartInfo("explorer.exe", "\"" + r.Path + "\"")));
+                var open = Btn(L("Show in Explorer"), () => Process.Start(new ProcessStartInfo(Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Windows), "explorer.exe"), "\"" + r.Path + "\"")));
                 foldersBox.Children.Add(Line(null, Text($"{r.Path}   {Fmt.Bytes(r.Bytes)}"), open));
             }
         }

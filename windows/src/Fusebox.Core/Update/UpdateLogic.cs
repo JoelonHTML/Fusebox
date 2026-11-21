@@ -81,8 +81,8 @@ public static class UpdateLogic
         return o;
     }
 
-    /// <summary>Newest non-draft win- release that has Fusebox-Windows-&lt;arch&gt;.zip and .sig, downloadable only from this repo.</summary>
-    public static UpdateOffer? PickUpdate(string? json, string arch, string repo = Repo)
+    /// <summary>Newest non-draft win- release (not <c>skipBuild</c>, a build that failed to install) that has Fusebox-Windows-&lt;arch&gt;.zip and .sig, downloadable only from this repo.</summary>
+    public static UpdateOffer? PickUpdate(string? json, string arch, string repo = Repo, long skipBuild = 0)
     {
         if (Array(json) is not { } a) return null;
         UpdateOffer? best = null;
@@ -91,7 +91,7 @@ public static class UpdateLogic
         {
             if (n is not JsonObject j || j["tag_name"]?.GetValue<string>() is not { } tag || !tag.StartsWith(TagPrefix)) continue;
             if (j["draft"]?.GetValue<bool>() == true || BuildNumber(tag) is not { } build) continue;
-            if (best != null && build <= best.Build) continue;
+            if (build == skipBuild || (best != null && build <= best.Build)) continue;
             if (j["assets"] is not JsonArray assets) continue;
             var zip = Asset(assets, zipName, repo);
             var sig = Asset(assets, zipName + ".sig", repo);

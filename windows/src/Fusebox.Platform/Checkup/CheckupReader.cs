@@ -10,16 +10,6 @@ public static class CheckupReader
 {
     const string CurrentVersion = @"Software\Microsoft\Windows\CurrentVersion";
 
-    /// <summary>
-    /// Registers the admin-only tasks. MUST run at the start of Program.Main, before the --elevated dispatch:
-    /// the elevated process is a fresh start of this exe and does not run any static constructors of the UI.
-    /// </summary>
-    public static void Register()
-    {
-        Elevated.Tasks["ssd"] = () => PowerShell(SsdScript);
-        Elevated.Tasks["requests"] = () => Run("powercfg.exe", "/requests");
-    }
-
     // ---- processes ----
 
     public static string Run(string file, string args, int timeoutMs = 30000, Encoding? enc = null)
@@ -35,12 +25,8 @@ public static class CheckupReader
     {
         script = "$ProgressPreference='SilentlyContinue';[Console]::OutputEncoding=[Text.Encoding]::UTF8;" + script;
         var b64 = Convert.ToBase64String(Encoding.Unicode.GetBytes(script));
-        return Run("powershell.exe", "-NoProfile -NonInteractive -EncodedCommand " + b64, timeoutMs);
+        return Run(Elevated.PowerShellExe, "-NoProfile -NonInteractive -EncodedCommand " + b64, timeoutMs);
     }
-
-    const string SsdScript = "$d=@(Get-PhysicalDisk | Select-Object FriendlyName,MediaType,HealthStatus,Size);"
-        + "$r=@(Get-PhysicalDisk | Get-StorageReliabilityCounter | Select-Object DeviceId,Wear,Temperature,ReadErrorsTotal,PowerOnHours);"
-        + "[pscustomobject]@{disks=$d;rel=$r} | ConvertTo-Json -Depth 4";
 
     // ---- stability index (cached 10 minutes) ----
 
