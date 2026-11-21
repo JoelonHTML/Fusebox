@@ -107,7 +107,7 @@ public sealed partial class ThemedRow : UserControl
             case RowStyle.Plain:
                 b.Background = null; b.BorderBrush = null; b.BorderThickness = new Thickness(0); break;
             case RowStyle.Cards:
-                b.Background = ThemeService.Brush("FuseboxCard"); b.BorderBrush = ThemeService.Brush("FuseboxLine"); b.BorderThickness = new Thickness(1); break;
+                b.Background = ThemeService.Brush("FuseboxCardFill"); b.BorderBrush = ThemeService.Brush("FuseboxLine"); b.BorderThickness = new Thickness(1); break;
             case RowStyle.Blocks:
                 b.Background = ThemeService.Brush($"FuseboxBlock{(index % 5 + 5) % 5}"); b.BorderBrush = null; b.BorderThickness = new Thickness(0); break;
             default:

@@ -43,7 +43,7 @@ live and how a page uses them. Section numbers like §3.2 refer to FEATURES.md.
   (themed: theme bg or Mica for Liquid Glass, RequestedTheme, caption colors; `themed: false` = system look for Settings/Setup).
   Never Acrylic behind live numbers.
 - **Brush keys** (mutated in place, so `{ThemeResource Key}` in XAML or `ThemeService.Brush("Key")` in code stay live):
-  `FuseboxBg, FuseboxText, FuseboxSecondary, FuseboxAccent, FuseboxWarn, FuseboxDanger, FuseboxGood, FuseboxLine, FuseboxCard,
+  `FuseboxBg, FuseboxText, FuseboxSecondary, FuseboxAccent, FuseboxWarn, FuseboxDanger, FuseboxGood, FuseboxLine, FuseboxCardFill,
   FuseboxOnRow, FuseboxOnRowSecondary, FuseboxLabel, FuseboxGraph, FuseboxGraphFill (15 %), FuseboxGraphSecond (50 %),
   FuseboxAccentSoft (accent 15 %: selected tab, chips), FuseboxHover (secondary 12 %), FuseboxBlock0…4, FuseboxGlassFill, FuseboxGlassRim`.
   Text on a themed row uses `FuseboxOnRow`/`FuseboxOnRowSecondary` (white on Color blocks). v1 names (`FuseboxCardBackground`,

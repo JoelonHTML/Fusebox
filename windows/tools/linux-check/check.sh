@@ -2,6 +2,7 @@
 # Type-check the WinUI app's C# on Linux. XAML itself is only validated by the Windows CI.
 cd "$(dirname "$0")"
 mkdir -p obj
+python3 xaml_lint.py ../../src/Fusebox.App || echo "XAML lint errors above"
 python3 xaml_stubs.py ../../src/Fusebox.App obj/XamlStubs.g.cs
 dotnet build -nologo -v q 2>&1 | python3 -c "
 import sys,re

@@ -14,7 +14,7 @@
     <SolidColorBrush x:Key="FuseboxDanger" Color="#FF6159" />
     <SolidColorBrush x:Key="FuseboxGood" Color="#59D999" />
     <SolidColorBrush x:Key="FuseboxLine" Color="#2B3B4F" />
-    <SolidColorBrush x:Key="FuseboxCard" Color="#263347" />
+    <SolidColorBrush x:Key="FuseboxCardFill" Color="#263347" />
     <!-- Derived -->
     <SolidColorBrush x:Key="FuseboxOnRow" Color="#F2F5F7" />
     <SolidColorBrush x:Key="FuseboxOnRowSecondary" Color="#99A6B8" />
@@ -49,7 +49,7 @@
     <CornerRadius x:Key="FuseboxCardCornerRadius">8</CornerRadius>
     <Thickness x:Key="FuseboxCardPadding">16,12,16,12</Thickness>
     <Style x:Key="FuseboxCard" TargetType="Border">
-        <Setter Property="Background" Value="{ThemeResource FuseboxCard}" />
+        <Setter Property="Background" Value="{ThemeResource FuseboxCardFill}" />
         <Setter Property="BorderBrush" Value="{ThemeResource FuseboxLine}" />
         <Setter Property="BorderThickness" Value="1" />
         <Setter Property="CornerRadius" Value="{StaticResource FuseboxCardCornerRadius}" />

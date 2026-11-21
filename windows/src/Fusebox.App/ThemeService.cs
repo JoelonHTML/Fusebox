@@ -83,7 +83,7 @@ public static class ThemeService
         Set("FuseboxBg", t.Bg ?? Argb.Clear);
         Set("FuseboxText", t.Text); Set("FuseboxSecondary", t.Secondary); Set("FuseboxAccent", t.Accent);
         Set("FuseboxWarn", t.Warn); Set("FuseboxDanger", t.Danger); Set("FuseboxGood", t.Good);
-        Set("FuseboxLine", t.Line); Set("FuseboxCard", t.Card);
+        Set("FuseboxLine", t.Line); Set("FuseboxCardFill", t.Card);
         Set("FuseboxOnRow", t.OnRow()); Set("FuseboxOnRowSecondary", t.OnRow(true)); Set("FuseboxLabel", t.LabelColor);
         Set("FuseboxGraph", t.Graph); Set("FuseboxGraphFill", t.Graph.WithAlpha(0.15)); Set("FuseboxGraphSecond", t.Graph.WithAlpha(0.5));
         Set("FuseboxAccentSoft", t.Accent.WithAlpha(0.15)); Set("FuseboxHover", t.Secondary.WithAlpha(0.12));
