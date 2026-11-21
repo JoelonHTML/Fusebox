@@ -13,11 +13,14 @@ var o = new JsonObject
     ["cpu"] = s.Cpu, ["cores"] = s.Cores.Length, ["ramUsed"] = s.RamUsed, ["ramTotal"] = s.RamTotal,
     ["netIn"] = s.NetIn, ["netOut"] = s.NetOut,
 };
-Console.WriteLine(o.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 var failures = new List<string>();
+ProcessesProbe.Run(o, failures);
+CheckupProbe.Run(o, failures);
+DockedProbe.Run(o, failures);
 if (LiveSampler.IfRowSize != 1352) failures.Add($"MIB_IF_ROW2 size {LiveSampler.IfRowSize}");
 if (double.IsNaN(s.Cpu) || s.Cores.Length == 0) failures.Add("cpu");
 if (!(s.RamTotal > 0)) failures.Add("ram");
 if (double.IsNaN(s.NetIn)) failures.Add("net");
+Console.WriteLine(o.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
 if (failures.Count > 0) { Console.Error.WriteLine("FAILED: " + string.Join(", ", failures)); return 1; }
 return 0;

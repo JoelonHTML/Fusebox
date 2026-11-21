@@ -17,7 +17,8 @@ public sealed partial class Sparkline : Grid
 
     public Sparkline()
     {
-        line.Stroke = (Brush)Application.Current.Resources["FuseboxGraphStroke"];
+        line.Stroke = Application.Current.Resources.TryGetValue("FuseboxGraphStroke", out var b) && b is Brush brush
+            ? brush : new SolidColorBrush(Microsoft.UI.Colors.DodgerBlue);
         Children.Add(line);
         SizeChanged += (_, _) => Draw();
     }
