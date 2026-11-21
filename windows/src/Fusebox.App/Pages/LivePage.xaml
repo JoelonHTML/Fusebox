@@ -1,11 +1,18 @@
 <Page x:Class="Fusebox.App.Pages.LivePage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <ScrollViewer>
-        <StackPanel Padding="24" Spacing="12">
-            <TextBlock Text="Live" Style="{StaticResource TitleTextBlockStyle}" />
-            <Grid x:Name="Cards" ColumnSpacing="12" RowSpacing="12" SizeChanged="Cards_SizeChanged" />
-            <TextBlock x:Name="Hint" Text="Drag the window larger for more columns" Opacity="0.6" Style="{StaticResource CaptionTextBlockStyle}" />
+    <!-- Live (FEATURES.md §3): padding 12 / 0 / 12 / 10, optional advice line, then the card grid. Rows share the height; never scrolls.
+         The grid is built in code (LivePage.Arrange) from LiveLayout.Compute. -->
+    <Grid x:Name="Root" Padding="12,0,12,10" SizeChanged="Root_SizeChanged">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <StackPanel x:Name="Advice" Orientation="Horizontal" Spacing="6" MinHeight="20" Margin="0,0,0,4" Visibility="Collapsed">
+            <Ellipse x:Name="AdviceDot" Width="7" Height="7" VerticalAlignment="Center" />
+            <TextBlock x:Name="AdviceText" VerticalAlignment="Center" TextWrapping="NoWrap" TextTrimming="CharacterEllipsis"
+                       Foreground="{ThemeResource FuseboxSecondary}" />
         </StackPanel>
-    </ScrollViewer>
+        <Grid x:Name="Cards" Grid.Row="1" ColumnSpacing="10" />
+    </Grid>
 </Page>
