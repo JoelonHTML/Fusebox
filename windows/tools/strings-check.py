@@ -142,6 +142,8 @@ def main():
     for lang in LANGS:
         mac = load(os.path.join(MAC, f"{lang}.lproj", "Localizable.strings"))
         win = load(os.path.join(WIN, "Strings", f"{lang}.strings"))
+        import glob as _g   # per-area files: Strings/<area>.<lang>.strings
+        for f in sorted(_g.glob(os.path.join(WIN, "Strings", f"*.{lang}.strings"))): win.update(load(f))
         table = {**mac, **win}
         missing = sorted(k for k in keys if not table.get(k))
         mism = sorted(k for k in keys if table.get(k) and phs(k) != phs(table[k]))

@@ -25,13 +25,21 @@ public static partial class Strings
         Language = lang;
         var t = new Dictionary<string, string>();
         if (lang != "en") Merge(t, Read($"mac.{lang}.strings"));
-        Merge(t, Read($"win.{lang}.strings"));
+        MergeWindows(t, lang);
         table = t;
     }
 
     static void Merge(Dictionary<string, string> into, Dictionary<string, string> from)
     {
         foreach (var (k, v) in from) into[k] = v;
+    }
+
+    /// <summary>windows/Strings/&lt;lang&gt;.strings plus per-area files windows/Strings/&lt;area&gt;.&lt;lang&gt;.strings (all win over the Mac).</summary>
+    static void MergeWindows(Dictionary<string, string> t, string lang)
+    {
+        Merge(t, Read($"win.{lang}.strings"));
+        foreach (var n in typeof(Strings).Assembly.GetManifestResourceNames().Where(n => n.StartsWith("win.") && n.EndsWith($".{lang}.strings") && n != $"win.{lang}.strings").Order())
+            Merge(t, Read(n));
     }
 
     static Dictionary<string, string> Read(string resource)
@@ -113,7 +121,7 @@ public static partial class Strings
     {
         var t = new Dictionary<string, string>();
         Merge(t, Read($"mac.{lang}.strings"));
-        Merge(t, Read($"win.{lang}.strings"));
+        MergeWindows(t, lang);
         return t;
     }
 }

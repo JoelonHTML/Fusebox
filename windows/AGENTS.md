@@ -16,5 +16,6 @@ Plan and API choices: `windows/PLAN.md` (Dutch). Windows 11 only, x64 + arm64, .
 - No new NuGet packages without a strong reason. Small, boring code. One unit test per non-trivial parser/logic.
 - Build check on Linux (no WinUI there): `export PATH=/root/.dotnet:$PATH; cd windows && dotnet test tests/Fusebox.Tests && dotnet build tools/Fusebox.Probe`. The WinUI project only builds on Windows (CI), so be extra careful with XAML: valid WinUI 3 (Microsoft.UI.Xaml) syntax, matching x:Name fields, `xmlns:c="using:Fusebox.App.Controls"`.
 - C# type check of the WinUI app on Linux (catches compile errors before CI; XAML itself is only checked on Windows): `windows/tools/linux-check/check.sh`.
+- Translations: put new strings for your area in `windows/Strings/<area>.<lang>.strings` (nl, de, fr, es; e.g. `live.nl.strings`) so parallel work never collides; `windows/Strings/<lang>.strings` is shared. Check: `python3 tools/strings-check.py`.
 - Interactive stdin commands hang the shell: never run `cat > file` without a heredoc.
 - No personal data (names, emails) in code.

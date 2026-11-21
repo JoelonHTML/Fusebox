@@ -10,7 +10,7 @@
     <EmbeddedResource Include="../../../Resources/de.lproj/Localizable.strings" LogicalName="mac.de.strings" />
     <EmbeddedResource Include="../../../Resources/fr.lproj/Localizable.strings" LogicalName="mac.fr.strings" />
     <EmbeddedResource Include="../../../Resources/es.lproj/Localizable.strings" LogicalName="mac.es.strings" />
-    <EmbeddedResource Include="../../Strings/*.strings" LogicalName="win.%(Filename).strings" />
+    <EmbeddedResource Include="../../Strings/*.strings" LogicalName="win.%(Filename).strings" WithCulture="false" />   <!-- "live.nl.strings" is not a satellite resource -->
     <EmbeddedResource Include="../../../Resources/oui.tsv" LogicalName="oui.tsv" />
   </ItemGroup>
 </Project>
