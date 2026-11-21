@@ -6,7 +6,7 @@
         <MicaBackdrop />
     </Window.SystemBackdrop>
     <NavigationView x:Name="Nav" PaneDisplayMode="LeftCompact" IsBackButtonVisible="Collapsed"
-                    IsSettingsVisible="True" SelectionChanged="Nav_SelectionChanged">
+                    IsSettingsVisible="True" SelectionChanged="Nav_SelectionChanged" ItemInvoked="Nav_ItemInvoked">
         <NavigationView.MenuItems>
             <NavigationViewItem Content="Live" Tag="Live"><NavigationViewItem.Icon><FontIcon Glyph="&#xE9D9;" /></NavigationViewItem.Icon></NavigationViewItem>
             <NavigationViewItem Content="Processes" Tag="Processes"><NavigationViewItem.Icon><FontIcon Glyph="&#xE8FD;" /></NavigationViewItem.Icon></NavigationViewItem>

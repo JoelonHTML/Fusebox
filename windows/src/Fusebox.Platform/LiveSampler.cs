@@ -5,17 +5,33 @@ using static Fusebox.Platform.Native;
 namespace Fusebox.Platform;
 
 /// <summary>Reads one <see cref="LiveSample"/>. Keeps the previous counters to turn totals into rates. Not thread-safe: one caller.</summary>
-public sealed unsafe class LiveSampler
+public sealed unsafe partial class LiveSampler : IDisposable
 {
+    readonly PdhQuery pdh = new();
+    readonly GpuReader gpu;
+    readonly DiskReader disk;
+    readonly BatteryReader battery = new();
+    static HardwareInfo? hardware;
+
+    /// <summary>CPU/GPU names and P/E cores; read once, on first use (registry + one API call).</summary>
+    public static HardwareInfo Hardware => hardware ??= CpuInfo.Read();
+
+    public LiveSampler() { gpu = new GpuReader(pdh); disk = new DiskReader(pdh); }
+    public void Dispose() { pdh.Dispose(); battery.Dispose(); }
+
     SYSTEM_PROCESSOR_PERFORMANCE_INFORMATION[] prevCpu = [];
     (ulong inB, ulong outB, long ticks) prevNet;
 
     public LiveSample Sample()
     {
         var s = new LiveSample();
+        pdh.Collect();                 // once per tick for GPU + disk
         ReadCpu(s);
         ReadMemory(s);
         ReadNet(s);
+        gpu.Read(s);
+        disk.Read(s);
+        battery.Read(s);
         return s;
     }
 
@@ -49,7 +65,25 @@ public sealed unsafe class LiveSampler
         if (!GlobalMemoryStatusEx(ref m)) return;
         s.RamTotal = m.ullTotalPhys;
         s.RamUsed = m.ullTotalPhys - m.ullAvailPhys;
+        var pi = new PERFORMANCE_INFORMATION { cb = (uint)sizeof(PERFORMANCE_INFORMATION) };
+        if (GetPerformanceInfo(&pi, pi.cb))
+        {
+            s.CommitUsed = (double)pi.CommitTotal * pi.PageSize;
+            s.CommitLimit = (double)pi.CommitLimit * pi.PageSize;
+        }
     }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct PERFORMANCE_INFORMATION
+    {
+        public uint cb;
+        public nuint CommitTotal, CommitLimit, CommitPeak, PhysicalTotal, PhysicalAvailable, SystemCache, KernelTotal, KernelPaged, KernelNonpaged, PageSize;
+        public uint HandleCount, ProcessCount, ThreadCount;
+    }
+
+    [LibraryImport("psapi.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static partial bool GetPerformanceInfo(PERFORMANCE_INFORMATION* info, uint size);
 
     public static int IfRowSize => sizeof(MIB_IF_ROW2);
 
