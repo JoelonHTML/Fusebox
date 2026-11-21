@@ -7,7 +7,7 @@ internal static unsafe partial class Native
     public const int SystemProcessInformation = 5;
     public const int STATUS_INFO_LENGTH_MISMATCH = unchecked((int)0xC0000004);
 
-    public const uint PROCESS_TERMINATE = 0x0001, PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, SYNCHRONIZE = 0x00100000;
+    public const uint PROCESS_TERMINATE = 0x0001, PROCESS_SET_INFORMATION = 0x0200, PROCESS_QUERY_LIMITED_INFORMATION = 0x1000, SYNCHRONIZE = 0x00100000;
 
     [LibraryImport("kernel32.dll", SetLastError = true)]
     public static partial IntPtr OpenProcess(uint access, [MarshalAs(UnmanagedType.Bool)] bool inherit, int pid);
@@ -26,6 +26,25 @@ internal static unsafe partial class Native
     [LibraryImport("kernel32.dll", EntryPoint = "QueryFullProcessImageNameW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool QueryFullProcessImageName(IntPtr h, uint flags, char* buffer, ref uint size);
+
+    // --- Efficiency mode (EcoQoS) ---
+    [StructLayout(LayoutKind.Sequential)]
+    public struct PROCESS_POWER_THROTTLING_STATE { public uint Version, ControlMask, StateMask; }
+
+    public const int ProcessPowerThrottling = 4;
+    public const uint PROCESS_POWER_THROTTLING_EXECUTION_SPEED = 1, IDLE_PRIORITY_CLASS = 0x40, NORMAL_PRIORITY_CLASS = 0x20;
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetProcessInformation(IntPtr h, int infoClass, ref PROCESS_POWER_THROTTLING_STATE info, uint size);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool GetProcessInformation(IntPtr h, int infoClass, ref PROCESS_POWER_THROTTLING_STATE info, uint size);
+
+    [LibraryImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetPriorityClass(IntPtr h, uint priorityClass);
 
     // --- windows ---
     [LibraryImport("user32.dll")]
@@ -51,6 +70,18 @@ internal static unsafe partial class Native
     [LibraryImport("user32.dll", EntryPoint = "PostMessageW")]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static partial bool PostMessage(IntPtr hwnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool IsIconic(IntPtr hwnd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool ShowWindow(IntPtr hwnd, int cmd);
+
+    [LibraryImport("user32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static partial bool SetForegroundWindow(IntPtr hwnd);
 
     [LibraryImport("dwmapi.dll")]
     public static partial int DwmGetWindowAttribute(IntPtr hwnd, uint attr, out int value, int size);

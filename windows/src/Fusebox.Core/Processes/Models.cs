@@ -2,8 +2,8 @@ namespace Fusebox.Core.Processes;
 
 public enum AppKind { App, Background, Windows }
 
-/// <summary>One row of NtQuerySystemInformation(SystemProcessInformation). Times are 100 ns units (FILETIME-style).</summary>
-public readonly record struct ProcSample(int Pid, int ParentPid, string Name, long CpuTime, long CreateTime, long WorkingSet, int Threads);
+/// <summary>One row of NtQuerySystemInformation(SystemProcessInformation). Times are 100 ns units (FILETIME-style); ReadBytes/WriteBytes are cumulative I/O transfer counts.</summary>
+public readonly record struct ProcSample(int Pid, int ParentPid, string Name, long CpuTime, long CreateTime, long WorkingSet, int Threads, long ReadBytes = 0, long WriteBytes = 0);
 
 /// <summary>A user-visible item: an app with all its helper processes rolled up, a background program, or "Windows".</summary>
 public sealed class AppGroup
@@ -18,6 +18,9 @@ public sealed class AppGroup
     public double Gpu { get; set; }          // % of the busiest engine
     public long Ram { get; set; }            // bytes (private working set)
     public int Threads { get; set; }
+    public double DiskRead { get; set; }     // bytes/s
+    public double DiskWrite { get; set; }
+    public List<string> Parts { get; } = []; // up to 3 unique process names (for "including a, b, c")
     public long Started { get; set; }        // earliest FILETIME of the group
     public string Explanation { get; set; } = "";
     public bool CanStop { get; set; }

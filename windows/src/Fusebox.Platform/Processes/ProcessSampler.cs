@@ -13,7 +13,7 @@ public sealed unsafe class ProcessReader
 
     // SYSTEM_PROCESS_INFORMATION offsets on 64-bit (x64 and arm64 are identical). Checked by the probe (pid 4 must exist).
     const int NextEntry = 0, Threads = 4, WsPrivate = 8, CreateTime = 32, UserTime = 40, KernelTime = 48, ImageNameLen = 56, ImageNameBuf = 64,
-              Pid = 80, ParentPid = 88, WorkingSet = 144;
+              Pid = 80, ParentPid = 88, WorkingSet = 144, ReadTransfer = 232, WriteTransfer = 240;   // I/O bytes, cumulative
 
     public List<ProcSample> Read()
     {
@@ -40,7 +40,7 @@ public sealed unsafe class ProcessReader
                 if (ws <= 0) ws = *(long*)(e + WorkingSet);
                 if (pid == 0) name = "System Idle Process";
                 list.Add(new ProcSample(pid, (int)*(long*)(e + ParentPid), name, *(long*)(e + UserTime) + *(long*)(e + KernelTime),
-                    *(long*)(e + CreateTime), ws, *(int*)(e + Threads)));
+                    *(long*)(e + CreateTime), ws, *(int*)(e + Threads), *(long*)(e + ReadTransfer), *(long*)(e + WriteTransfer)));
                 uint next = *(uint*)(e + NextEntry);
                 if (next == 0) break;
                 e += next;
@@ -88,6 +88,18 @@ public static class ProcessControl
         return n;
     }
 
+    /// <summary>Brings the first window of these pids to the front (restoring it when minimized). False when none was found.</summary>
+    public static bool BringToFront(IReadOnlyCollection<int> pids)
+    {
+        foreach (var (hwnd, pid) in WindowScanner.Windows())
+        {
+            if (!pids.Contains(pid)) continue;
+            if (IsIconic(hwnd)) ShowWindow(hwnd, 9);   // SW_RESTORE
+            return SetForegroundWindow(hwnd);
+        }
+        return false;
+    }
+
     public static bool AllExited(IReadOnlyCollection<int> pids)
     {
         foreach (var pid in pids)
@@ -117,6 +129,43 @@ public static class ProcessControl
     }
 
     static bool ProcessAlive(int pid) => !AllExited([pid]);
+
+    /// <summary>Efficiency mode like Task Manager: EcoQoS (power throttling) plus idle priority; off restores the system default and normal priority.
+    /// Returns how many processes accepted it (protected or elevated ones refuse).</summary>
+    public static int SetEfficiency(IReadOnlyCollection<int> pids, bool on)
+    {
+        int ok = 0;
+        foreach (var pid in pids)
+        {
+            if (pid <= 4 || pid == Environment.ProcessId) continue;
+            var h = OpenProcess(PROCESS_SET_INFORMATION, false, pid);
+            if (h == 0) continue;
+            // ControlMask 0 = back to the system's own choice.
+            var st = new PROCESS_POWER_THROTTLING_STATE { Version = 1, ControlMask = on ? PROCESS_POWER_THROTTLING_EXECUTION_SPEED : 0, StateMask = on ? PROCESS_POWER_THROTTLING_EXECUTION_SPEED : 0 };
+            if (SetProcessInformation(h, ProcessPowerThrottling, ref st, 12)) { SetPriorityClass(h, on ? IDLE_PRIORITY_CLASS : NORMAL_PRIORITY_CLASS); ok++; }
+            CloseHandle(h);
+        }
+        return ok;
+    }
+
+    /// <summary>True when every process we may ask has EcoQoS switched on (false when none could be read).</summary>
+    public static bool IsEfficient(IReadOnlyCollection<int> pids)
+    {
+        int read = 0;
+        foreach (var pid in pids)
+        {
+            if (pid <= 4) continue;
+            var h = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid);
+            if (h == 0) continue;
+            var st = new PROCESS_POWER_THROTTLING_STATE { Version = 1 };
+            bool got = GetProcessInformation(h, ProcessPowerThrottling, ref st, 12);
+            CloseHandle(h);
+            if (!got) continue;
+            read++;
+            if ((st.ControlMask & st.StateMask & PROCESS_POWER_THROTTLING_EXECUTION_SPEED) == 0) return false;
+        }
+        return read > 0;
+    }
 }
 
 /// <summary>Exe path (cached per pid + create time) and friendly name/company/version from the file's version resource (cached per path).</summary>
@@ -171,6 +220,7 @@ public sealed class ProcessSampler : IDisposable
 {
     readonly ProcessReader reader = new();
     readonly CpuTracker cpu = new();
+    readonly DiskTracker disk = new();
     readonly AppMeta meta = new();
     readonly PdhQuery pdh = new();
     readonly int gpuCounter;
@@ -184,6 +234,7 @@ public sealed class ProcessSampler : IDisposable
         int cpus = Environment.ProcessorCount;
         long wall = (long)(Stopwatch.GetTimestamp() * (10_000_000.0 / Stopwatch.Frequency));
         var cpuMap = cpu.Update(procs, wall, cpus);
+        var diskMap = disk.Update(procs, wall);
 
         Dictionary<int, double> gpuMap = [];
         if (gpuCounter >= 0 && pdh.Collect())
@@ -200,7 +251,12 @@ public sealed class ProcessSampler : IDisposable
         meta.Forget(procs.Select(p => (p.Pid, p.CreateTime)).ToHashSet());
 
         var groups = AppGrouper.Group(procs, windowPids, pid => meta.PathOf(pid, createOf.GetValueOrDefault(pid)),
-            (path, img) => AppMeta.Describe(path, img).Name, cpuMap, gpuMap, Environment.ProcessId);
+            (path, img) => AppMeta.Describe(path, img).Name, cpuMap, gpuMap, Environment.ProcessId, diskMap);
+
+        // "Windows itself" = the leftover: busy CPU (100 − idle) and used memory minus what the apps account for.
+        var mem = new MEMORYSTATUSEX { dwLength = (uint)Marshal.SizeOf<MEMORYSTATUSEX>() };
+        double used = GlobalMemoryStatusEx(ref mem) ? mem.ullTotalPhys - mem.ullAvailPhys : double.NaN;
+        AppGrouper.AddRemainder(groups, cpuMap.TryGetValue(0, out var idle) && cpu.Warm ? 100 - idle : double.NaN, used);
 
         int self = Environment.ProcessId;
         long ownRam = procs.FirstOrDefault(p => p.Pid == self).WorkingSet;

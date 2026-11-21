@@ -1,26 +1,5 @@
 namespace Fusebox.Core.Processes;
 
-/// <summary>What the search box does: matches running apps, plus installed apps that are not running. Pure, for tests.</summary>
-public static class ProcessSearch
-{
-    /// <summary>All words of the query must occur in the name (case-insensitive). Empty query matches everything.</summary>
-    public static bool Matches(string name, string query)
-    {
-        foreach (var w in query.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries))
-            if (!name.Contains(w, StringComparison.CurrentCultureIgnoreCase)) return false;
-        return true;
-    }
-
-    /// <summary>Installed app names that match and are not already shown as running (no query = none).</summary>
-    public static List<string> NotRunning(IEnumerable<string> installed, IEnumerable<string> runningNames, string query)
-    {
-        if (string.IsNullOrWhiteSpace(query)) return [];
-        var running = new HashSet<string>(runningNames, StringComparer.CurrentCultureIgnoreCase);
-        return installed.Where(n => !running.Contains(n) && Matches(n, query)).Distinct(StringComparer.CurrentCultureIgnoreCase)
-            .OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase).ToList();
-    }
-}
-
 /// <summary>Per-app usage history kept in memory: the last hour for graphs, plus average and peak since Fusebox started. No disk.</summary>
 public sealed class AppHistory
 {
