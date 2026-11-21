@@ -213,4 +213,7 @@ jobs:
           cd dist
           gh release create "$TAG" Fusebox-Windows-*.zip* \
             --title "Fusebox for Windows $VERSION beta" --notes-file notes.md --latest=false --target "$GITHUB_SHA"
-          gh release view "$TAG" --json tagName,isLatest,isPrerelease,assets --jq '{tag: .tagName, latest: .isLatest, assets: [.assets[].name]}'
+          gh release view "$TAG" --json tagName,assets --jq '{tag: .tagName, assets: [.assets[].name]}'
+          latest=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name)
+          echo "latest release (must stay the Mac one): $latest"
+          case "$latest" in win-*) echo '::error::A Windows release became latest'; exit 1;; esac

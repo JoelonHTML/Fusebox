@@ -51,43 +51,17 @@ Measurements are saved in `Documents\Fusebox` as CSV (one small file per day). N
 
 ## For the maker: releasing
 
-### One-time: create the signing key
-
-Updates are signed with an ECDSA P-256 key. The private key goes into a secret of a GitHub Environment named **`release`**; the public key is built into the app. Do this once, on a Mac with openssl.
-
-1. **Create the private key** and keep it out of the repo:
-
-   ```bash
-   openssl genpkey -algorithm EC -pkeyopt ec_paramgen_curve:P-256 -out fusebox-win.pem
-   openssl pkcs8 -topk8 -nocrypt -in fusebox-win.pem -outform DER | base64
-   ```
-
-   First create the Environment (GitHub › Settings › Environments › New environment, name **`release`**) with yourself as **required reviewer**. Copy the output into an **Environment secret** named **`FUSEBOX_WIN_SIGNING_KEY`** in that Environment (not a repository secret, so no other workflow or branch can read it). Each release run then waits for your approval.
-
-2. **Get the public key** and put it in `ReleaseKey` in `windows/src/Fusebox.Core/Update/Signing.cs`, replacing the development key that is there now:
-
-   ```bash
-   openssl pkey -in fusebox-win.pem -pubout -outform DER | base64
-   ```
-
-3. **Keep `fusebox-win.pem` private**, for example in Keychain or a password manager. Never commit it.
-
-Alternative with .NET, which prints both keys: `dotnet run --project windows/tools/Fusebox.Sign keygen`.
-
-Releases only run from the `windows` branch. Until `ReleaseKey` matches the secret, the release job fails at its verify step.
-
 ### Each release
 
-1. Set the version in `windows/Directory.Build.props` (`<Version>`), and commit and push to the `windows` branch (later `main`).
-2. Go to **Actions › Windows › Run workflow**, choose the branch, set **release** to true, and write the **notes** as bullets:
+1. Optionally set the version in `windows/Directory.Build.props` (`<Version>`).
+2. Write what's new in `windows/RELEASE_NOTES.md` as bullets (each `- Topic: what` appears in the update notification), commit and push to the `windows` branch.
+3. GitHub Actions builds x64 and Arm, runs all tests and the smoke test, and only then publishes **`Fusebox for Windows <version> beta`**. Like `release.sh` on the Mac: no other steps.
 
-   ```
-   - Live: faster graphs
-   - Network: Wi-Fi name shown after location access
-   ```
+### How updates are checked
 
-   Each `- Topic: what` bullet appears in the update notification.
-3. The release job signs both zips, checks the signatures against the built-in key, and publishes **`Fusebox for Windows <version> beta`**.
+The app installs an update only when the zip comes over https from this repository's Releases, its SHA-256 equals the digest GitHub publishes for that file, the build number in the exe matches the tag and is newer, and the exe is for the right CPU. If the new version doesn't start, the previous one is put back.
+
+Optional, stronger: a signing key. Put a public key (base64 SubjectPublicKeyInfo, ECDSA P-256) in `ReleaseKey` in `windows/src/Fusebox.Core/Update/Signing.cs` and the private key (base64 PKCS#8) as the secret `FUSEBOX_WIN_SIGNING_KEY` of the GitHub Environment `release`; from then on every update must also be signed, and releases without a signature are refused. `dotnet run --project windows/tools/Fusebox.Sign keygen` prints such a pair.
 
 Tags look like **`win-v<version>-beta-<build>`**, where the build number is the UTC time of the release (`yyyyMMddHHmm`). Releases are never marked "latest", so the Mac app, which reads "latest", isn't affected.
 
