@@ -1,6 +1,6 @@
 # Fusebox voor Windows — plan
 
-Status: **voorstel, wacht op akkoord.** Er is nog geen code geschreven. De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
+Status: **goedgekeurd** (besluiten in §6). De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
 
 Doel: dezelfde Fusebox (Clear · Light · Live) als native Windows 11-app, net zo zuinig als de Mac-versie: meten elke 2 s, geen doorlopende animaties, niets doen als het venster verborgen is.
 
@@ -23,7 +23,7 @@ Doel: dezelfde Fusebox (Clear · Light · Live) als native Windows 11-app, net z
 - Let op: **.NET 8 is sinds 10 november 2026 niet meer ondersteund**, daarom .NET 10 (LTS tot nov. 2028).
 - Native AOT (ondersteund door WinUI 3 sinds Windows App SDK 1.6): snellere start, minder geheugen, geen JIT.
 - Unpackaged (geen MSIX): installeren = map uitpakken in `%LOCALAPPDATA%\Programs\Fusebox`, geen beheerdersrechten, eenvoudig zelf bijwerken (zoals de Mac-zip).
-- Doelplatformen: Windows 11 (en Windows 10 22H2 waar het "gratis" werkt), **x64 en arm64** (Snapdragon-laptops: de Windows-tegenhanger van Apple Silicon).
+- Doelplatformen: **alleen Windows 11**, **x64 en arm64** (Snapdragon-laptops: de Windows-tegenhanger van Apple Silicon).
 
 ---
 
@@ -197,10 +197,10 @@ Elke mijlpaal: unit-tests voor de logica, selftest uitgebreid, CI-artifact om te
 
 ---
 
-## 6. Beslissingen die ik van je nodig heb
+## 6. Besluiten (21 nov. 2026)
 
-1. **Techniek:** akkoord met .NET 10 + WinUI 3, unpackaged, Native AOT, x64 + arm64?
-2. **Releases:** zelfde repo met `win-`-tags en `--latest=false` (+ eventueel de éénregelige Mac-wijziging voor de changelog), of een aparte release-repo?
-3. **Update-handtekening:** A (automatisch in CI) of B (tekenen op je Mac)?
-4. **Windows 10:** meenemen waar het vanzelf werkt, of alleen Windows 11?
-5. Daarna bouw ik mijlpaal 0.1, de workflow, en open ik een draft-PR "Fusebox for Windows (draft)".
+1. **Techniek:** .NET 10 + WinUI 3, unpackaged, self-contained, Native AOT, x64 + arm64. ✔
+2. **Releases:** zelfde repo, tags `win-v…`, assets `Fusebox-Windows-<arch>.zip`, altijd `--latest=false`, plus de éénregelige Mac-wijziging in `parseReleases` (Windows-releases niet in de Mac-changelog). ✔
+3. **Update-handtekening:** automatisch in CI (optie A), ECDSA P-256, eigen Windows-sleutel als secret. ✔
+4. **Alleen Windows 11** (build 22000+). ✔
+5. Alles in één keer bouwen (0.1 t/m 0.6), met agents.

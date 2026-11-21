@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Pure logic, no Windows APIs: builds and tests on Linux too. -->
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Mac translations are read as-is (never edited from here); Windows-only strings override them. -->
+    <EmbeddedResource Include="../../../Resources/nl.lproj/Localizable.strings" LogicalName="mac.nl.strings" />
+    <EmbeddedResource Include="../../../Resources/de.lproj/Localizable.strings" LogicalName="mac.de.strings" />
+    <EmbeddedResource Include="../../../Resources/fr.lproj/Localizable.strings" LogicalName="mac.fr.strings" />
+    <EmbeddedResource Include="../../../Resources/es.lproj/Localizable.strings" LogicalName="mac.es.strings" />
+    <EmbeddedResource Include="../../Strings/*.strings" LogicalName="win.%(Filename).strings" />
+    <EmbeddedResource Include="../../../Resources/oui.tsv" LogicalName="oui.tsv" />
+  </ItemGroup>
+</Project>

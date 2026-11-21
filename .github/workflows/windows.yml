@@ -1,0 +1,86 @@
+name: Windows
+
+# Only the Windows app: never runs for Mac-only changes.
+on:
+  push:
+    branches: [windows]
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  pull_request:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: x64
+            os: windows-latest
+          - arch: arm64
+            os: windows-11-arm
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
+
+      - name: Unit tests
+        run: dotnet test tests/Fusebox.Tests -c Release
+
+      - name: Probe (every reader on this real Windows machine)
+        run: |
+          dotnet run --project tools/Fusebox.Probe -c Release | Tee-Object probe.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Publish (Native AOT, self-contained)
+        run: dotnet publish src/Fusebox.App -c Release -r win-${{ matrix.arch }} -p:Platform=${{ matrix.arch }} -o out/Fusebox
+
+      - name: Smoke test (starts, stays up, screenshot)
+        run: |
+          $p = Start-Process out/Fusebox/Fusebox.exe -PassThru
+          Start-Sleep -Seconds 15
+          if ($p.HasExited) { Write-Error "Fusebox exited with code $($p.ExitCode)"; exit 1 }
+          $p.Refresh()
+          "Working set: {0:N0} MB, CPU time after 15 s: {1:N2} s" -f ($p.WorkingSet64 / 1MB), $p.TotalProcessorTime.TotalSeconds | Tee-Object smoke.txt
+          try {
+            Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+            $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+            $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+            [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+            $bmp.Save("$PWD/screenshot.png")
+          } catch { Write-Warning "No screenshot: $_" }
+          Stop-Process -Id $p.Id -Force
+
+      - name: Zip
+        run: Compress-Archive -Path out/Fusebox -DestinationPath Fusebox-Windows-${{ matrix.arch }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fusebox-Windows-${{ matrix.arch }}
+          path: windows/Fusebox-Windows-${{ matrix.arch }}.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostics-${{ matrix.arch }}
+          path: |
+            windows/probe.json
+            windows/smoke.txt
+            windows/screenshot.png
+          if-no-files-found: ignore

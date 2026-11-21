@@ -1,0 +1,13 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/Fusebox.Core/Fusebox.Core.csproj" />
+    <Project Path="src/Fusebox.Platform/Fusebox.Platform.csproj" />
+    <Project Path="src/Fusebox.App/Fusebox.App.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/Fusebox.Tests/Fusebox.Tests.csproj" />
+  </Folder>
+  <Folder Name="/tools/">
+    <Project Path="tools/Fusebox.Probe/Fusebox.Probe.csproj" />
+  </Folder>
+</Solution>

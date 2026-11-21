@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Windows readers (P/Invoke). Compiles on Linux thanks to EnableWindowsTargeting; runs only on Windows. -->
+  <PropertyGroup>
+    <TargetFramework>$(WinTfm)</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsAotCompatible>true</IsAotCompatible>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fusebox.Core/Fusebox.Core.csproj" />
+  </ItemGroup>
+</Project>
