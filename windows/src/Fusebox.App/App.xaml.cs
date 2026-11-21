@@ -51,7 +51,9 @@ public partial class App : Application
     /// </summary>
     static void SmokeTour()
     {
-        var items = MainWindow.Tabs.Select(t => t.Tag).Append("Settings").ToList();
+        // Pass 1: default size, system (light) appearance. Pass 2: wide window, dark appearance, plus Settings › Appearance.
+        var tabs = MainWindow.Tabs.Select(t => t.Tag).ToList();
+        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").ToList();
         var report = new System.Text.StringBuilder();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         long lastBeat = 0, worst = 0;
@@ -61,7 +63,20 @@ public partial class App : Application
         lastBeat = clock.ElapsedMilliseconds;
         beat.Start();
         int i = 0;
-        string Shows(string tag) => tag == "Settings" ? SettingsWindow.Current?.CurrentPage ?? "no Settings window" : Main.CurrentPage;
+        string Shows(string tag) => tag.StartsWith("Settings") ? SettingsWindow.Current?.CurrentPage ?? "no Settings window" : tag == "wide-dark" ? "-" : Main.CurrentPage;
+        void Go(string tag)
+        {
+            if (tag == "wide-dark")
+            {
+                SettingsWindow.Current?.Close();
+                Prefs.Set("appearanceMode", "dark");
+                Main.AppWindow.Resize(new Windows.Graphics.SizeInt32(1000, 680));
+                Main.AppWindow.Move(new Windows.Graphics.PointInt32(10, 10));
+                Main.Activate();
+            }
+            else if (tag.StartsWith("Settings:")) SettingsWindow.Open(tag[9..]);
+            else Main.Open(tag);
+        }
         var t = Main.DispatcherQueue.CreateTimer();
         t.Interval = TimeSpan.FromSeconds(20);   // first 20 s on Live: the workflow measures idle CPU there
         t.Tick += (_, _) =>
@@ -72,7 +87,7 @@ public partial class App : Application
             if (++i < items.Count)
             {
                 long t0 = clock.ElapsedMilliseconds;
-                Main.Open(items[i]);
+                Go(items[i]);
                 report.Append($"{items[i]}: opened at {t0 / 1000.0:0.0} s, open {clock.ElapsedMilliseconds - t0} ms; ");
                 lastBeat = clock.ElapsedMilliseconds;
                 return;
