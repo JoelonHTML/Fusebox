@@ -1,20 +1,21 @@
-<!-- Shared look. Pages use these keys only, so the Settings page can swap styles (Glass, Minimal light, Color blocks, Instrument, Terminal)
-     by replacing this dictionary's values at runtime. -->
+<!-- Shared look. Pages use these keys only; Theming.Apply swaps styles (Glass, Minimal light, Color blocks, Instrument, Terminal)
+     by changing the brush colors / values below at runtime. ThemeDictionaries must stay FIRST (XAML compiler rule WMC0035).
+     Brushes are concrete SolidColorBrush objects (never aliases of system brushes) so they can be mutated safely. -->
 <ResourceDictionary xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
                     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
     <ResourceDictionary.ThemeDictionaries>
         <ResourceDictionary x:Key="Default">
-            <StaticResource x:Key="FuseboxCardBackground" ResourceKey="CardBackgroundFillColorDefaultBrush" />
-            <StaticResource x:Key="FuseboxCardBorder" ResourceKey="CardStrokeColorDefaultBrush" />
-            <StaticResource x:Key="FuseboxGraphStroke" ResourceKey="AccentFillColorDefaultBrush" />
+            <SolidColorBrush x:Key="FuseboxCardBackground" Color="#14FFFFFF" />
+            <SolidColorBrush x:Key="FuseboxCardBorder" Color="#1FFFFFFF" />
+            <SolidColorBrush x:Key="FuseboxGraphStroke" Color="#4CC2FF" />
             <SolidColorBrush x:Key="FuseboxWarning" Color="#F7B500" />
             <SolidColorBrush x:Key="FuseboxBad" Color="#E5484D" />
             <SolidColorBrush x:Key="FuseboxGood" Color="#30A46C" />
         </ResourceDictionary>
         <ResourceDictionary x:Key="Light">
-            <StaticResource x:Key="FuseboxCardBackground" ResourceKey="CardBackgroundFillColorDefaultBrush" />
-            <StaticResource x:Key="FuseboxCardBorder" ResourceKey="CardStrokeColorDefaultBrush" />
-            <StaticResource x:Key="FuseboxGraphStroke" ResourceKey="AccentFillColorDefaultBrush" />
+            <SolidColorBrush x:Key="FuseboxCardBackground" Color="#B3FFFFFF" />
+            <SolidColorBrush x:Key="FuseboxCardBorder" Color="#14000000" />
+            <SolidColorBrush x:Key="FuseboxGraphStroke" Color="#005FB8" />
             <SolidColorBrush x:Key="FuseboxWarning" Color="#B07A00" />
             <SolidColorBrush x:Key="FuseboxBad" Color="#CE2C31" />
             <SolidColorBrush x:Key="FuseboxGood" Color="#218358" />

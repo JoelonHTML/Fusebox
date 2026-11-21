@@ -1,7 +1,95 @@
 <Page x:Class="Fusebox.App.Pages.SettingsPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
       xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel Padding="24" Spacing="12">
-        <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
-    </StackPanel>
+    <ScrollViewer>
+        <StackPanel Padding="24" Spacing="16" MaxWidth="760" HorizontalAlignment="Left">
+            <TextBlock Text="Settings" Style="{StaticResource TitleTextBlockStyle}" />
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Style" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ComboBox x:Name="ThemeBox" Header="Style" MinWidth="240" />
+                    <ComboBox x:Name="ModeBox" Header="Mode" MinWidth="240" />
+                    <ComboBox x:Name="FontBox" Header="Font" MinWidth="240" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Language" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ComboBox x:Name="LanguageBox" Header="Language" MinWidth="240" />
+                    <Button x:Name="RestartButton" Content="Restart Fusebox" Visibility="Collapsed" Click="Restart_Click" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Measurements" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Turn measurements on or off. Use the arrows to change the order." Opacity="0.7" TextWrapping="Wrap" />
+                    <StackPanel x:Name="MetricsHost" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Window" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ToggleSwitch x:Name="TrayToggle" Header="Show the icon in the system tray" />
+                    <ToggleSwitch x:Name="LoginToggle" Header="Open at login" />
+                    <ToggleSwitch x:Name="HotkeyToggle" Header="Keyboard shortcut Ctrl+Alt+Win+F shows and hides Fusebox" />
+                    <TextBlock x:Name="HotkeyNote" Opacity="0.7" TextWrapping="Wrap" Visibility="Collapsed" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Notifications" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ToggleSwitch x:Name="NotifyToggle" Header="Show notifications" />
+                    <Button x:Name="TestButton" Content="Send test notification" Click="Test_Click" />
+                    <TextBlock Text="If Focus assist is on, Windows keeps these notifications quiet too." Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock x:Name="LowTitle" Text="Low impact" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <ComboBox x:Name="LowBox" Header="Low impact" MinWidth="240" />
+                    <TextBlock Text="Fusebox measures every 5 seconds instead of 2, without glass effects, and Windows runs it in Efficiency mode. Automatic: on in Energy saver, or on battery below 20%." Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="Privacy" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Fusebox always saves a small file per day on your PC, so Checkup can look back." Opacity="0.7" TextWrapping="Wrap" />
+                    <TextBlock x:Name="FolderText" />
+                    <Button Content="Open log folder" Click="OpenLogs_Click" />
+                    <ToggleSwitch x:Name="PingToggle" Header="Measure internet latency (ping)" />
+                    <TextBox x:Name="PingHost" Header="Measure to" MinWidth="240" HorizontalAlignment="Left" />
+                    <TextBlock x:Name="PingNote" Opacity="0.7" TextWrapping="Wrap" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="12">
+                    <TextBlock Text="About" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <TextBlock Text="Fusebox" FontWeight="SemiBold" />
+                    <TextBlock x:Name="VersionText" Opacity="0.7" />
+                    <TextBlock Text="A lightweight system monitor for your PC: live measurements, apps and advice." Opacity="0.7" TextWrapping="Wrap" />
+                    <ToggleSwitch x:Name="AutoToggle" Header="Update automatically" />
+                    <StackPanel Orientation="Horizontal" Spacing="12">
+                        <Button x:Name="CheckButton" Content="Check for updates" Click="Check_Click" />
+                        <TextBlock x:Name="UpdateStatus" VerticalAlignment="Center" Opacity="0.7" />
+                    </StackPanel>
+                    <Button Content="Run setup again" Click="Setup_Click" />
+                </StackPanel>
+            </Border>
+
+            <Border Style="{StaticResource FuseboxCard}">
+                <StackPanel Spacing="8">
+                    <TextBlock Text="What's new" Style="{StaticResource SubtitleTextBlockStyle}" />
+                    <StackPanel x:Name="ChangelogHost" Spacing="12" />
+                </StackPanel>
+            </Border>
+        </StackPanel>
+    </ScrollViewer>
 </Page>
