@@ -33,6 +33,7 @@ if (double.IsNaN(s.NetIn)) failures.Add("net");
 if (double.IsNaN(s.DiskRead) || !(s.DiskTotal > 0)) failures.Add("disk");
 if (LiveSampler.Hardware.CpuName.Length == 0 || LiveSampler.Hardware.PerformanceCores == 0) failures.Add("cpuinfo");
 // GPU counters and battery are optional on CI runners (VM): printed above, not checked.
-Console.WriteLine(o.ToJsonString(new JsonSerializerOptions { WriteIndented = true }));
+// NaN = "not on this PC" (CI VMs have no battery/GPU): write it as "NaN" instead of crashing.
+Console.WriteLine(o.ToJsonString(new JsonSerializerOptions { WriteIndented = true, NumberHandling = System.Text.Json.Serialization.JsonNumberHandling.AllowNamedFloatingPointLiterals }));
 if (failures.Count > 0) { Console.Error.WriteLine("FAILED: " + string.Join(", ", failures)); return 1; }
 return 0;
