@@ -56,7 +56,12 @@ jobs:
         run: |
           $p = Start-Process out/Fusebox/Fusebox.exe -PassThru
           Start-Sleep -Seconds 15
-          if ($p.HasExited) { Write-Error "Fusebox exited with code $($p.ExitCode)"; exit 1 }
+          if ($p.HasExited) {
+            Get-ChildItem out/Fusebox -Filter *.pri | Format-Table Name, Length
+            Get-Content "$env:LOCALAPPDATA/Fusebox/crash.log" -ErrorAction SilentlyContinue
+            Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=(Get-Date).AddMinutes(-5)} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, ProviderName, Message
+            Write-Error "Fusebox exited with code $($p.ExitCode)"; exit 1
+          }
           $p.Refresh()
           "Working set: {0:N0} MB, CPU time after 15 s: {1:N2} s" -f ($p.WorkingSet64 / 1MB), $p.TotalProcessorTime.TotalSeconds | Tee-Object smoke.txt
           try {

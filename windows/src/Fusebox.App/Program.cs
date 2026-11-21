@@ -14,8 +14,25 @@ public static class Program
         Application.Start(p =>
         {
             SynchronizationContext.SetSynchronizationContext(new DispatcherQueueSynchronizationContext(DispatcherQueue.GetForCurrentThread()));
-            _ = new App();
+            try
+            {
+                var app = new App();
+                app.UnhandledException += (_, e) => CrashLog(e.Exception);
+            }
+            catch (Exception e) { CrashLog(e); throw; }
         });
         return 0;
+    }
+
+    /// <summary>Last crash in %LOCALAPPDATA%\Fusebox\crash.log (CI prints it; users can send it).</summary>
+    public static void CrashLog(Exception e)
+    {
+        try
+        {
+            var dir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Fusebox");
+            Directory.CreateDirectory(dir);
+            File.AppendAllText(Path.Combine(dir, "crash.log"), $"{DateTime.Now:O}\n{e}\n\n");
+        }
+        catch { }
     }
 }
