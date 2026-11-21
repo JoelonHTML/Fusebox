@@ -6,6 +6,9 @@ public sealed class CpuTracker
     Dictionary<(int, long), long> prev = [];
     long prevWall = -1;
 
+    /// <summary>False until the second Update (the first has nothing to compare with).</summary>
+    public bool Warm { get; private set; }
+
     public static double Percent(long deltaCpu, long deltaWall, int cpus) =>
         deltaWall <= 0 || cpus <= 0 || deltaCpu < 0 ? 0 : Math.Clamp(100.0 * deltaCpu / ((double)deltaWall * cpus), 0, 100);
 
@@ -22,6 +25,7 @@ public sealed class CpuTracker
             result[p.Pid] = dw > 0 && prev.TryGetValue(k, out var old) ? Percent(p.CpuTime - old, dw, cpus) : 0;
         }
         prev = next; prevWall = wall100ns;
+        Warm = dw > 0;
         return result;
     }
 }
@@ -48,6 +52,29 @@ public static class GpuInstance
             if (TryParse(name, out var pid, out var type) && v > 0) sums[(pid, type)] = sums.GetValueOrDefault((pid, type)) + v;
         var result = new Dictionary<int, double>();
         foreach (var ((pid, _), v) in sums) result[pid] = Math.Min(100, Math.Max(result.GetValueOrDefault(pid), v));
+        return result;
+    }
+}
+
+/// <summary>Cumulative per-process I/O bytes → bytes per second. Keyed by pid + create time like <see cref="CpuTracker"/>. First call returns zeros.</summary>
+public sealed class DiskTracker
+{
+    Dictionary<(int, long), (long R, long W)> prev = [];
+    long prevWall = -1;
+
+    public Dictionary<int, (double Read, double Write)> Update(IReadOnlyList<ProcSample> procs, long wall100ns)
+    {
+        var result = new Dictionary<int, (double, double)>(procs.Count);
+        var next = new Dictionary<(int, long), (long, long)>(procs.Count);
+        double secs = prevWall < 0 ? 0 : (wall100ns - prevWall) / 1e7;
+        foreach (var p in procs)
+        {
+            var k = (p.Pid, p.CreateTime);
+            next[k] = (p.ReadBytes, p.WriteBytes);
+            result[p.Pid] = secs > 0 && prev.TryGetValue(k, out var o) && p.ReadBytes >= o.R && p.WriteBytes >= o.W
+                ? ((p.ReadBytes - o.R) / secs, (p.WriteBytes - o.W) / secs) : (0, 0);
+        }
+        prev = next; prevWall = wall100ns;
         return result;
     }
 }

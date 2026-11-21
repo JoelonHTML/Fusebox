@@ -1,19 +1,20 @@
 using System.Runtime.InteropServices;
+using Fusebox.Core.Processes;
 using Microsoft.Win32;
 using static Fusebox.Platform.Native;
 
 namespace Fusebox.Platform;
 
-/// <summary>Installed apps from the Uninstall registry keys (HKCU + HKLM + WOW6432Node). Read on demand (when the user searches), not every tick.</summary>
+/// <summary>Installed apps for the search: Start Menu shortcuts (what people call apps) plus the Uninstall registry keys (HKCU + HKLM + WOW6432Node),
+/// which also give an exe path for the icon and the About card. Read on demand (first keystroke), off the UI thread. Store/AppX apps are not listed.</summary>
 public static class InstalledApps
 {
-    public static List<string> All()
+    const string Uninstall = @"Software\Microsoft\Windows\CurrentVersion\Uninstall";
+
+    public static List<InstalledApp> All()
     {
-        var names = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
-        foreach (var (hive, sub) in new[] {
-            (Registry.CurrentUser, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
-            (Registry.LocalMachine, @"Software\Microsoft\Windows\CurrentVersion\Uninstall"),
-            (Registry.LocalMachine, @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall") })
+        var fromRegistry = new List<InstalledApp>();
+        foreach (var (hive, sub) in new[] { (Registry.CurrentUser, Uninstall), (Registry.LocalMachine, Uninstall), (Registry.LocalMachine, @"Software\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall") })
         {
             try
             {
@@ -25,12 +26,55 @@ public static class InstalledApps
                     if (key?.GetValue("DisplayName") is not string n || n.Length == 0) continue;
                     if (key.GetValue("SystemComponent") is int sc && sc == 1) continue;
                     if (key.GetValue("ParentKeyName") != null) continue;   // updates / patches
+                    fromRegistry.Add(new(n.Trim(), ExeOf(key.GetValue("DisplayIcon") as string)));
+                }
+            }
+            catch { }
+        }
+
+        var result = new List<InstalledApp>();
+        foreach (var name in StartMenuNames())
+        {
+            // A shortcut name and a registry name that contain each other are the same app ("Visual Studio Code" / "Microsoft Visual Studio Code").
+            var match = fromRegistry.FirstOrDefault(r => r.Path != null && (r.Name.Contains(name, StringComparison.CurrentCultureIgnoreCase) || name.Contains(r.Name, StringComparison.CurrentCultureIgnoreCase)));
+            result.Add(new(name, match?.Path));
+        }
+        foreach (var r in fromRegistry)
+            if (!result.Any(a => a.Name.Contains(r.Name, StringComparison.CurrentCultureIgnoreCase) || r.Name.Contains(a.Name, StringComparison.CurrentCultureIgnoreCase)))
+                result.Add(r);
+        return result.GroupBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).Select(g => g.OrderByDescending(a => a.Path != null).First())
+            .OrderBy(a => a.Name, StringComparer.CurrentCultureIgnoreCase).ToList();
+    }
+
+    /// <summary>DisplayIcon is usually <c>"C:\x\app.exe",0</c>; only an existing .exe counts.</summary>
+    static string? ExeOf(string? icon)
+    {
+        if (string.IsNullOrWhiteSpace(icon)) return null;
+        var p = icon.Trim().Trim('"');
+        int comma = p.LastIndexOf(',');
+        if (comma > 1 && int.TryParse(p[(comma + 1)..], out _)) p = p[..comma];
+        p = p.Trim().Trim('"');
+        return p.EndsWith(".exe", StringComparison.OrdinalIgnoreCase) && File.Exists(p) ? p : null;
+    }
+
+    static IEnumerable<string> StartMenuNames()
+    {
+        var names = new HashSet<string>(StringComparer.CurrentCultureIgnoreCase);
+        foreach (var dir in new[] { Environment.GetFolderPath(Environment.SpecialFolder.CommonPrograms), Environment.GetFolderPath(Environment.SpecialFolder.Programs) })
+        {
+            try
+            {
+                if (!Directory.Exists(dir)) continue;
+                foreach (var f in Directory.EnumerateFiles(dir, "*.lnk", new EnumerationOptions { RecurseSubdirectories = true, IgnoreInaccessible = true }))
+                {
+                    var n = Path.GetFileNameWithoutExtension(f);
+                    if (n.Contains("uninstall", StringComparison.OrdinalIgnoreCase) || n.Contains("readme", StringComparison.OrdinalIgnoreCase)) continue;
                     names.Add(n);
                 }
             }
             catch { }
         }
-        return names.OrderBy(n => n, StringComparer.CurrentCultureIgnoreCase).ToList();
+        return names;
     }
 }
 
