@@ -22,6 +22,10 @@
     <IsAotCompatible>true</IsAotCompatible>
     <InvariantGlobalization>false</InvariantGlobalization>
     <SatelliteResourceLanguages>en;nl;de;fr;es</SatelliteResourceLanguages>
+    <!-- Release builds pass -p:FuseboxBuild=yyyyMMddHHmm; dev builds are 0 (never auto-update). The build is also in the exe's product version. -->
+    <FuseboxBuild Condition="'$(FuseboxBuild)' == ''">0</FuseboxBuild>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <InformationalVersion>$(Version)+$(FuseboxBuild)</InformationalVersion>
   </PropertyGroup>
   <ItemGroup>
     <!-- Only the parts we use (the metapackage would also pull in AI/ML runtimes). -->
@@ -36,4 +40,10 @@
     <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
     <Content Include="../../../Resources/Fonts/**" Link="Assets\Fonts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <!-- Build number and version as constants (AOT-safe, no reflection). -->
+  <Target Name="FuseboxBuildInfo" BeforeTargets="CoreCompile">
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace Fusebox.App { static class BuildInfo { public const long Build = $(FuseboxBuild)L%3B public const string Version = &quot;$(Version)&quot;%3B } }" />
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" /></ItemGroup>
+  </Target>
 </Project>

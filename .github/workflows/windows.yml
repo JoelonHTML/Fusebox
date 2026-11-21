@@ -8,6 +8,15 @@ on:
   pull_request:
     paths: ["windows/**", ".github/workflows/windows.yml"]
   workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a Windows release (signed zips on GitHub Releases, not marked latest)"
+        type: boolean
+        default: false
+      notes:
+        description: "Release notes (markdown; bullets '- Topic: what' make the update notification)"
+        type: string
+        default: ""
 
 permissions:
   contents: read
@@ -21,7 +30,23 @@ env:
   DOTNET_CLI_TELEMETRY_OPTOUT: 1
 
 jobs:
+  # One build number for both architectures: UTC yyyyMMddHHmm for a release, 0 for ordinary (dev) builds.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.m.outputs.build }}
+      version: ${{ steps.m.outputs.version }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: m
+        run: |
+          if [ "${{ github.event_name == 'workflow_dispatch' && inputs.release }}" = "true" ]; then build=$(date -u +%Y%m%d%H%M); else build=0; fi
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' windows/Directory.Build.props | head -1)
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: meta
     strategy:
       fail-fast: false
       matrix:
@@ -50,9 +75,14 @@ jobs:
           if ($LASTEXITCODE -ne 0) { exit 1 }
 
       - name: Publish (Native AOT, self-contained)
-        run: dotnet publish src/Fusebox.App -c Release -r win-${{ matrix.arch }} -p:Platform=${{ matrix.arch }} -o out/Fusebox
+        run: |
+          dotnet publish src/Fusebox.App -c Release -r win-${{ matrix.arch }} -p:Platform=${{ matrix.arch }} -p:FuseboxBuild=${{ needs.meta.outputs.build }} -o out/Fusebox
+          Set-Content -NoNewline -Path out/Fusebox/build.txt -Value '${{ needs.meta.outputs.build }}'
+          (Get-Item out/Fusebox/Fusebox.exe).VersionInfo.ProductVersion | Tee-Object version.txt
 
       - name: Smoke test (starts, stays up, screenshot)
+        env:
+          FUSEBOX_NO_INSTALL: "1"
         run: |
           $p = Start-Process out/Fusebox/Fusebox.exe -PassThru
           Start-Sleep -Seconds 15
@@ -82,5 +112,48 @@ jobs:
           path: |
             windows/probe.json
             windows/smoke.txt
+            windows/version.txt
             windows/screenshot.png
           if-no-files-found: ignore
+
+  release:
+    if: github.event_name == 'workflow_dispatch' && inputs.release
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: Fusebox-Windows-x64
+          path: dist
+      - uses: actions/download-artifact@v4
+        with:
+          name: Fusebox-Windows-arm64
+          path: dist
+      - name: Sign (ECDSA P-256, key from repo secret) and check against the key built into the app
+        env:
+          FUSEBOX_WIN_SIGNING_KEY: ${{ secrets.FUSEBOX_WIN_SIGNING_KEY }}
+        run: |
+          if [ -z "$FUSEBOX_WIN_SIGNING_KEY" ]; then
+            echo "::error::Repository secret FUSEBOX_WIN_SIGNING_KEY is missing. Create it with: dotnet run --project windows/tools/Fusebox.Sign keygen (and put the PUBLIC key in Signing.ReleaseKey)."
+            exit 1
+          fi
+          for a in x64 arm64; do
+            dotnet run --project windows/tools/Fusebox.Sign -c Release -- sign "dist/Fusebox-Windows-$a.zip"
+            dotnet run --project windows/tools/Fusebox.Sign -c Release -- verify "dist/Fusebox-Windows-$a.zip" "dist/Fusebox-Windows-$a.zip.sig"
+          done
+      - name: Create release (never latest, the Mac updater reads releases/latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          NOTES: ${{ inputs.notes }}
+          TAG: win-v${{ needs.meta.outputs.version }}-beta-${{ needs.meta.outputs.build }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          cd dist
+          gh release create "$TAG" Fusebox-Windows-x64.zip Fusebox-Windows-x64.zip.sig Fusebox-Windows-arm64.zip Fusebox-Windows-arm64.zip.sig \
+            --title "Fusebox for Windows $VERSION beta" --notes "$NOTES" --latest=false --target "$GITHUB_SHA"
