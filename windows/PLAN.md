@@ -1,6 +1,6 @@
 # Fusebox voor Windows — plan
 
-Status: **goedgekeurd** (besluiten in §6). De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
+Status: v1 (§1–6) is gebouwd en draait groen in CI. **§7 = ontwerp v2 op basis van `docs/FEATURES.md`, wacht op akkoord.** De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
 
 Doel: dezelfde Fusebox (Clear · Light · Live) als native Windows 11-app, net zo zuinig als de Mac-versie: meten elke 2 s, geen doorlopende animaties, niets doen als het venster verborgen is.
 
@@ -204,3 +204,65 @@ Elke mijlpaal: unit-tests voor de logica, selftest uitgebreid, CI-artifact om te
 3. **Update-handtekening:** automatisch in CI (optie A), ECDSA P-256, eigen Windows-sleutel als secret. ✔
 4. **Alleen Windows 11** (build 22000+). ✔
 5. Alles in één keer bouwen (0.1 t/m 0.6), met agents.
+
+---
+
+## 7. Ontwerp v2 — op basis van `docs/FEATURES.md` (wacht op akkoord)
+
+Aanleiding: v1 werkt (alle tabs, CI groen, ~105 MB, 0,2–0,6 % van één kern in rust, langste UI-hapering ≤ 18 ms), maar oogt als een technische demo, niet als Fusebox. De lat is de Mac-versie. Ik heb de volledige spec laten samenvatten en naast de Windows-code gelegd; hieronder per onderdeel wat ik **houd**, **verbeter** en **anders doe op Windows**.
+
+### 7.1 Wat blijft (fundament is goed)
+- Techniek: .NET 10 + WinUI 3, Native AOT, unpackaged, x64 + arm64, alleen Windows 11.
+- Alle meet-code (Platform-laag): CPU/GPU/RAM/net/schijf/batterij, processen, Event Log, USB-boom, beeldschermen, Bluetooth, wifi, LAN-scan, snelheidstest. Die is op echte Windows getest (probe in CI).
+- CI met rooktest per pagina, screenshots, idle-CPU en UI-hapering; updater + ECDSA-handtekening; vertalingen via de Mac-`.strings`.
+
+### 7.2 Wat vervalt of wordt herbouwd (de UI-laag)
+Vrijwel alle schermen worden opnieuw opgezet volgens de spec. Concreet de grootste verschillen met v1:
+1. **Venster:** v1 heeft een zijbalk en opent op 1100×720. Wordt: **tabs bovenin, in de titelbalk** (Live · Processes · Checkup · Network · Docked + tandwiel), compact standaardvenster (300×340 zoals de Mac), twee onthouden maten (Live / rest), minimummaat per tab, Ctrl+1…5 en Ctrl+,. Mica-achtergrond, inhoud loopt achter de titelbalk door.
+2. **Thema's:** v1 heeft 5 zelfverzonnen stijlen. Wordt: de **6 Mac-thema's met exacte kleuren** (Instrument standaard, Terminal, Minimal light, Glass, Color blocks, Liquid Glass = Mica), dezelfde opgeslagen ids, licht/donker-omzetting, accentcorrectie (WCAG), rij-stijlen (lijnen/plain/cards/blocks/glass), tekstgrootte 0,8–1,6, eigen accentkleur.
+3. **Live:** v1 heeft één soort grote kaart met scrollen. Wordt: het **XS/S/M/L/XL-raster** van de Mac (op breedte én hoogte, nooit scrollen), kaart-anatomie met vaste cijferbreedte (geen springende cijfers), drempelkleuren, piek-stip, grafiek met vlakvulling en zacht meeglijden, detailscherm met 5 min / 1 uur / vandaag.
+4. **Data-fundament:** v1 kijkt alleen naar het geheugen van de app. Wordt: **minuutlog per app** (`apps-*.csv`), pieken-CSV en meet-CSV met exact de Mac-kolommen. Daardoor kunnen Checkup, de app-pagina en pieken terugkijken (vandaag / gisteren / 7 dagen).
+5. **Instellingen:** v1 is één lange pagina. Wordt: **apart venster zoals Windows-Instellingen** (zijbalk + nette rijen met titel/uitleg/schakelaar): Profiel (4 profielen, delen/importeren, alles terugzetten), Uiterlijk, Live, Processen, Checkup, Netwerk, Docked, Systeemvak, Meldingen, Batterij, Privacy, Over.
+6. **Meldingen:** v1 meldt alleen updates. Wordt: de 7 Mac-meldingen (CPU, hitte, geheugen, opslag, internet, batterij, app die blijft slurpen) + "houdt je CPU bezig" met knoppen *Stop app* / *Toon*, met afkoeltijd.
+7. **Systeemvak:** v1 is een kaal venstertje bij de muis. Wordt een **flyout zoals Snelle instellingen**: verankerd aan het icoon (niet de muis), score + reden, live-regels met mini-grafiek, één tip, vijf snelknoppen; icoon toont desgewenst cijfers/balkjes; rechtsklikmenu met status en zwaarste apps.
+8. **Instelhulp:** 12 Mac-stappen, op Windows ingekort tot ±9 (geen Mac-rechten), met voorbeeld-tegels, stappenteller, "Instelhulp overslaan", annuleren zet alles terug.
+
+### 7.3 Per tab: houden / verbeteren / anders op Windows
+| Tab | Houden (Mac) | Verbeteren | Anders op Windows |
+|---|---|---|---|
+| **Live** | Raster XS–XL, kaart-anatomie, drempels, grafiek, detail, pieken | Cijfers met tabular-cijfers (Segoe UI Variable Display), grafieken alleen hertekenen bij nieuwe data | Geen temperatuur/ventilator (geen API); P/E-kernen alleen tonen op hybride CPU's |
+| **Processes** | Eén rij per app, chips Alles/Apps/Achtergrond/Windows, kolommen per breedte, uitklaprij, splitpaneel ≥ 1100, kleine items verbergen, "Windows zelf"-rij, app-pagina met geschiedenis per uur/dag | Stop-kruisje pas bij hover/focus; zoeken toont "Actief" + "Apps" | **Efficiëntiemodus per app** als zachtere knop naast Stop; Energie-kolom standaard uit (Windows geeft geen watt per proces) |
+| **Checkup** | Score 1–10 + reden + vergelijking, periode Vandaag/Gisteren/7 dagen, 5 inklapbare groepen, "Waarom is mijn pc traag?" (max 2 zinnen + Stop-knop), Top 5, pieken, drukke momenten, crashes, opstart-items, schijfruimte met oordeel, SSD-gezondheid/snelheid, batterij, rapport delen (geschoond) | Werkt **op dag 1** door Windows' eigen geschiedenis (Betrouwbaarheidsmonitor, Event Log, batteryreport) | Opstart-items uit Run-sleutels + Opstartmap + **Taakplanner + services**; **Windows Update / herstart nodig**; **sleepstudy** per slaapsessie; OneDrive als achtergrondtaak; geen ventilatoren/laadlimiet |
+| **Network** | Internetpaneel met oordeel en live-grafiek, "Vind het probleem", snelheidstest Snel/Volledig met geschiedenisbalkjes, publiek IP op klik, apparatenlijst met kolommen per breedte, onthouden/Nieuw/offline, hernoemen/vergeten, Wake on LAN | Meteren-waarschuwing via Windows' "verbinding met datalimiet" | **Netwerkprofiel (openbaar/privé)**, **VPN**, **versleutelde DNS**; geen wifinaam/BSSID; MAC-adres alleen in de LAN-scanner en **standaard verborgen** |
+| **Docked** | Kopkaart (stroom in, batterij), poortboom met lijnen, getal rechts "nu / max", detailpaneel, waarschuwingen (te traag, Hz/resolutie), draadloos-blok, hubs tonen/verbergen | Vernieuwen op apparaat-events + 5 s alleen zolang zichtbaar | Geen USB-C PD/lader-watt/e-marker (Windows geeft het niet): stil weglaten, geen lege rijen; nooit serienummers |
+
+### 7.4 Verbeteringen ten opzichte van de Mac-versie
+1. **Checkup is nuttig vanaf de eerste start**: Windows bewaart zelf al weken geschiedenis (betrouwbaarheid, crashes, batterijcapaciteit), dus geen "kom over een paar dagen terug".
+2. **Opstart-items compleet**: ook taken uit Taakplanner en services, met de echte aan/uit-status zoals Taakbeheer, en (optioneel) uitzetten met één omkeerbare schakelaar.
+3. **Efficiëntiemodus per app** als vriendelijk alternatief voor Stop: de app blijft open maar mag minder stroom gebruiken.
+4. **Slaapverbruik per sessie** via sleepstudy (Modern Standby): precies zien welke nacht de batterij leegliep en waardoor.
+5. **Netwerk-extra's**: openbaar/privé-profiel, VPN actief, versleutelde DNS en verbinding met datalimiet, in gewone taal.
+6. **Systeemvak-flyout zoals Snelle instellingen**, volledig met toetsenbord te bedienen en met Verteller-labels.
+7. **Toegankelijk en eerlijk**: volgt Windows' tekstgrootte, "animaties uit" en hoog contrast; lege toestanden in gewone taal i.p.v. lege lijsten.
+8. **Zuinigheid bewaakt door CI**: elke build meet idle-CPU en UI-haperingen; boven een grens (bijv. 1 % CPU of 50 ms hapering) faalt de build. Plus Windows' Efficiëntiemodus voor Fusebox zelf in Zuinig.
+9. **Privacy strenger dan de Mac-code**: geen wifinaam, MAC alleen verborgen-standaard in de scanner, rapporten automatisch geschoond (gebruikersnaam, pc-naam, paden, IP's).
+
+### 7.5 Privacy-fouten in v1 die ik als eerste herstel
+- Netwerk toont nu de **wifinaam** en vraagt daarvoor locatietoegang → weg (de Mac toont die nooit).
+- Netwerk toont het **MAC-adres** in het detailpaneel en zoekt erop → alleen in de scanner, standaard verborgen, met schakelaar.
+- Er is nog geen **rapport-schoonmaker** → komt vóór "Rapport delen".
+
+### 7.6 Volgorde (één doorlopende bouw, met screenshots per stap in CI)
+1. Instellingentabel (alle Mac-sleutels + standaardwaarden) + thema-tokens + opmaakregels (Core, met tests).
+2. Meten + geschiedenis + CSV's (meet-, app-, pieken-, batterijlog) in Mac-formaat.
+3. Vensterschil: tabs in titelbalk, maten, plaatsing.
+4. Live → systeemvak-flyout → Processes → Checkup → Network → Docked.
+5. Meldingen, instelhulp, Instellingen-venster.
+6. Zuinig-controle: geen animatie en geen hertekenen als verborgen/geminimaliseerd/scherm uit; CI-grenzen aan.
+
+### 7.7 Beslissingen voor Joël
+1. **Instellingen**: apart venster zoals Windows-Instellingen (mijn advies) of een pagina in het hoofdvenster?
+2. **MAC-adres in de scanner**: standaard verborgen met schakelaar (advies), of helemaal nooit?
+3. **Opstart-items**: alleen tonen (zoals Mac) of ook uitzetten zoals Taakbeheer (advies: uitzetten mag, omkeerbaar)?
+4. **Lettertype**: Segoe UI Variable overal (advies, voelt het meest Windows), of een afgerond lettertype meeleveren voor Instrument/Glass/Color blocks/Liquid Glass?
+5. **Sneltoets**: Ctrl+Alt+F (advies; Win-combinaties botsen vaak met Windows zelf) of Ctrl+Alt+Win+F?
