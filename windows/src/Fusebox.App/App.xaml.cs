@@ -7,6 +7,7 @@ namespace Fusebox.App;
 
 public partial class App : Application
 {
+    static Task? gistLoad;
     public static MainWindow? Main { get; private set; }
     public static readonly LiveHub Live = new();
     public static Tray? Tray { get; private set; }
@@ -33,6 +34,12 @@ public partial class App : Application
             });
         };
         Boot.OnLaunched();
+        // Tray flyout score row = today's Checkup gist (cached ≤ 10 min; loading it once is cheap: today's CSVs).
+        TrayFlyout.GistProvider = () =>
+        {
+            if (gistLoad is not { IsCompleted: false }) gistLoad = Fusebox.App.Pages.CheckupData.GistAsync();   // one load at a time
+            return Fusebox.App.Pages.CheckupData.GistNow() is { } g ? new TrayGist(g.Score, g.Reason, g.TipHead, g.TipRest, g.TipSerious) : null;
+        };
         if (Environment.GetEnvironmentVariable("FUSEBOX_SMOKE") == "1") SmokeTour();
         // A second Fusebox start redirects here (Program.Main): bring this window back.
         AppInstance.GetCurrent().Activated += (_, _) => Main.DispatcherQueue.TryEnqueue(ShowMain);

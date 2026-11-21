@@ -111,12 +111,13 @@ public static unsafe partial class AppInfo
     static bool OpensAtLogin(string exe, string displayName)
     {
         string stem = Path.GetFileNameWithoutExtension(exe);
-        foreach (var it in CheckupReader.StartupItems())
+        // Same source as Checkup › Startup items (Run keys, Startup folders, logon tasks, services).
+        foreach (var it in Fusebox.Platform.Checkup.StartupScanner.Scan())
         {
             if (!it.Enabled) continue;
-            bool folder = it.Source is StartupSource.UserFolder or StartupSource.CommonFolder;
+            bool folder = it.Kind == Fusebox.Core.Checkup.StartupKind.Folder;
             if (folder ? it.Name.Equals(displayName, StringComparison.CurrentCultureIgnoreCase) || it.Name.Equals(stem, StringComparison.CurrentCultureIgnoreCase)
-                       : it.Command.Contains(exe, StringComparison.OrdinalIgnoreCase)) return true;
+                       : (it.Exe ?? it.Command).Contains(exe, StringComparison.OrdinalIgnoreCase)) return true;
         }
         return false;
     }
