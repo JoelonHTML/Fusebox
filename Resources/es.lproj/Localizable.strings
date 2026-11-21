@@ -72,7 +72,7 @@
 "%@ full of %lld GB" = "%@ ocupado de %lld GB";
 "%@ grew from %@ to %@ GB" = "%@ pasó de %@ a %@ GB";
 "%@ grew from %@ to %@ GB in %lld h — quitting and reopening it frees that memory." = "%@ pasó de %@ a %@ GB en %lld h — salir y volver a abrirla libera esa memoria.";
-"%@ has been running for %@ (avg. %@%% CPU, %@ GB) — quit it if you're not using it" = "%@ lleva abierta %@ (prom. %@%% CPU, %@ GB) — sal de ella si no la usas";
+"%@ has been running for %@ (avg. %@%% CPU, %@ GB) — quit it if you're not using it" = "%@ lleva abierta %@ (media %@%% CPU, %@ GB) — sal de ella si no la usas";
 "%@ has been using %lld%% processor for %lld min" = "%1$@ lleva %3$lld min usando el %2$lld%% del procesador";
 "%@ has been using a full processor core for %@." = "%@ lleva %@ usando un núcleo entero del procesador.";
 "%@ is filling your memory" = "%@ está llenando la memoria";
@@ -141,7 +141,7 @@
 "%lld items start at login" = "%lld ítems se abren al iniciar sesión";
 "%lld kinds on" = "%lld tipos activados";
 "%lld left behind" = "%lld huérfanos";
-"%lld mA power budget" = "%lld mA de potencia disponible";
+"%lld mA power budget" = "%lld mA disponibles";
 "%lld min" = "%lld min";
 "%lld min ago" = "hace %lld min";
 "%lld of 3 pings lost" = "%lld de 3 pings perdidos";
@@ -161,7 +161,7 @@
 ", internet %@" = ", internet %@";
 ", mostly %@" = ", sobre todo %@";
 ", no packet loss" = ", sin pérdida de paquetes";
-". A battery service gives you longer battery life again." = ". Una revisión de la batería te devuelve más autonomía.";
+". A battery service gives you longer battery life again." = ". Reparar la batería te devuelve más autonomía.";
 ". Outside your own network: Fusebox can find devices and their names, but not hardware addresses or makers (routers don't pass those on)." = ". Fuera de tu propia red: Fusebox puede encontrar dispositivos y sus nombres, pero no direcciones de hardware ni fabricantes (los routers no los transmiten).";
 "/ %@ %@" = "/ %@ %@";
 "/10" = "/10";
@@ -221,7 +221,7 @@
 "All calm" = "Todo tranquilo";
 "All good: " = "Todo bien: ";
 "All values" = "Todos los valores";
-"Allow Fusebox in System Settings › General › Login Items." = "Permite Fusebox en Ajustes del Sistema › General › Ítems de inicio.";
+"Allow Fusebox in System Settings › General › Login Items." = "Permite Fusebox en Ajustes del Sistema › General › Ítems de inicio y extensiones.";
 "Allow notifications from Fusebox?" = "¿Permitir notificaciones de Fusebox?";
 "Also the hubs inside a dock and its Billboard part. Same as the button on the page." = "También los hubs dentro de un dock y su parte Billboard. Igual que el botón de la página.";
 "Always" = "Siempre";
@@ -238,7 +238,7 @@
 "Apps" = "Apps";
 "Apps are measured every minute — the first measurement is coming soon." = "Las apps se miden cada minuto — la primera medición llegará pronto.";
 "Apps at that moment" = "Apps en ese momento";
-"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items." = "Apps de otros fabricantes que se abren con tu Mac o esperan en segundo plano. Desactiva lo que no uses en Ítems de inicio.";
+"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items." = "Apps de otros fabricantes que se abren con tu Mac o esperan en segundo plano. Desactiva lo que no uses en Ítems de inicio y extensiones.";
 "Apps that minute (no snapshot at the moment itself)" = "Apps en ese minuto (sin captura del momento exacto)";
 "Apps that start at login" = "Apps que se abren al iniciar sesión";
 "Architecture" = "Arquitectura";
@@ -250,11 +250,11 @@
 "Automatic (macOS)" = "Automático (macOS)";
 "Automatic (when the window is larger)" = "Automático (con la ventana más grande)";
 "Available after the first minute" = "Disponible tras el primer minuto";
-"Average" = "Prom.";
+"Average" = "Media";
 "Average CPU" = "CPU media";
 "Average GPU" = "GPU media";
 "Average memory" = "Memoria media";
-"Average since it started (memory: now)" = "Promedio desde que se abrió (memoria: ahora)";
+"Average since it started (memory: now)" = "Media desde que se abrió (memoria: ahora)";
 "B (flipped)" = "B (invertido)";
 "Back" = "Atrás";
 "Back to Live (Esc)" = "Volver a Live (Esc)";
@@ -312,7 +312,7 @@
 "Cancelled." = "Cancelado.";
 "Capacity" = "Capacidad";
 "Case" = "Estuche";
-"Change in Privacy" = "Cambiar en Privacidad";
+"Change in Privacy" = "Cambiar en Privacidad y seguridad";
 "Changes: %@" = "Cambios: %@";
 "Channel" = "Canal";
 "Charge" = "Carga";
@@ -350,7 +350,7 @@
 "Collecting data…" = "Recopilando datos…";
 "Collecting…" = "Recopilando…";
 "Color" = "Color";
-"Color blocks" = "Bloques de color";
+"Color blocks" = "Color blocks";
 "Columns" = "Columnas";
 "Columns appear when the window is wide enough." = "Las columnas aparecen cuando la ventana es lo bastante ancha.";
 "Columns appear when the window is wide enough. Network: download and upload per app, read on this Mac only while you look at Fusebox. Also shows the busiest app on the Live NET card." = "Las columnas aparecen cuando la ventana es lo bastante ancha. Red: descarga y subida por app, medidas en este Mac solo mientras miras Fusebox. También muestra la app más activa en la tarjeta NET de Live.";
@@ -362,7 +362,7 @@
 "Control" = "Control";
 "Control Center and menu bar" = "Centro de control y barra de menús";
 "Controller" = "Mando";
-"Cool" = "Frío";
+"Cool" = "Fresco";
 "Copy" = "Copiar";
 "Couldn't load the changelog. Check your internet connection." = "No se pudo cargar el registro de cambios. Comprueba tu conexión a internet.";
 "Couldn't move Fusebox: %@. Drag it into Applications yourself." = "No se pudo mover Fusebox: %@. Arrástralo tú a Aplicaciones.";
@@ -380,7 +380,7 @@
 "Data" = "Datos";
 "Data and privacy" = "Datos y privacidad";
 "Data runs at USB 2 speed (480 Mbit/s). If this device can go faster, try a USB 3 or Thunderbolt cable." = "Los datos van a velocidad USB 2 (480 Mbit/s). Si este dispositivo puede ir más rápido, prueba un cable USB 3 o Thunderbolt.";
-"Default" = "Por omisión";
+"Default" = "Predeterminado";
 "Delay" = "Retardo";
 "Delay barely rises while the line is busy (%@) → fine for calls and games" = "El retardo apenas sube con la línea ocupada (%@) → bien para llamadas y juegos";
 "Delay rises a lot while the line is busy (%@, \"bufferbloat\") → calls and games suffer during downloads; a router with smart queueing (SQM) helps" = "El retardo sube mucho con la línea ocupada (%@, «bufferbloat») → llamadas y juegos sufren durante las descargas; un router con gestión inteligente de colas (SQM) ayuda";
@@ -410,7 +410,7 @@
 "Displays" = "Pantallas";
 "Dock" = "Dock";
 "Docked" = "Docked";
-"Doesn't answer (many phones and TVs sleep or ignore pings; that's normal)" = "No responde (muchos teléfonos y televisores reposan o ignoran los pings; es normal)";
+"Doesn't answer (many phones and TVs sleep or ignore pings; that's normal)" = "No responde (muchos teléfonos y televisores entran en reposo o ignoran los pings; es normal)";
 "Don't show" = "No mostrar";
 "Download" = "Descarga";
 "Download and upload speed" = "Velocidad de descarga y subida";
@@ -430,7 +430,7 @@
 "Esc cancels, ⌫ turns it off. Use ⌘, ⌥ or ⌃." = "Esc cancela, ⌫ lo desactiva. Usa ⌘, ⌥ o ⌃.";
 "Every 10 seconds Fusebox makes one tiny connection to 1.1.1.1 to time it. Nothing about you is sent. Off means no internet connections at all." = "Cada 10 segundos Fusebox hace una pequeña conexión a 1.1.1.1 para cronometrarla. No se envía nada sobre ti. Desactivado significa ninguna conexión a internet.";
 "Every process is listed." = "Se muestran todos los procesos.";
-"Everything is back to default" = "Todo ha vuelto a los valores por omisión";
+"Everything is back to default" = "Todo ha vuelto a los valores predeterminados";
 "Everything stays on your Mac." = "Todo se queda en tu Mac.";
 "Everything works, but the Wi-Fi signal is weak%@: moving closer to the router helps" = "Todo funciona, pero la señal Wi-Fi es débil%@: acercarte al router ayuda";
 "Everything, in real values" = "Todo, en valores reales";
@@ -482,7 +482,7 @@
 "Fusebox always saves a small file per day on your Mac, so Checkup can look back." = "Fusebox siempre guarda un pequeño archivo por día en tu Mac, para que Checkup pueda mirar atrás.";
 "Fusebox can't read this file." = "Fusebox no puede leer este archivo.";
 "Fusebox checks GitHub every 15 minutes, tells you when there is a new version, installs it and restarts. Your settings stay." = "Fusebox consulta GitHub cada 15 minutos, te avisa cuando hay una versión nueva, la instala y se reinicia. Tus ajustes se conservan.";
-"Fusebox measures every 5 seconds instead of 2, without animations or glass effects. With the window open that is about 0.3% of a processor core instead of 2%. Automatic: on in Low Power Mode, or on battery below 20%." = "Fusebox mide cada 5 segundos en lugar de 2, sin animaciones ni efectos de cristal. Con la ventana abierta eso es un 0,3% de un núcleo en lugar del 2%. Automático: activado en Modo de bajo consumo, o con batería por debajo del 20%.";
+"Fusebox measures every 5 seconds instead of 2, without animations or glass effects. With the window open that is about 0.3% of a processor core instead of 2%. Automatic: on in Low Power Mode, or on battery below 20%." = "Fusebox mide cada 5 segundos en lugar de 2, sin animaciones ni efectos de cristal. Con la ventana abierta eso es un 0,3% de un núcleo en lugar del 2%. Automático: activado con el modo de bajo consumo, o con batería por debajo del 20%.";
 "Fusebox measuring since" = "Fusebox mide desde";
 "Fusebox never runs the fans slower than macOS's minimum. Above 95 °C the fans go to full speed automatically." = "Fusebox nunca hace girar los ventiladores por debajo del mínimo de macOS. Por encima de 95 °C van a velocidad máxima automáticamente.";
 "Fusebox notes its own CPU, memory, GPU and energy use once a minute, and looks for 5 seconds at what it is doing right now. This makes a small text file in Downloads (also copied) to send to the maker. Nothing is sent automatically." = "Fusebox anota su propio uso de CPU, memoria, GPU y energía una vez por minuto, y observa durante 5 segundos lo que hace ahora mismo. Esto crea un pequeño archivo de texto en Descargas (también copiado) para enviárselo al creador. No se envía nada automáticamente.";
@@ -506,7 +506,7 @@
 "Gbit/s shows 40 Gbit/s · GB/s shows 5 GB/s (handy to compare with a drive)" = "Gbit/s muestra 40 Gbit/s · GB/s muestra 5 GB/s (útil para comparar con un disco)";
 "Get a notification when a new device shows up on your network (while this page scans)" = "Recibe una notificación cuando aparezca un dispositivo nuevo en tu red (mientras esta página escanea)";
 "GitHub answered %lld" = "GitHub respondió %lld";
-"Glass" = "Cristal";
+"Glass" = "Glass";
 "Good" = "Buena";
 "Graphics chip (GPU)" = "Chip gráfico (GPU)";
 "Graphs" = "Gráficas";
@@ -580,7 +580,7 @@
 "Installing…" = "Instalando…";
 "Install…" = "Instalar…";
 "Instant" = "Instantáneo";
-"Instrument" = "Instrumento";
+"Instrument" = "Instrument";
 "Intel (running via Rosetta now)" = "Intel (ahora con Rosetta)";
 "Intel (runs via Rosetta)" = "Intel (funciona con Rosetta)";
 "Interface" = "Interfaz";
@@ -591,7 +591,7 @@
 "Internet has been slow for %lld min (%lld ms)" = "Internet lleva %lld min lento (%lld ms)";
 "Internet is responding slowly (%lld ms) — that's probably not your Mac." = "Internet responde despacio (%lld ms) — probablemente no sea cosa de tu Mac.";
 "Internet slow or down" = "Internet lento o caído";
-"Internet slow: avg. %lld ms" = "Internet lento: prom. %lld ms";
+"Internet slow: avg. %lld ms" = "Internet lento: media %lld ms";
 "Internet speed next to NET" = "Velocidad de internet junto a NET";
 "Internet via %@ (USB)" = "Internet por %@ (USB)";
 "Internet via Bluetooth tethering" = "Internet compartido por Bluetooth";
@@ -609,7 +609,7 @@
 "Keep logs" = "Conservar registros";
 "Keep measurement history for" = "Conservar historial durante";
 "Keep measuring when the window is closed" = "Seguir midiendo con la ventana cerrada";
-"Keeps awake" = "Mantiene despierto";
+"Keeps awake" = "Evita el reposo";
 "Keeps track of files in the cloud" = "Controla los archivos en la nube";
 "Keyboard" = "Teclado";
 "Language" = "Idioma";
@@ -658,7 +658,7 @@
 "Low Data Mode" = "Modo de datos reducidos";
 "Low impact" = "Bajo impacto";
 "Low impact · on now" = "Bajo impacto · activado";
-"Low · avg · high" = "Mín. · prom. · máx.";
+"Low · avg · high" = "Mín. · media · máx.";
 "MB/s" = "MB/s";
 "Mac on since %@" = "Mac encendido desde %@";
 "Mac too hot" = "Mac demasiado caliente";
@@ -698,7 +698,7 @@
 "Menu bar" = "Barra de menús";
 "Metered" = "Medida";
 "Min" = "Mín.";
-"Minimal light" = "Minimal claro";
+"Minimal light" = "Minimal light";
 "Missing: %@" = "Falta: %@";
 "Mode" = "Modo";
 "Model: %@" = "Modelo: %@";
@@ -774,7 +774,7 @@
 "Nothing special in the background right now." = "Nada especial en segundo plano ahora mismo.";
 "Nothing unusual happened" = "No ha pasado nada fuera de lo normal";
 "Nothing wrong: CPU %@, memory normal%@." = "Todo bien: CPU %@, memoria normal%@.";
-"Nothing: your Mac can sleep normally" = "Nada: tu Mac puede reposar con normalidad";
+"Nothing: your Mac can sleep normally" = "Nada: tu Mac puede entrar en reposo con normalidad";
 "Noticeable effect on your battery" = "Efecto notable en la batería";
 "Notifications" = "Notificaciones";
 "Notifications and widgets" = "Notificaciones y widgets";
@@ -815,7 +815,7 @@
 "Opens at login" = "Se abre al iniciar sesión";
 "Optical" = "Óptico";
 "Optical (active)" = "Óptico (activo)";
-"Optional: your own accent color. \"Default\" uses the style's color." = "Opcional: tu propio color de acento. «Por omisión» usa el color del estilo.";
+"Optional: your own accent color. \"Default\" uses the style's color." = "Opcional: tu propio color de acento. «Predeterminado» usa el color del estilo.";
 "Other devices" = "Otros dispositivos";
 "Out of memory" = "Sin memoria";
 "Outside your own network: routers don't pass on hardware addresses, so the MAC address and maker can't be seen" = "Fuera de tu red: los routers no transmiten las direcciones de hardware, así que no se ven la dirección MAC ni el fabricante";
@@ -915,14 +915,14 @@
 "Reply times over the last two minutes (max %@ ms)" = "Tiempos de respuesta de los últimos dos minutos (máx. %@ ms)";
 "Reported as" = "Indicado como";
 "Reset" = "Restablecer";
-"Reset all settings to default?" = "¿Restablecer todos los ajustes por omisión?";
+"Reset all settings to default?" = "¿Restaurar todos los ajustes predeterminados?";
 "Reset everything…" = "Restablecer todo…";
 "Resolution" = "Resolución";
 "Response time" = "Tiempo de respuesta";
 "Response time next to NET" = "Tiempo de respuesta junto a NET";
 "Restart Fusebox" = "Reiniciar Fusebox";
 "Restart reminder" = "Recordatorio de reinicio";
-"Restore defaults" = "Restaurar valores por omisión";
+"Restore defaults" = "Restaurar valores predeterminados";
 "Right" = "Derecho";
 "Role" = "Función";
 "Roll" = "Rodillo";
@@ -1047,14 +1047,14 @@
 "SuperSpeed data active" = "Datos SuperSpeed activos";
 "Sustained peak" = "Pico sostenido";
 "Swap" = "Swap";
-"Swap (memory on the SSD)" = "Swap (memoria en el SSD)";
+"Swap (memory on the SSD)" = "Swap (espacio de intercambio en el SSD)";
 "Syncs with iCloud" = "Sincroniza con iCloud";
 "Syncs your iCloud Drive files" = "Sincroniza tus archivos de iCloud Drive";
 "System" = "Sistema";
 "TV / streaming" = "TV / streaming";
 "TV library" = "Biblioteca de TV";
 "Tablet" = "Tablet";
-"Talks" = "Habla";
+"Talks" = "Protocolo";
 "Temperature" = "Temperatura";
 "Terminal" = "Terminal";
 "Test" = "Probar";
@@ -1424,7 +1424,7 @@
 "your disk is almost full" = "tu disco está casi lleno";
 "–" = "–";
 "—" = "—";
-"“Opens at login”: Fusebox can see launch agents, but not the Login Items list in System Settings." = "«Se abre al iniciar sesión»: Fusebox ve los launch agents, pero no la lista de Ítems de inicio de Ajustes del Sistema.";
+"“Opens at login”: Fusebox can see launch agents, but not the Login Items list in System Settings." = "«Se abre al iniciar sesión»: Fusebox ve los launch agents, pero no la lista de Ítems de inicio y extensiones de Ajustes del Sistema.";
 "↑ %@" = "↑ %@";
 "↑ better than %@ (%lld)" = "↑ mejor que %@ (%lld)";
 "↓ %@" = "↓ %@";
@@ -1491,7 +1491,7 @@
 "Without it, macOS hides your Photos library, Mail, app containers and parts of the caches, so the sizes come out too small. In Privacy & Security › Full Disk Access, turn on Fusebox (or add it with +), then press Find large folders again. Fusebox only measures sizes; it never reads or deletes your files." = "Sin él, macOS oculta tu fototeca, Mail, los contenedores de apps y parte de las cachés, así que los tamaños salen demasiado pequeños. En Privacidad y seguridad › Acceso total al disco, activa Fusebox (o añádelo con +) y vuelve a pulsar Buscar carpetas grandes. Fusebox solo mide tamaños; nunca lee ni borra tus archivos.";
 "Xcode app archives (builds you exported). Keep the ones you still need" = "Archivos de apps de Xcode (compilaciones exportadas). Conserva los que aún necesites";
 "Xcode build files. Safe to delete; Xcode rebuilds them" = "Archivos de compilación de Xcode. Puedes borrarlos; Xcode los regenera";
-"Xcode: build files, simulators and device support. Clear in Xcode or delete DerivedData; old simulators: Xcode › Settings › Components" = "Xcode: archivos de compilación, simuladores y soporte de dispositivos. Limpia en Xcode o borra DerivedData; simuladores antiguos: Xcode › Ajustes › Componentes";
+"Xcode: build files, simulators and device support. Clear in Xcode or delete DerivedData; old simulators: Xcode › Settings › Components" = "Xcode: archivos de compilación, simuladores y soporte de dispositivos. Limpia en Xcode o borra DerivedData; simuladores antiguos: Xcode › Settings › Components";
 "Your Mail messages and attachments" = "Tus mensajes de Mail y adjuntos";
 "Your documents. Your own files" = "Tus documentos. Tus propios archivos";
 "Your downloads. Often old installers and zips that can go" = "Tus descargas. A menudo instaladores y zips antiguos que sobran";
@@ -1503,7 +1503,7 @@
 "check first" = "revisar antes";
 "iCloud Drive files on this Mac. Remove downloads with \"Remove Download\" in Finder" = "Archivos de iCloud Drive en este Mac. Quita descargas con «Eliminar descarga» en Finder";
 "iPhone/iPad backups. Delete old backups in Finder › your iPhone › Manage Backups" = "Copias de iPhone/iPad. Borra las antiguas en Finder › tu iPhone › Gestionar copias de seguridad";
-"iPhone/iPad simulators from Xcode. Remove old ones in Xcode › Settings › Components" = "Simuladores de iPhone/iPad de Xcode. Quita los antiguos en Xcode › Ajustes › Componentes";
+"iPhone/iPad simulators from Xcode. Remove old ones in Xcode › Settings › Components" = "Simuladores de iPhone/iPad de Xcode. Quita los antiguos en Xcode › Settings › Components";
 "keep" = "conservar";
 "macOS asks you once for each of these. Allow what you want to use; you can change it later in System Settings." = "macOS te lo pregunta una vez por cada uno. Permite lo que quieras usar; puedes cambiarlo luego en Ajustes del Sistema.";
 "npm download cache. Safe to delete" = "Caché de descargas de npm. Puedes borrarla";
