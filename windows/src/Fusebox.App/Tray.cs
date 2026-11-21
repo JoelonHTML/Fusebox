@@ -7,14 +7,14 @@ namespace Fusebox.App;
 
 /// <summary>
 /// System tray icon (Shell_NotifyIconW) with a hidden message-only window; the Windows counterpart of the Mac menu bar item.
-/// Left click = small panel (<see cref="TrayPanel"/>), right click = menu. The window procedure is an [UnmanagedCallersOnly]
+/// Left click = flyout (<see cref="TrayFlyout"/>), right click = menu (status, Open, Settings, Quit). The window procedure is an [UnmanagedCallersOnly]
 /// function pointer (AOT-safe, no delegates to keep alive). Everything runs on the UI thread.
 /// </summary>
 public sealed unsafe partial class Tray : IDisposable
 {
     const uint WM_APP_TRAY = 0x8001, WM_LBUTTONUP = 0x202, WM_RBUTTONUP = 0x205, WM_CONTEXTMENU = 0x7B;
     const uint NIM_ADD = 0, NIM_MODIFY = 1, NIM_DELETE = 2, NIF_MESSAGE = 1, NIF_ICON = 2, NIF_TIP = 4;
-    const uint CmdOpen = 1, CmdQuit = 2;
+    const uint CmdOpen = 1, CmdQuit = 2, CmdSettings = 3, CmdStatus = 4;
     static readonly nint HwndMessage = -3;
 
     static Tray? instance;                 // the window procedure is static; there is one tray icon per process
@@ -22,9 +22,9 @@ public sealed unsafe partial class Tray : IDisposable
     nint hwnd, icon;
     string tip = "";
     bool added;
-    TrayPanel? panel;
+    TrayFlyout? flyout;
 
-    public bool PanelOpen => panel?.IsOpen ?? false;
+    public bool FlyoutOpen => flyout?.IsOpen ?? false;
     public bool Visible => added;
 
     public Tray()
@@ -80,25 +80,39 @@ public sealed unsafe partial class Tray : IDisposable
         if (added) Notify(NIM_MODIFY);
     }
 
-    void TogglePanel()
+    void ToggleFlyout()
     {
-        panel ??= new TrayPanel();
-        panel.Toggle();
+        flyout ??= new TrayFlyout();
+        flyout.Toggle();
+    }
+
+    /// <summary>The icon's screen rectangle (physical pixels), or null when the shell doesn't say.</summary>
+    public Fusebox.Core.Look.Box? IconRect()
+    {
+        if (!added) return null;
+        var id = new Win32.NOTIFYICONIDENTIFIER { cbSize = (uint)sizeof(Win32.NOTIFYICONIDENTIFIER), hWnd = hwnd, uID = 1 };
+        Win32.RECT r;
+        if (Win32.Shell_NotifyIconGetRect(&id, &r) != 0 || r.Right <= r.Left) return null;
+        return new(r.Left, r.Top, r.Right - r.Left, r.Bottom - r.Top);
     }
 
     void ShowMenu()
     {
         GetCursorPos(out var pt);
         var menu = CreatePopupMenu();
-        fixed (char* open = L("Open Fusebox"), quit = L("Quit Fusebox"))
+        fixed (char* status = App.Live.Status.Text, open = L("Open Fusebox"), settings = L("Settings…"), quit = L("Quit Fusebox"))
         {
+            AppendMenuW(menu, 0x1 /* MF_GRAYED */, CmdStatus, status);
+            AppendMenuW(menu, 0x800 /* MF_SEPARATOR */, 0, null);
             AppendMenuW(menu, 0, CmdOpen, open);
+            AppendMenuW(menu, 0, CmdSettings, settings);
             AppendMenuW(menu, 0, CmdQuit, quit);
             SetForegroundWindow(hwnd);   // otherwise the menu does not close when clicking elsewhere
             uint cmd = TrackPopupMenu(menu, 0x2 /* TPM_RIGHTBUTTON */ | 0x100 /* TPM_RETURNCMD */ | 0x20 /* TPM_BOTTOMALIGN */, pt.X, pt.Y, 0, hwnd, 0);
             PostMessageW(hwnd, 0 /* WM_NULL */, 0, 0);
             DestroyMenu(menu);
             if (cmd == CmdOpen) App.ShowMain();
+            else if (cmd == CmdSettings) Settings.SettingsWindow.Open();
             else if (cmd == CmdQuit) App.Quit();
         }
     }
@@ -114,7 +128,7 @@ public sealed unsafe partial class Tray : IDisposable
                 if (msg == WM_APP_TRAY)
                 {
                     uint ev = (uint)lParam & 0xFFFF;
-                    if (ev == WM_LBUTTONUP) t.TogglePanel();
+                    if (ev == WM_LBUTTONUP) t.ToggleFlyout();
                     else if (ev == WM_RBUTTONUP || ev == WM_CONTEXTMENU) t.ShowMenu();
                     return 0;
                 }

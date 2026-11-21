@@ -198,3 +198,8 @@
 "Your PC is busy" = "Dein PC ist ausgelastet";
 "Your PC is getting warm" = "Dein PC wird warm";
 "Your PC is very hot — it's slowing itself down" = "Dein PC ist sehr heiß — er drosselt sich";
+
+/* Window shell and Settings window */
+"Settings  Ctrl+," = "Einstellungen  Strg+,";
+"Settings  Ctrl+,  ·  Low impact is on" = "Einstellungen  Strg+,  ·  Sparsam ist an";
+"Tray icon" = "Infobereich-Symbol";

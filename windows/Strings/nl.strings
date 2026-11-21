@@ -198,3 +198,8 @@
 "Your PC is busy" = "Je pc heeft het druk";
 "Your PC is getting warm" = "Je pc wordt warm";
 "Your PC is very hot — it's slowing itself down" = "Je pc is erg heet — hij remt zichzelf af";
+
+/* Window shell and Settings window */
+"Settings  Ctrl+," = "Instellingen  Ctrl+,";
+"Settings  Ctrl+,  ·  Low impact is on" = "Instellingen  Ctrl+,  ·  Zuinig staat aan";
+"Tray icon" = "Systeemvakpictogram";

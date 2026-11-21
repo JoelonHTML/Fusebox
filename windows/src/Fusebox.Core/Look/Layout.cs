@@ -63,6 +63,21 @@ public static class Placement
         (Math.Max(saved.W, minimum.W), Math.Max(saved.H, minimum.H));
 
     /// <summary>
+    /// Tray flyout next to its icon, like Quick Settings: on the taskbar's side of the work area, <paramref name="margin"/> away from the
+    /// edges, centered on the icon along the taskbar and clamped into the work area.
+    /// </summary>
+    public static (double X, double Y) Flyout(Box icon, Box work, double w, double h, double margin = 12)
+    {
+        double cx = icon.X + icon.W / 2, cy = icon.Y + icon.H / 2;
+        double x = Math.Clamp(cx - w / 2, work.X + margin, Math.Max(work.X + margin, work.Right - w - margin));
+        double y = cy >= work.Y + work.H / 2 ? work.Bottom - h - margin : work.Y + margin;
+        if (cx < work.X) x = work.X + margin;                                   // taskbar on the left
+        else if (cx > work.Right) x = work.Right - w - margin;                 // taskbar on the right
+        if (cx < work.X || cx > work.Right) y = Math.Clamp(cy - h / 2, work.Y + margin, Math.Max(work.Y + margin, work.Bottom - h - margin));
+        return (x, Math.Max(y, work.Y));
+    }
+
+    /// <summary>
     /// Mac SettingsPlacement: right of the main window (gap 12), else left of it, else centered over it (clamped to the screen);
     /// tops aligned, moved up if it would run off the bottom.
     /// </summary>

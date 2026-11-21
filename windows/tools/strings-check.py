@@ -68,6 +68,7 @@ CS_STR = r'(?:@"(?:[^"]|"")*"|"(?:[^"\\\n]|\\.)*")'
 CALL = re.compile(r'(?<![\w.])(?:Strings\.)?L\(\s*(\$?)(' + CS_STR + r')((?:\s*\+\s*' + CS_STR + r')*)')
 INDIRECT = re.compile(r'(?<![\w.])(?:Strings\.)?L\(\s*[A-Za-z_(]')
 LIT = re.compile(CS_STR)
+HELPER = re.compile(r'(?<![\w.])(?:Card\(\s*(' + CS_STR + r')\s*,\s*(' + CS_STR + r')|Section\(\s*(' + CS_STR + r')\s*\))')
 
 
 def lit(s):
@@ -79,10 +80,15 @@ def lit(s):
 def cs_keys(warn):
     keys = {}
     for p in glob.glob(os.path.join(WIN, "src", "**", "*.cs"), recursive=True):
-        if os.path.basename(p) in ("Strings.cs", "Loc.cs"):
+        if os.path.basename(p) in ("Strings.cs", "Loc.cs", "SettingsCard.xaml.cs", "SettingsUi.cs"):   # translation plumbing
             continue
         t = open(p, encoding="utf-8-sig").read()
         rel = os.path.relpath(p, WIN)
+        # Settings helpers translate their text arguments: SettingsUi.Card(header, description, …) and Section(title).
+        for m in HELPER.finditer(t):
+            for g in m.groups():
+                if g:
+                    keys.setdefault(lit(g), rel)
         for m in CALL.finditer(t):
             if m.group(1) == "$":
                 warn.append(f"{rel}: interpolated key {m.group(2)[:50]}")
@@ -100,7 +106,7 @@ def cs_keys(warn):
 
 
 TEXT_ATTRS = {"TextBlock": ["Text"], "ToggleSwitch": ["Header"], "ComboBox": ["Header"],
-              "TextBox": ["Header", "PlaceholderText"]}
+              "TextBox": ["Header", "PlaceholderText"], "SettingsCard": ["Header", "Description"]}
 CONTENT = {"Button", "CheckBox", "RadioButton", "ToggleButton", "HyperlinkButton", "NavigationViewItem",
            "ToggleMenuFlyoutItem", "MenuFlyoutItem", "AppBarButton", "ComboBoxItem"}
 

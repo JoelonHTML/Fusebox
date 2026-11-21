@@ -1,0 +1,12 @@
+<Page x:Class="Fusebox.App.Settings.AppearanceSettingsPage"
+      xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:s="using:Fusebox.App.Settings">
+    <!-- Settings › Appearance (FEATURES.md §9.5). Add rows to Body: <s:SettingsCard Header="…" Description="…"><ToggleSwitch /></s:SettingsCard>,
+         section headers: <TextBlock Style="{StaticResource SettingsSectionHeader}" Text="…" />. -->
+    <ScrollViewer>
+        <StackPanel x:Name="Body" Padding="28,20,28,28" Spacing="4">
+            <TextBlock Text="Appearance" Style="{StaticResource SettingsPageTitle}" />
+        </StackPanel>
+    </ScrollViewer>
+</Page>

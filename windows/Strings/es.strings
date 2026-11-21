@@ -198,3 +198,8 @@
 "Your PC is busy" = "Tu PC está ocupado";
 "Your PC is getting warm" = "Tu PC se está calentando";
 "Your PC is very hot — it's slowing itself down" = "Tu PC está muy caliente — se está ralentizando";
+
+/* Window shell and Settings window */
+"Settings  Ctrl+," = "Configuración  Ctrl+,";
+"Settings  Ctrl+,  ·  Low impact is on" = "Configuración  Ctrl+,  ·  Bajo impacto activado";
+"Tray icon" = "Icono del área de notificación";

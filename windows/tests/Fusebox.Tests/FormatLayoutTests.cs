@@ -119,6 +119,17 @@ public class PlacementTests
     }
 
     [Fact]
+    public void FlyoutSitsAboveTheTrayIcon()
+    {
+        var work = new Box(0, 0, 1920, 1032);                       // taskbar at the bottom (48 px)
+        Assert.Equal((1572, 620), Placement.Flyout(new Box(1800, 1040, 24, 24), work, 336, 400));   // clamped to the right edge
+        Assert.Equal((800, 620), Placement.Flyout(new Box(956, 1040, 24, 24), work, 336, 400));
+        Assert.Equal((12, 12), Placement.Flyout(new Box(10, -40, 24, 24), new Box(0, 0, 1920, 1032), 336, 400));   // taskbar on top
+        var left = new Box(48, 0, 1872, 1080);                      // taskbar on the left
+        Assert.Equal((60, 340), Placement.Flyout(new Box(12, 528, 24, 24), left, 336, 400));
+    }
+
+    [Fact]
     public void SavedTopLeftOnlyWhenOnAScreen()
     {
         Box[] screens = [new(0, 0, 1920, 1040), new(1920, 0, 1280, 984)];

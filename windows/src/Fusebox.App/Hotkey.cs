@@ -53,7 +53,12 @@ public static unsafe class Hotkey
         if (window == null) return;
         var aw = window.AppWindow;
         bool minimized = aw.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Minimized };
-        if (aw.IsVisible && !minimized && SettingsNative.GetForegroundWindow() == hwnd) { aw.Hide(); return; }
+        if (aw.IsVisible && !minimized && SettingsNative.GetForegroundWindow() == hwnd)
+        {
+            // Hide to the tray; without a tray icon minimize, so the taskbar button stays (never unreachable).
+            if (App.Tray is { Visible: true }) aw.Hide(); else if (aw.Presenter is OverlappedPresenter op) op.Minimize();
+            return;
+        }
         aw.Show();
         if (aw.Presenter is OverlappedPresenter p && minimized) p.Restore();
         window.Activate();

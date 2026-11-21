@@ -32,7 +32,6 @@ public static class Boot
     {
         var main = App.Main!;
         Notify.Register();
-        Theming.Apply(main);
         LowImpact.Start();
         Hotkey.Start(main);
         Updater.Start();

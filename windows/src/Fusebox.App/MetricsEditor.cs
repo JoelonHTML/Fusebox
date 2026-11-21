@@ -61,8 +61,8 @@ public static class MetricsEditor
                 Save(Order(), cur);
             };
             row.Children.Add(box);
-            row.Children.Add(Move("", 1, at > 0, () => Swap(p, at, at - 1)));
-            row.Children.Add(Move("", 2, at < order.Count - 1, () => Swap(p, at, at + 1)));
+            row.Children.Add(Move("\uE70E", 1, at > 0, () => Swap(p, at, at - 1)));
+            row.Children.Add(Move("\uE70D", 2, at < order.Count - 1, () => Swap(p, at, at + 1)));
             p.Children.Add(row);
         }
     }
