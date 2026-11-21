@@ -14,5 +14,6 @@ Plan and API choices: `windows/PLAN.md` (Dutch). Windows 11 only, x64 + arm64, .
 - Text: write English in XAML/code; code uses `Strings.L("English text %@", arg)` with Mac printf placeholders (%@, %lld, %.1f). Reuse the Mac's exact English wording where the feature is the same (grep `Sources/*.swift` for `L("` / `Text("`), so the existing Mac translations in `Resources/*.lproj` apply. Windows-only wording: just write English; translations come later. Windows terms: Settings, Task Manager, system tray, Startup apps, PC (not Mac).
 - No new NuGet packages without a strong reason. Small, boring code. One unit test per non-trivial parser/logic.
 - Build check on Linux (no WinUI there): `export PATH=/root/.dotnet:$PATH; cd windows && dotnet test tests/Fusebox.Tests && dotnet build tools/Fusebox.Probe`. The WinUI project only builds on Windows (CI), so be extra careful with XAML: valid WinUI 3 (Microsoft.UI.Xaml) syntax, matching x:Name fields, `xmlns:c="using:Fusebox.App.Controls"`.
+- C# type check of the WinUI app on Linux (catches compile errors before CI; XAML itself is only checked on Windows): `windows/tools/linux-check/check.sh`.
 - Interactive stdin commands hang the shell: never run `cat > file` without a heredoc.
 - No personal data (names, emails) in code.

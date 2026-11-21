@@ -6,7 +6,7 @@ using Microsoft.UI.Xaml.Controls;
 namespace Fusebox.App.Controls;
 
 /// <summary>One Live card: name, big value, small facts, 5-minute graph. Click = detail page. Updated only from LivePage.Render.</summary>
-public sealed partial class MetricCard : Border
+public sealed partial class MetricCard : UserControl   // Border is sealed in WinUI
 {
     public Metric Metric { get; }
     public event Action<Metric>? Clicked;
@@ -20,7 +20,6 @@ public sealed partial class MetricCard : Border
     public MetricCard(Metric m)
     {
         Metric = m;
-        Style = (Style)Application.Current.Resources["FuseboxCard"];
         title.Text = MetricText.Title(m);
         var big = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
         big.Children.Add(value);
@@ -30,7 +29,7 @@ public sealed partial class MetricCard : Border
         stack.Children.Add(big);
         stack.Children.Add(facts);
         stack.Children.Add(spark);
-        Child = stack;
+        Content = new Border { Style = (Style)Application.Current.Resources["FuseboxCard"], Child = stack };
         Tapped += (_, _) => Clicked?.Invoke(Metric);
     }
 

@@ -35,7 +35,7 @@ public static unsafe class Hotkey
             registered = SettingsNative.RegisterHotKey(hwnd, Id, SettingsNative.MOD_CONTROL | SettingsNative.MOD_ALT | SettingsNative.MOD_WIN | SettingsNative.MOD_NOREPEAT, 'F');
     }
 
-    [UnmanagedCallersOnly(CallConvs = [typeof(System.Runtime.CompilerServices.CallConvStdcall)])]
+    [UnmanagedCallersOnly]   // platform default = stdcall on x64/arm64, matches delegate* unmanaged
     static nint WndProc(nint h, uint msg, nuint wParam, nint lParam, nuint id, nuint data)
     {
         if (msg == SettingsNative.WM_HOTKEY && (int)wParam == Id)
