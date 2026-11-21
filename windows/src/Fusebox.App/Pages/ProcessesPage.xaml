@@ -1,7 +1,106 @@
 <Page x:Class="Fusebox.App.Pages.ProcessesPage"
       xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
-      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
-    <StackPanel Padding="24" Spacing="12">
-        <TextBlock Text="Processes" Style="{StaticResource TitleTextBlockStyle}" />
-    </StackPanel>
+      xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+      xmlns:local="using:Fusebox.App.Pages">
+    <Grid Padding="24" RowSpacing="12" ColumnSpacing="16">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+            <RowDefinition Height="Auto" />
+        </Grid.RowDefinitions>
+        <Grid.ColumnDefinitions>
+            <ColumnDefinition Width="*" />
+            <ColumnDefinition Width="320" />
+        </Grid.ColumnDefinitions>
+
+        <TextBlock Grid.ColumnSpan="2" Text="Processes" Style="{StaticResource TitleTextBlockStyle}" />
+
+        <Grid Grid.Row="1" ColumnSpacing="8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition Width="Auto" />
+            </Grid.ColumnDefinitions>
+            <TextBox x:Name="SearchBox" PlaceholderText="Search apps" TextChanged="Search_TextChanged" />
+            <ComboBox x:Name="KindFilter" Grid.Column="1" SelectedIndex="0" MinWidth="140" SelectionChanged="Filter_Changed">
+                <ComboBoxItem Content="All" />
+                <ComboBoxItem Content="Apps" />
+                <ComboBoxItem Content="Background" />
+                <ComboBoxItem Content="Windows" />
+            </ComboBox>
+        </Grid>
+
+        <Border Grid.Row="2" Style="{StaticResource FuseboxCard}" Padding="4">
+            <Grid>
+                <Grid.RowDefinitions>
+                    <RowDefinition Height="Auto" />
+                    <RowDefinition Height="*" />
+                </Grid.RowDefinitions>
+                <Grid Padding="12,0,20,0" ColumnSpacing="8">
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="28" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="70" />
+                        <ColumnDefinition Width="90" />
+                        <ColumnDefinition Width="70" />
+                    </Grid.ColumnDefinitions>
+                    <HyperlinkButton x:Name="HeadName" Grid.Column="1" Tag="Name" Click="Sort_Click" Padding="0" />
+                    <HyperlinkButton x:Name="HeadCpu" Grid.Column="2" Tag="Cpu" Click="Sort_Click" Padding="0" HorizontalAlignment="Right" />
+                    <HyperlinkButton x:Name="HeadRam" Grid.Column="3" Tag="Ram" Click="Sort_Click" Padding="0" HorizontalAlignment="Right" />
+                    <HyperlinkButton x:Name="HeadGpu" Grid.Column="4" Tag="Gpu" Click="Sort_Click" Padding="0" HorizontalAlignment="Right" />
+                </Grid>
+                <ListView x:Name="ProcList" Grid.Row="1" SelectionMode="Single" SelectionChanged="List_SelectionChanged">
+                    <ListView.ItemContainerStyle>
+                        <Style TargetType="ListViewItem">
+                            <Setter Property="Padding" Value="8,0,8,0" />
+                            <Setter Property="MinHeight" Value="36" />
+                        </Style>
+                    </ListView.ItemContainerStyle>
+                    <ListView.ItemTemplate>
+                        <DataTemplate x:DataType="local:ProcRow">
+                            <Grid ColumnSpacing="8" Opacity="{x:Bind RowOpacity, Mode=OneWay}">
+                                <Grid.ColumnDefinitions>
+                                    <ColumnDefinition Width="28" />
+                                    <ColumnDefinition Width="*" />
+                                    <ColumnDefinition Width="70" />
+                                    <ColumnDefinition Width="90" />
+                                    <ColumnDefinition Width="70" />
+                                </Grid.ColumnDefinitions>
+                                <Image Width="20" Height="20" HorizontalAlignment="Left" VerticalAlignment="Center" Source="{x:Bind Icon, Mode=OneWay}" />
+                                <TextBlock Grid.Column="1" VerticalAlignment="Center" TextTrimming="CharacterEllipsis" Text="{x:Bind Name, Mode=OneWay}" />
+                                <TextBlock Grid.Column="2" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{x:Bind Cpu, Mode=OneWay}" />
+                                <TextBlock Grid.Column="3" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{x:Bind Ram, Mode=OneWay}" />
+                                <TextBlock Grid.Column="4" VerticalAlignment="Center" HorizontalAlignment="Right" Text="{x:Bind Gpu, Mode=OneWay}" />
+                            </Grid>
+                        </DataTemplate>
+                    </ListView.ItemTemplate>
+                </ListView>
+            </Grid>
+        </Border>
+
+        <Border Grid.Row="2" Grid.Column="1" Style="{StaticResource FuseboxCard}">
+            <ScrollViewer>
+                <StackPanel Spacing="10">
+                    <TextBlock x:Name="DetHint" Text="Select an app to see what it does." TextWrapping="Wrap" Opacity="0.7" />
+                    <StackPanel x:Name="DetPanel" Spacing="10" Visibility="Collapsed">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <Image x:Name="DetIcon" Width="32" Height="32" />
+                            <TextBlock x:Name="DetName" Style="{StaticResource SubtitleTextBlockStyle}" VerticalAlignment="Center" TextWrapping="Wrap" />
+                        </StackPanel>
+                        <TextBlock x:Name="DetStatus" Style="{StaticResource BodyStrongTextBlockStyle}" />
+                        <StackPanel x:Name="DetLines" Spacing="6" />
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Button x:Name="DetailsBtn" Content="Details" Click="Details_Click" />
+                            <Button x:Name="StopBtn" Content="✕ Stop" Click="Stop_Click" />
+                        </StackPanel>
+                    </StackPanel>
+                </StackPanel>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="3" Grid.ColumnSpan="2" Spacing="2">
+            <TextBlock x:Name="OwnText" Style="{StaticResource BodyStrongTextBlockStyle}" />
+            <TextBlock Text="Network per app isn't shown: Windows only allows it with administrator rights." Opacity="0.7" TextWrapping="Wrap" />
+        </StackPanel>
+    </Grid>
 </Page>
