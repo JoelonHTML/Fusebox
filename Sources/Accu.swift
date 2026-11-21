@@ -515,3 +515,107 @@ struct BatteryHealthSection: View {
         }
     }
 }
+
+// MARK: - Geleerde accutijd: hoe snel jóuw accu leegloopt, uit de eigen minuutlog (meterkast-*.csv, laatste 7 dagen).
+// Hooguit eens per 30 min opnieuw uitgerekend, buiten de hoofdthread; per meting alleen een mengsom met de laatste 15 min.
+
+enum LearnedBattery {
+    typealias Point = (t: Date, pct: Double)
+
+    /// Gemiddeld %/uur over de stukken op de accu, plus hoeveel uur dat is (ongewogen).
+    /// Een stuk = aaneengesloten minuten (gat ≤ 3 min: anders slaap of Fusebox dicht) waarin het % niet stijgt (stijgen = laden).
+    /// Vlak begin/eind valt af (vol aan de lader, of de oplaadlimiet die vasthoudt). Recent en zelfde tijd van de dag tellen zwaarder.
+    static func rate(_ pts: [Point], now: Date) -> (perHour: Double, hours: Double)? {
+        let cal = Calendar.current
+        let hourNow = Double(cal.component(.hour, from: now)) + Double(cal.component(.minute, from: now)) / 60
+        var wDrop = 0.0, wHours = 0.0, hours = 0.0, i = 0
+        while i < pts.count {
+            var j = i
+            while j + 1 < pts.count, pts[j + 1].t.timeIntervalSince(pts[j].t) <= 180, pts[j + 1].pct <= pts[j].pct + 0.05 { j += 1 }
+            var a = i, b = j
+            while a < b, abs(pts[a + 1].pct - pts[a].pct) < 0.05 { a += 1 }
+            while b > a, abs(pts[b - 1].pct - pts[b].pct) < 0.05 { b -= 1 }
+            i = j + 1
+            let h = pts[b].t.timeIntervalSince(pts[a].t) / 3600, drop = pts[a].pct - pts[b].pct
+            // ponytail: de log weet niet of de lader erin zat; < 1,5 %/uur zien we als "aan de lader" (wakker op de accu is altijd meer)
+            guard h >= 1.0 / 6, drop >= 1, drop / h >= 1.5 else { continue }
+            let mid = pts[a].t.addingTimeInterval(h * 1800)
+            let age = now.timeIntervalSince(mid) / 86400
+            let hourThen = Double(cal.component(.hour, from: mid)) + Double(cal.component(.minute, from: mid)) / 60
+            let diff = min(abs(hourNow - hourThen), 24 - abs(hourNow - hourThen))
+            let w = pow(0.5, age / 2) * (0.75 + 0.25 * cos(diff * .pi / 12))   // halveert per 2 dagen; zelfde uur ×1, 12 uur verschil ×0,5
+            wDrop += w * drop; wHours += w * h; hours += h
+        }
+        return wHours > 0 ? (wDrop / wHours, hours) : nil
+    }
+
+    /// Minuten tot leeg: geleerd tempo, gemengd met het tempo sinds `since` (≤ 15 min geleden, al die tijd op de accu).
+    static func minutes(pct: Double, at t: Date, learned: Double, since: Point?) -> Int? {
+        var r = learned
+        if let s = since, case let span = t.timeIntervalSince(s.t), span >= 300, s.pct - pct >= 1 {
+            let a = 0.5 * min(span / 900, 1)   // hooguit half: het % springt per hele procent
+            r = r * (1 - a) + (s.pct - pct) / (span / 3600) * a
+        }
+        guard r > 0, pct > 0 else { return nil }
+        return Int((pct / r * 60).rounded())
+    }
+
+    private static let lock = NSLock()
+    nonisolated(unsafe) private static var value: (perHour: Double, hours: Double)?, at = Date.distantPast, busy = false
+    /// Alleen als er genoeg geschiedenis is (≥ 2 uur op de accu).
+    static var cached: Double? { lock.lock(); defer { lock.unlock() }; return value.flatMap { $0.hours >= 2 ? $0.perHour : nil } }
+
+    /// Eens per 30 min opnieuw (achtergrond).
+    static func refresh(dir: URL, now: Date = Date()) {
+        lock.lock()
+        guard !busy, now.timeIntervalSince(at) >= 1800 else { lock.unlock(); return }
+        busy = true; at = now
+        lock.unlock()
+        DispatchQueue.global(qos: .utility).async {
+            let v = rate(load(dir: dir, now: now), now: now)
+            lock.lock(); value = v; busy = false; lock.unlock()
+        }
+    }
+
+    /// (tijd, batterij_pct) uit de laatste 7 dagen, op volgorde.
+    static func load(dir: URL, now: Date) -> [Point] {
+        let cal = Calendar.current, from = now.addingTimeInterval(-7 * 86400)
+        var out: [Point] = []
+        for back in (0...7).reversed() {
+            guard let day = cal.date(byAdding: .day, value: -back, to: now),
+                  let text = try? String(contentsOf: dir.appendingPathComponent("meterkast-\(Power.dayName(day)).csv"), encoding: .utf8) else { continue }
+            var ti = 0, bi = -1
+            for line in text.split(separator: "\n") {
+                let v = line.split(separator: ",", omittingEmptySubsequences: false)
+                if v.first == "tijd" { ti = v.firstIndex(of: "tijd") ?? 0; bi = v.firstIndex(of: "batterij_pct") ?? -1; continue }
+                guard bi >= 0, v.count > max(ti, bi), let p = Double(v[bi]), let t = Sample.stamp.date(from: String(v[ti])), t >= from else { continue }
+                out.append((t, p))
+            }
+        }
+        return out
+    }
+
+    static func selfTest() {
+        let now = Date(timeIntervalSince1970: 1_800_000_000)
+        var pts: [Point] = []
+        func add(_ minutes: Int, from: Double, perHour: Double, start: Date) -> Date {
+            for m in 0...minutes { pts.append((start.addingTimeInterval(Double(m) * 60), from - perHour * Double(m) / 60)) }
+            return start.addingTimeInterval(Double(minutes) * 60)
+        }
+        var t = now.addingTimeInterval(-86400)
+        t = add(10, from: 100, perHour: 0, start: t)                 // vol, nog aan de lader: vlak, telt niet
+        t = add(180, from: 100, perHour: 10, start: t.addingTimeInterval(60))   // 3 uur, 10 %/uur → 70%
+        t = add(30, from: 70, perHour: -40, start: t.addingTimeInterval(60))    // laden: stijgt, telt niet
+        t = add(120, from: 90, perHour: 0, start: t.addingTimeInterval(60))     // oplaadlimiet houdt vast: vlak, telt niet
+        t = add(60, from: 90, perHour: 10, start: t.addingTimeInterval(7200))   // na 2 uur slaap (gat): 1 uur, 10 %/uur
+        let r = rate(pts, now: now)!
+        precondition(abs(r.perHour - 10) < 0.3 && abs(r.hours - 4) < 0.1, "geleerd tempo \(r)")
+        precondition(rate(Array(pts.prefix(15)), now: now) == nil, "te kort/vlak")
+        // Mengen: 50% bij 10 %/uur = 300 min; laatste 15 min 5% weg (20 %/uur) → half/half 15 %/uur = 200 min
+        precondition(minutes(pct: 50, at: now, learned: 10, since: nil) == 300, "zonder recent")
+        precondition(minutes(pct: 50, at: now, learned: 10, since: (now.addingTimeInterval(-900), 55)) == 200, "mengen")
+        precondition(minutes(pct: 50, at: now, learned: 10, since: (now.addingTimeInterval(-120), 51)) == 300, "te kort recent")
+        let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Fusebox")
+        if let real = rate(load(dir: dir, now: Date()), now: Date()) { print("accu geleerd: \(one(real.perHour)) %/uur over \(one(real.hours)) uur") } else { print("accu geleerd: te weinig geschiedenis") }
+    }
+}

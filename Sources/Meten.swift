@@ -22,6 +22,7 @@ struct Sample {
     var wifiDbm: Int?                          // Wi-Fi-signaal; 0 = weggevallen, nil = geen Wi-Fi (WifiWatch)
     var battery: Double?                       // procent, nil op desktop
     var batteryMinutes: Int?                   // tot leeg (of vol bij laden)
+    var batteryLearned = false                 // batteryMinutes komt uit je eigen gebruik (LearnedBattery), niet van macOS
     var charging = false
     var batteryW: Double?                      // vermogen van de accu in watt: + laden, − ontladen
     var adapterW: Int?                         // vermogen van de lader (watt), nil zonder lader

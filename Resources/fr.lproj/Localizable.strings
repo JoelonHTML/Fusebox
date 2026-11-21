@@ -1508,3 +1508,21 @@
 "macOS asks you once for each of these. Allow what you want to use; you can change it later in System Settings." = "macOS vous le demande une fois pour chacun. Autorisez ce que vous voulez utiliser ; vous pourrez le modifier dans Réglages Système.";
 "npm download cache. Safe to delete" = "Cache de téléchargement npm. Suppression sans risque";
 "paused · battery warm" = "en pause · batterie chaude";
+
+/* feat-ssdbat */
+" (learned from your use)" = " (appris de votre usage)";
+" (learned)" = " (appris)";
+"As fast as expected" = "Aussi rapide que prévu";
+"Learn battery time from my use" = "Apprendre l'autonomie de mon usage";
+"Needs at least 5 GB of free space." = "Nécessite au moins 5 Go d'espace libre.";
+"On battery, \"time left\" comes from how fast your battery drained over the last 7 days, mixed with the last 15 minutes. Needs 2 hours on battery first; until then macOS's estimate." = "Sur batterie, le « temps restant » vient de la vitesse de décharge de votre batterie ces 7 derniers jours, mêlée aux 15 dernières minutes. Il faut d'abord 2 heures sur batterie ; d'ici là, l'estimation de macOS.";
+"Read %@ · Write %@" = "Lecture %@ · Écriture %@";
+"Reading it back…" = "Relecture…";
+"SSD speed" = "Vitesse du SSD";
+"SSD speed test" = "Test de vitesse du SSD";
+"Slower than usual" = "Plus lent que d'habitude";
+"Test speed" = "Tester la vitesse";
+"The disk may be almost full or busy. Try again when nothing else is running." = "Le disque est peut-être presque plein ou occupé. Réessayez quand rien d'autre ne tourne.";
+"The test couldn't finish." = "Le test n'a pas pu se terminer.";
+"Writes and reads 1 GB in a temporary file (a few seconds), then deletes it." = "Écrit et lit 1 Go dans un fichier temporaire (quelques secondes), puis le supprime.";
+"Writing a test file…" = "Écriture d'un fichier de test…";

@@ -241,7 +241,7 @@ struct MetricDetail: View {
             topApps(L("Busiest on the SSD (last minute)"), sort: { $0.diskRead + $0.diskWrite > $1.diskRead + $1.diskWrite }) { rate($0.diskRead + $0.diskWrite) }
         case .battery:
             facts([(L("Charge"), s.battery.map(pct) ?? "–"), (L("Power"), s.charging ? L("Charging") : L("On battery")),
-                   (s.charging ? L("Full in") : L("Time left"), s.batteryMinutes.map(duration) ?? "–"),
+                   (s.charging ? L("Full in") : L("Time left"), s.batteryMinutes.map { duration($0) + (s.batteryLearned ? L(" (learned from your use)") : "") } ?? "–"),
                    (L("Health"), battery?.condition ?? battery?.health ?? "–"),
                    (L("Charge cycles"), battery?.cycles.map { L("\($0) of ~\(battery?.designCycles ?? 1000)") } ?? "–"),
                    (L("Capacity"), battery?.capacity.map { L("\($0)% of new") } ?? "–")])

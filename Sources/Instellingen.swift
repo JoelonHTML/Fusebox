@@ -344,6 +344,7 @@ struct LiveSettings: View {
     @AppStorage("cpuGraph") private var cpuGraph = "usage"
     @AppStorage("gpuGraph") private var gpuGraph = "usage"
     @AppStorage("batteryTime") private var batteryTime = true
+    @AppStorage("learnedBattery") private var learnedBattery = true
     @AppStorage("netSpeed") private var netSpeed = false
     @AppStorage("netPing") private var netPing = false
     @AppStorage("warnCPU") private var warnCPU = 85.0
@@ -393,6 +394,10 @@ struct LiveSettings: View {
                 Text("Next to BAT: on battery, how long until empty; while charging (battery with a bolt), how long until full. macOS's own estimate.")
             }
             OptionPreview(label: "BAT", icon: "battery.75percent", side: batteryTime ? "2:35" : "", value: "81%")
+            Toggle(isOn: $learnedBattery) {
+                Text("Learn battery time from my use")
+                Text("On battery, \"time left\" comes from how fast your battery drained over the last 7 days, mixed with the last 15 minutes. Needs 2 hours on battery first; until then macOS's estimate.")
+            }
         }
         Section("Units") {
             ForEach([Metric.cpu, .ram, .ssd]) { m in UnitPicker(metric: m) }
