@@ -9,9 +9,12 @@ using Fusebox.Core.Network;
 namespace Fusebox.Platform.Network;
 
 /// <summary>Our own connection: the adapter that carries the default route.</summary>
-public sealed record LocalNet(string Name, string Description, bool IsWifi, uint Ip, int Prefix, uint? Gateway, string[] Dns, byte[]? Mac)
+public sealed record LocalNet(string Name, string Description, bool IsWifi, uint Ip, int Prefix, uint? Gateway, string[] Dns, byte[]? Mac,
+    int IfIndex = 0, string Id = "", string[]? Ipv6 = null, bool Ipv6Router = false)
 {
     public bool Wired => !IsWifi;
+    /// <summary>Global IPv6 addresses (2000::/3).</summary>
+    public string[] Ipv6Global => Ipv6 ?? [];
 }
 
 /// <summary>Small network probes: adapter info, ping, ARP, TCP port probe, fresh DNS lookup. Everything is async or blocking-on-a-worker; nothing runs unless called.</summary>
@@ -37,7 +40,11 @@ public static class NetProbe
                 var gw = props.GatewayAddresses.Where(g => g.Address.AddressFamily == AddressFamily.InterNetwork && !g.Address.Equals(IPAddress.Any)).Select(g => (uint?)ToUint(g.Address)).FirstOrDefault();
                 var dns = props.DnsAddresses.Where(a => a.AddressFamily == AddressFamily.InterNetwork).Select(a => a.ToString()).ToArray();
                 var text = (nic.Name + " " + nic.Description).ToLowerInvariant();
-                var net = new LocalNet(nic.Name, nic.Description, nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211, ToUint(uni.Address), uni.PrefixLength, gw, dns, nic.GetPhysicalAddress().GetAddressBytes());
+                var v6 = props.UnicastAddresses.Where(u => u.Address.AddressFamily == AddressFamily.InterNetworkV6 && (u.Address.GetAddressBytes()[0] & 0xE0) == 0x20).Select(u => u.Address.ToString()).ToArray();
+                var v6Router = props.GatewayAddresses.Any(g => g.Address.AddressFamily == AddressFamily.InterNetworkV6);
+                int ifIndex = 0;
+                try { ifIndex = props.GetIPv4Properties()?.Index ?? 0; } catch { }
+                var net = new LocalNet(nic.Name, nic.Description, nic.NetworkInterfaceType == NetworkInterfaceType.Wireless80211, ToUint(uni.Address), uni.PrefixLength, gw, dns, nic.GetPhysicalAddress().GetAddressBytes(), ifIndex, nic.Id, v6, v6Router);
                 list.Add((net, Virtual.Any(text.Contains)));
             }
         }

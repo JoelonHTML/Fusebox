@@ -5,7 +5,7 @@ using Fusebox.Core.Network;
 namespace Fusebox.Platform.Network;
 
 /// <summary>Current Wi-Fi link. Ssid/Bssid are null when Windows withholds them (24H2+ needs location permission): then NameHidden is true.</summary>
-public sealed record WifiInfo(bool Connected, string? Ssid, string? Bssid, int? SignalPercent, int? Rssi, int? Channel, string? Band, string? Phy, int? RxMbps, int? TxMbps, bool NameHidden);
+public sealed record WifiInfo(bool Connected, string? Ssid, string? Bssid, int? SignalPercent, int? Rssi, int? Channel, string? Band, string? Phy, int? RxMbps, int? TxMbps, bool NameHidden, int? WidthMhz = null);
 
 /// <summary>wlanapi.dll: WlanQueryInterface(current_connection) + WlanGetNetworkBssList. Offsets follow wlanapi.h (x64/arm64 layout).</summary>
 public static unsafe partial class Wifi
@@ -46,6 +46,7 @@ public static unsafe partial class Wifi
             string? ssid = null, bssid = null, phy = null;
             int? quality = null, rx = null, tx = null, rssi = null, channel = null;
             string? band = null;
+            int? width = null;
             byte[]? bssidBytes = null;
             if (WlanQueryInterface(h, &guid, OpCurrentConnection, 0, out _, out var data, 0) == 0 && data != 0)
             {
@@ -79,9 +80,11 @@ public static unsafe partial class Wifi
                         rssi = *(int*)(e + 56);
                         uint khz = *(uint*)(e + 92);
                         band = WifiMath.Band(khz); channel = WifiMath.Channel(khz);
+                        uint ieOff = *(uint*)(e + 352), ieLen = *(uint*)(e + 356);
+                        if (ieLen is > 0 and < 4096 && ieOff + ieLen < 8192) width = WifiWidth.FromIes(new ReadOnlySpan<byte>(e + ieOff, (int)ieLen));
                         break;
                     }
-                    if (bssidBytes == null) { rssi = null; band = null; channel = null; }   // without our BSSID we cannot tell which entry is ours
+                    if (bssidBytes == null) { rssi = null; band = null; channel = null; width = null; }   // without our BSSID we cannot tell which entry is ours
                 }
                 finally { WlanFreeMemory(bl); }
             }
@@ -92,7 +95,7 @@ public static unsafe partial class Wifi
             if (rssi == null && quality != null) rssi = WifiMath.QualityToRssi(quality.Value);
             if (quality == null && rssi != null) quality = Math.Clamp((rssi.Value + 100) * 2, 0, 100);
 
-            return new WifiInfo(true, ssid, bssid, quality, rssi, channel, band, phy, rx, tx, string.IsNullOrEmpty(ssid));
+            return new WifiInfo(true, ssid, bssid, quality, rssi, channel, band, phy, rx, tx, string.IsNullOrEmpty(ssid), width);
         }
         catch (Exception e) when (e is DllNotFoundException or EntryPointNotFoundException) { return null; }
         finally { if (h != 0) WlanCloseHandle(h, 0); }
