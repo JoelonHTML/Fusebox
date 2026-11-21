@@ -69,7 +69,8 @@ public sealed partial class MainWindow : Window
 
     void Nav_SelectionChanged(NavigationView sender, NavigationViewSelectionChangedEventArgs args)
     {
-        var page = args.IsSettingsSelected ? typeof(SettingsPage) : ((args.SelectedItem as NavigationViewItem)?.Tag as string) switch
+        // IsSettingsSelected is not always set (seen in CI when selecting programmatically): compare the item too.
+        var page = args.IsSettingsSelected || ReferenceEquals(args.SelectedItem, sender.SettingsItem) ? typeof(SettingsPage) : ((args.SelectedItem as NavigationViewItem)?.Tag as string) switch
         {
             "Processes" => typeof(ProcessesPage),
             "Checkup" => typeof(CheckupPage),
