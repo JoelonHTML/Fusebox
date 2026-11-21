@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using Fusebox.Core.Look;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using static Fusebox.App.Settings.SettingsUi;
@@ -8,9 +7,8 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App.Settings;
 
 /// <summary>
-/// Settings › Appearance (FEATURES.md §9.5). Has (from v1, plain pickers): style, mode, font, language + restart, always on top, open at
-/// login, shortcut on/off. To do (Settings agent): theme tiles, text size cards, font cards, accent picker, number style, hotkey recorder,
-/// taskbar button toggle (dockIcon), keep running.
+/// Settings › Appearance (FEATURES.md §9.5): mode, six theme tiles, text size, seven fonts, accent color, number changes, and the
+/// window section (language, always on top, keep measuring, shortcut, taskbar button, open at login).
 /// </summary>
 public sealed partial class AppearanceSettingsPage : Page
 {
@@ -18,45 +16,56 @@ public sealed partial class AppearanceSettingsPage : Page
     {
         InitializeComponent();
         SettingsUi.TranslateOnce(this);
-        // Theme and font names are never translated.
+
         Body.Children.Add(Section("Style"));
-        Body.Children.Add(Card("Style", "", Choice("theme", Themes.All.Select(t => (t.Id, t.Name)).ToArray()), "\uE771"));
-        Body.Children.Add(Card("Mode", "", Choice("appearanceMode", [("system", L("System")), ("light", L("Light")), ("dark", L("Dark"))]), "\uE706"));
-        Body.Children.Add(Card("Font", "", Choice("font",
-            [("style", L("Matches style")), ("sfPro", "Segoe UI Variable"), ("rounded", "Nunito"), ("mono", "Cascadia Mono"),
-             ("serif", "Georgia"), ("montserrat", "Montserrat"), ("ubuntu", "Ubuntu")]), "\uE8D2"));
+        Body.Children.Add(Card("Mode", "", Segmented("appearanceMode", [("system", L("System")), ("light", L("Light")), ("dark", L("Dark"))]), ""));
+        Body.Children.Add(Parts.ThemeTiles());
+
+        Body.Children.Add(Section("Text size"));
+        Body.Children.Add(Parts.TextSizeCards());
+
+        Body.Children.Add(Section("Font"));
+        Body.Children.Add(Parts.FontCards());
+
+        var accent = Card("Accent color", "", Parts.AccentPicker(), "");
+        accent.Margin = new Thickness(0, 14, 0, 0);
+        Body.Children.Add(accent);
+        var numbers = Card("Number changes", "", Kit.Row(12, Previews.NumberDemo(),
+            Segmented("numberStyle", [("roll", L("Roll")), ("fade", L("Fade")), ("instant", L("Instant"))])), "");
+        ToolTipService.SetToolTip(numbers, L("Roll: digits flip from top to bottom · Fade: a short crossfade · Instant: no animation"));
+        Body.Children.Add(numbers);
 
         Body.Children.Add(Section("Window"));
+        Body.Children.Add(LanguageCard());
+        Body.Children.Add(Card("Always on top", "", Toggle("onTop"), ""));
+        Body.Children.Add(Card("Keep measuring when the window is closed", "So Checkup always has data. Quit from the tray menu to stop completely.", Toggle("keepRunning"), ""));
+
+        var hotkey = Card("Shortcut to show or hide Fusebox", "", null, "");
+        var conflict = new InfoBar { Severity = InfoBarSeverity.Warning, IsOpen = false, IsClosable = false, Message = L("Another app already uses this shortcut.") };
+        hotkey.Action = HotkeyRecorder.Create(hotkey, conflict);
+        Body.Children.Add(hotkey);
+        Body.Children.Add(conflict);
+
+        Body.Children.Add(Parts.TaskbarCard());
+
+        var login = new ToggleSwitch { IsOn = StartAtLogin.Enabled, MinWidth = 0 };
+        login.Toggled += (_, _) => StartAtLogin.Set(login.IsOn);
+        Body.Children.Add(Card("Open at login", "", login, ""));
+        Footer(Body, L("Fusebox always opens on Live, at the size you last gave that window."));
+    }
+
+    /// <summary>Language in its own name (never translated) + "Applies after a restart" with a restart button.</summary>
+    static SettingsCard LanguageCard()
+    {
         var restart = new Button { Content = L("Restart Fusebox"), Visibility = Visibility.Collapsed };
         restart.Click += (_, _) =>
         {
             Process.Start(new ProcessStartInfo(Environment.ProcessPath!, $"--wait-pid {Environment.ProcessId}") { UseShellExecute = false });
             App.Quit();
         };
-        var startLanguage = Prefs.Str("appLanguage");
+        var start = Prefs.Str("appLanguage");
         var language = Choice("appLanguage", [("", L("System")), ("en", "English"), ("nl", "Nederlands"), ("de", "Deutsch"), ("fr", "Français"), ("es", "Español")],
-            () => restart.Visibility = Prefs.Str("appLanguage") != startLanguage ? Visibility.Visible : Visibility.Collapsed);
-        var pick = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
-        pick.Children.Add(restart);
-        pick.Children.Add(language);
-        Body.Children.Add(Card("Language", "Applies after a restart of Fusebox.", pick, "\uF2B7"));
-        Body.Children.Add(Card("Always on top", "", Toggle("onTop"), "\uE718"));
-
-        var login = new ToggleSwitch { IsOn = StartAtLogin.Enabled };
-        login.Toggled += (_, _) => StartAtLogin.Set(login.IsOn);
-        Body.Children.Add(Card("Open at login", "", login, "\uE7E8"));
-
-        var hotkeyCard = Card("Shortcut to show or hide Fusebox", "", null, "\uE765");
-        void Note() => hotkeyCard.SetDescriptionText(Prefs.Int("hotkeyCode") > 0 && !Hotkey.Registered
-            ? L("Another app already uses this shortcut.") : $"{Prefs.Str("hotkeyLabel")} · {L("Works from any app.")}");
-        var hotkey = new ToggleSwitch { IsOn = Prefs.Int("hotkeyCode") > 0 };
-        hotkey.Toggled += (_, _) =>
-        {
-            if (hotkey.IsOn) Prefs.Reset("hotkeyCode"); else Prefs.Set("hotkeyCode", -1);
-            DispatcherQueue.TryEnqueue(Note);   // Hotkey re-registers on the same queue first
-        };
-        hotkeyCard.Action = hotkey;
-        Note();
-        Body.Children.Add(hotkeyCard);
+            () => restart.Visibility = Prefs.Str("appLanguage") != start ? Visibility.Visible : Visibility.Collapsed);
+        return Card("Language", "Applies after a restart of Fusebox.", Kit.Row(8, restart, language), "");
     }
 }
