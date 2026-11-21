@@ -18,11 +18,11 @@ public sealed partial class ProfileSettingsPage : Page
         InitializeComponent();
         SettingsUi.TranslateOnce(this);
         low = Card("Low impact", "Fusebox measures every 5 seconds instead of 2, without glass effects, and Windows runs it in Efficiency mode. Automatic: on in Energy saver, or on battery below 20%.",
-            Choice("lowImpact", [("off", L("Off")), ("on", L("On")), ("auto", L("Automatic"))]), "\uEC0A");
+            Choice("lowImpact", [("off", L("Off")), ("on", L("On")), ("auto", L("Automatic"))]));
         Body.Children.Add(low);
         var setup = new Button { Content = L("Run setup again") };
         setup.Click += (_, _) => Boot.ShowSetup();
-        Body.Children.Add(Card("Run setup again", "", setup, "\uE8B5"));
+        Body.Children.Add(Card("Run setup again", "", setup));
         ShowLow();
         Loaded += (_, _) => LowImpact.Changed += OnLow;
         Unloaded += (_, _) => LowImpact.Changed -= OnLow;

@@ -21,7 +21,7 @@ public sealed partial class AppearanceSettingsPage : Page
         // Theme and font names are never translated.
         Body.Children.Add(Section("Style"));
         Body.Children.Add(Card("Style", "", Choice("theme", Themes.All.Select(t => (t.Id, t.Name)).ToArray()), "\uE771"));
-        Body.Children.Add(Card("Mode", "", Choice("appearanceMode", [("system", L("System")), ("light", L("Light")), ("dark", L("Dark"))]), "\uE793"));
+        Body.Children.Add(Card("Mode", "", Choice("appearanceMode", [("system", L("System")), ("light", L("Light")), ("dark", L("Dark"))]), "\uE706"));
         Body.Children.Add(Card("Font", "", Choice("font",
             [("style", L("Matches style")), ("sfPro", "Segoe UI Variable"), ("rounded", "Nunito"), ("mono", "Cascadia Mono"),
              ("serif", "Georgia"), ("montserrat", "Montserrat"), ("ubuntu", "Ubuntu")]), "\uE8D2"));

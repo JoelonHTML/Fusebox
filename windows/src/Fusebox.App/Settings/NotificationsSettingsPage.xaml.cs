@@ -17,6 +17,6 @@ public sealed partial class NotificationsSettingsPage : Page
         var test = new Button { Content = L("Send test notification"), IsEnabled = Prefs.Bool("notify") };
         test.Click += (_, _) => Notify.Send(L("Fusebox update available (test)"), L("This is how Fusebox tells you about a new version."));
         Body.Children.Add(Card("Show notifications", "", Toggle("notify", () => test.IsEnabled = Prefs.Bool("notify")), "\uEA8F"));
-        Body.Children.Add(Card("Test", "If Focus assist is on, Windows keeps these notifications quiet too.", test, "\uE7E7"));
+        Body.Children.Add(Card("Test", "If Focus assist is on, Windows keeps these notifications quiet too.", test, "\uE724"));
     }
 }
