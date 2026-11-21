@@ -1,6 +1,6 @@
 # Fusebox voor Windows — plan
 
-Status: v1 (§1–6) is gebouwd en draait groen in CI. **§7 = ontwerp v2 op basis van `docs/FEATURES.md`, wacht op akkoord.** De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
+Status: v1 (§1–6) is gebouwd en draait groen in CI. **§7 = ontwerp v2 op basis van `docs/FEATURES.md`, goedgekeurd (§7.8).** Beta 0.1.0 is uitgebracht. De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
 
 Doel: dezelfde Fusebox (Clear · Light · Live) als native Windows 11-app, net zo zuinig als de Mac-versie: meten elke 2 s, geen doorlopende animaties, niets doen als het venster verborgen is.
 
@@ -207,7 +207,7 @@ Elke mijlpaal: unit-tests voor de logica, selftest uitgebreid, CI-artifact om te
 
 ---
 
-## 7. Ontwerp v2 — op basis van `docs/FEATURES.md` (wacht op akkoord)
+## 7. Ontwerp v2 — op basis van `docs/FEATURES.md`
 
 Aanleiding: v1 werkt (alle tabs, CI groen, ~105 MB, 0,2–0,6 % van één kern in rust, langste UI-hapering ≤ 18 ms), maar oogt als een technische demo, niet als Fusebox. De lat is de Mac-versie. Ik heb de volledige spec laten samenvatten en naast de Windows-code gelegd; hieronder per onderdeel wat ik **houd**, **verbeter** en **anders doe op Windows**.
 
@@ -266,3 +266,10 @@ Vrijwel alle schermen worden opnieuw opgezet volgens de spec. Concreet de groots
 3. **Opstart-items**: alleen tonen (zoals Mac) of ook uitzetten zoals Taakbeheer (advies: uitzetten mag, omkeerbaar)?
 4. **Lettertype**: Segoe UI Variable overal (advies, voelt het meest Windows), of een afgerond lettertype meeleveren voor Instrument/Glass/Color blocks/Liquid Glass?
 5. **Sneltoets**: Ctrl+Alt+F (advies; Win-combinaties botsen vaak met Windows zelf) of Ctrl+Alt+Win+F?
+
+### 7.8 Besluiten Joël (21 nov. 2026) — bij twijfel: doe wat de Mac doet
+1. **Instellingen = eigen venster** (zijbalk + rijen zoals Windows-Instellingen; Mac: 740×560, 13 tabs).
+2. **MAC-adres standaard zichtbaar in de LAN-scanner**, te verbergen (pref `netHide` bevat `mac`). Nergens anders: niet in Docked, logs, rapporten of export. Nooit serienummers, nooit wifinaam/BSSID.
+3. **Opstart-items mogen uit/aan** (omkeerbaar, zoals Taakbeheer via `StartupApproved`; items die beheerder vragen via de verhoogde PowerShell-taak).
+4. **Lettertypes zoals de Mac** (7 ids, zelfde opgeslagen waarden): `style` = past bij thema, `sfPro` → Segoe UI Variable, `rounded` → meegeleverd afgerond lettertype (OFL, bijv. Nunito), `mono` → Cascadia Mono (fallback Consolas), `serif` → Georgia, `montserrat` en `ubuntu` meegeleverd. Thema's met design "rounded" gebruiken het afgeronde lettertype.
+5. **Sneltoets Ctrl+Alt+F** (Mac ⌃⌥⌘F zonder Win-toets), te wijzigen met een recorder.
