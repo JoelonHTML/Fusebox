@@ -19,6 +19,8 @@
     <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
     <!-- Native AOT: faster start, less memory, no JIT. -->
     <PublishAot>true</PublishAot>
+    <!-- Generates Fusebox.pri (compiled XAML lookup) for unpackaged apps too; without it MainWindow.xaml fails to load. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
     <IsAotCompatible>true</IsAotCompatible>
     <InvariantGlobalization>false</InvariantGlobalization>
     <SatelliteResourceLanguages>en;nl;de;fr;es</SatelliteResourceLanguages>

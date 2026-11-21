@@ -21,7 +21,19 @@ public partial class App : Application
         Live.Watched = () => (Main?.IsOnScreen ?? false) || (Tray?.PanelOpen ?? false);
         Main.Activate();
         Live.Start();
-        if (Prefs.Get("trayIcon", true)) Tray = new Tray();
+        // One setting "tray": icon in the system tray, and closing the window hides it there.
+        if (Prefs.Get("tray", true)) Tray = new Tray();
+        Prefs.Changed += k =>
+        {
+            if (k != "tray") return;
+            Main.DispatcherQueue.TryEnqueue(() =>
+            {
+                bool on = Prefs.Get("tray", true);
+                if (on && Tray == null) Tray = new Tray();
+                else Tray?.SetVisible(on);
+            });
+        };
+        Boot.OnLaunched();
         // A second Fusebox start redirects here (Program.Main): bring this window back.
         AppInstance.GetCurrent().Activated += (_, _) => Main.DispatcherQueue.TryEnqueue(ShowMain);
     }
