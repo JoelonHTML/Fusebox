@@ -1,6 +1,6 @@
 # Fusebox voor Windows — plan
 
-Status: v1 (§1–6) is gebouwd en draait groen in CI. **§7 = ontwerp v2 op basis van `docs/FEATURES.md`, goedgekeurd (§7.8).** Beta 0.1.0 is uitgebracht. De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
+Status: v1 (§1–6) is gebouwd en draait groen in CI. **§7 = ontwerp v2 op basis van `docs/FEATURES.md`, goedgekeurd (§7.8).** Beta 0.1.0 (v1) en 0.2.0 (v2) zijn uitgebracht. De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`, `release.sh`, `share.sh`) blijft onaangeroerd; alles voor Windows staat in `windows/` en `.github/workflows/windows.yml`.
 
 Doel: dezelfde Fusebox (Clear · Light · Live) als native Windows 11-app, net zo zuinig als de Mac-versie: meten elke 2 s, geen doorlopende animaties, niets doen als het venster verborgen is.
 
@@ -273,3 +273,9 @@ Vrijwel alle schermen worden opnieuw opgezet volgens de spec. Concreet de groots
 3. **Opstart-items mogen uit/aan** (omkeerbaar, zoals Taakbeheer via `StartupApproved`; items die beheerder vragen via de verhoogde PowerShell-taak).
 4. **Lettertypes zoals de Mac** (7 ids, zelfde opgeslagen waarden): `style` = past bij thema, `sfPro` → Segoe UI Variable, `rounded` → meegeleverd afgerond lettertype (OFL, bijv. Nunito), `mono` → Cascadia Mono (fallback Consolas), `serif` → Georgia, `montserrat` en `ubuntu` meegeleverd. Thema's met design "rounded" gebruiken het afgeronde lettertype.
 5. **Sneltoets Ctrl+Alt+F** (Mac ⌃⌥⌘F zonder Win-toets), te wijzigen met een recorder.
+
+### 7.9 Stand na v2 (22 nov. 2026)
+- Uitgebracht: **0.2.0 beta** (`win-v0.2.0-beta-202611220044`). CI groen op x64 + arm64, incl. rondgang door alle pagina's (klein/licht en breed/donker), Instellingen › Uiterlijk en de systeemvak-flyout.
+- Gevonden en opgelost met bewijs uit CI: crash Processen (Parent null), crash Checkup (niet-partial subklassen onder AOT), flyout InvalidCastException (presenter-cast), flyout rechts afgekapt (buiten- vs binnenmaat), "Alle logs verwijderen" wiste ook eigen CSV's van de gebruiker, MAC van de gateway in de openbare CI-log, Netwerk bleef pingen als het venster verborgen was.
+- Nog open (klein): lege ruimte onderin de flyout; pagina's renderen door als alleen de flyout open is; resultaatbestand van de beheerdertaak staat in een map van de gebruiker (laag risico); twee dialogen tegelijk kan een fout geven; app-namen met regeleinde in peaks.csv.
+- Alleen op een echte pc te testen: batterij, wifi, Bluetooth, USB, beheerdertaken, meldingen en de automatische update 0.1.0 → 0.2.0.
