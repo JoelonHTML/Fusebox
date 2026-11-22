@@ -20,13 +20,12 @@ internal static class StartupCard
 
     public static UIElement Build(CardCtx c)
     {
-        var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(9, body);
-        void Fill() { if (host.XamlRoot != null) Render(body, c, Fill); }
+        var body = new StackPanel { Spacing = 6 };
+        void Fill() { if (body.XamlRoot != null) Render(body, c, Fill); }
         redraw = Fill;
         Render(body, c, Fill);
         if (items == null && !loading) Load(c);
-        return host;
+        return body;
     }
 
     static async void Load(CardCtx c)
@@ -42,63 +41,62 @@ internal static class StartupCard
     static void Render(StackPanel body, CardCtx c, Action again)
     {
         body.Children.Clear();
-        int orphans = Orphans;
-        body.Children.Add(Ui.CardTitle("", L("Startup & background items"), orphans > 0 ? 1 : 0,
-            Ui.Pill(L("Open Startup apps"), Ui.OnRow(), () => Shell.Launch("ms-settings:startupapps"))));
+        body.Children.Add(Ui.CardTitle("\uE7BA", L("Startup & background items"), Orphans > 0 ? 1 : 0));
         if (items == null) { body.Children.Add(Ui.Spinner()); return; }
         int n = StartupParse.CountAtLogin(items);
-        body.Children.Add(Ui.Headline(n.ToString(), n == 1 ? L("app starts at login") : L("apps start at login")));
+        body.Children.Add(Ui.Label($"{n} {(n == 1 ? L("app starts at login") : L("apps start at login"))}", 13, bold: true));
         body.Children.Add(Ui.Small(L("Apps from other makers that start with Windows or wait in the background. Turn off what you don't use.")));
 
         var gone = StartupParse.Merge(items.Where(i => i.Orphan));
         if (gone.Count > 0)
         {
-            var h = Ui.Label(L("Left behind by deleted apps"), 11, bold: true); h.Foreground = Ui.Tone(1, false); h.Margin = new Thickness(0, 4, 0, 0);
+            var h = Ui.Label(L("Left behind by deleted apps"), 12, bold: true); h.Foreground = Ui.Tone(1, false); h.Margin = new Thickness(0, 8, 0, 0);
             body.Children.Add(h);
             body.Children.Add(Ui.Small(L("These try to start every time but their app is gone. Safe to remove.")));
             foreach (var o in gone) body.Children.Add(Row(o, c, again, orphan: true));
         }
         Group(body, L("Apps that start at login"), StartupParse.Merge(items.Where(i => !i.Orphan && i.AtLogin)), c, again);
         Group(body, L("Background helpers"), StartupParse.Merge(items.Where(i => !i.Orphan && !i.AtLogin)), c, again);
+        var open = Ui.Link(L("Open Startup apps"), () => Shell.Launch("ms-settings:startupapps"));
+        open.Margin = new Thickness(0, 6, 0, 0);
+        body.Children.Add(open);
     }
 
     static void Group(StackPanel body, string title, List<StartupItem> list, CardCtx c, Action again)
     {
-        var h = Ui.Label(title, 11, bold: true); h.Margin = new Thickness(0, 4, 0, 0);
+        var h = Ui.Label(title, 12, bold: true); h.Margin = new Thickness(0, 8, 0, 0);
         body.Children.Add(h);
         if (list.Count == 0) { body.Children.Add(Ui.Small(L("None"))); return; }
-        body.Children.Add(Ui.Capped(list.Select(i => (UIElement)Row(i, c, again, false)).ToList()));
+        body.Children.Add(Ui.Capped(list.Select(i => (UIElement)Row(i, c, again, false)).ToList(), spacing: 8));
     }
 
+    /// <summary>One line like a Windows Settings toggle row: (warning icon) name with usage below it, state word, switch, all centred.</summary>
     static Grid Row(StartupItem it, CardCtx c, Action again, bool orphan)
     {
-        var g = new Grid { ColumnSpacing = 6 };
-        for (int i = 0; i < 6; i++) g.ColumnDefinitions.Add(new() { Width = i == 1 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
-        int col = 0;
-        void Add(FrameworkElement e) { Grid.SetColumn(e, col++); g.Children.Add(e); }
-        if (orphan) { var w = Ui.Icon("", 11, Ui.Tone(1)); Add(w); } else Add(Ui.Dot(it.Running));
-        var name = Ui.Label(it.Name, 11, wrap: false);
-        Add(name);
-        var word = Ui.Label(!it.Enabled ? L("off") : it.Running ? L("running") : it.Scope == StartupScope.User ? L("you") : L("all users"), 10, secondary: true, wrap: false);
-        word.VerticalAlignment = VerticalAlignment.Center;
-        Add(word);
+        var g = new Grid { ColumnSpacing = 10, MinHeight = 32 };
+        g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        void Add(FrameworkElement e, int col) { e.VerticalAlignment = VerticalAlignment.Center; Grid.SetColumn(e, col); g.Children.Add(e); }
+        if (orphan) Add(Ui.Icon("\uE7BA", 12, Ui.Tone(1)), 0);
+        var names = new StackPanel { Spacing = 1 };
+        names.Children.Add(Ui.Label(it.Name, 12, wrap: false));
+        var sub = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         var usage = StartupParse.Usage(it.Cpu, it.MemMb);
         if (usage.Length > 0)
         {
             var u = Ui.Num(usage, 11, color: StartupParse.Heavy(it.Cpu) ? Ui.Tone(1, false) : Ui.OnRow(true));
             Ui.Tip(u, L("Average since it started (memory: now)"));
-            Add(u);
+            sub.Children.Add(u);
         }
-        else col++;
-        if (orphan && it.Scope != StartupScope.User)
-        {
-            var need = Ui.Label(L("needs administrator permission"), 10, secondary: true, wrap: false);
-            Add(need);
-        }
-        else col++;
+        if (orphan && it.Scope != StartupScope.User) sub.Children.Add(Ui.Label(L("needs administrator permission"), 11, secondary: true, wrap: false));
+        if (sub.Children.Count > 0) names.Children.Add(sub);
+        Add(names, 1);
+        Add(Ui.Label(!it.Enabled ? L("off") : it.Running ? L("running") : it.Scope == StartupScope.User ? L("you") : L("all users"), 11, secondary: true, wrap: false), 2);
         if (it.Members.Any(m => m.CanToggle))
         {
-            var sw = new ToggleSwitch { IsOn = it.Enabled, OnContent = "", OffContent = "", MinWidth = 0, Margin = new Thickness(0, -6, -8, -6), VerticalAlignment = VerticalAlignment.Center };
+            var sw = new ToggleSwitch { IsOn = it.Enabled, OnContent = "", OffContent = "", MinWidth = 0, Margin = new Thickness(0, -6, -8, -6) };
             Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(sw, it.Name);
             bool busy = false;
             bool elevated = it.Members.Any(m => m.CanToggleElevated);
@@ -120,7 +118,7 @@ internal static class StartupCard
                 again();
                 c.Summaries();
             };
-            Add(sw);
+            Add(sw, 3);
         }
         Ui.Tip(g, it.Command + (it.Orphan && it.Exe != null ? "\n" + L("Missing: %@", it.Exe) : ""));
         return g;
@@ -136,8 +134,16 @@ internal static class DiskCard
     static Action? redraw;
     static string relativeBase = "";
 
-    public static double FreeGb => Free.Free / 1e9;
-    public static bool Low => Free.Total > 0 && Free.Free * 10.0 < Free.Total;
+    /// <summary>Free/total GB shown in the card and the group summary: for Today the report's last logged minute (the same number the
+    /// disk tip uses), else the drive now.</summary>
+    public static (double Free, double Total) Gb(Report r)
+    {
+        if (r.Period == Period.Today && double.IsFinite(r.DiskFreeGb) && r.DiskTotalGb > 0) return (r.DiskFreeGb, r.DiskTotalGb);
+        var (free, total) = Free;
+        return (free / 1e9, total / 1e9);
+    }
+
+    public static bool Low(Report r) { var (free, total) = Gb(r); return total > 0 && free * 10 < total; }
 
     static (long Free, long Total) Free
     {
@@ -152,57 +158,70 @@ internal static class DiskCard
 
     public static UIElement Build(CardCtx c)
     {
-        var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(10, body);
-        void Fill() { if (host.XamlRoot != null) Render(body, c); }
+        var body = new StackPanel { Spacing = 6 };
+        void Fill() { if (body.XamlRoot != null) Render(body, c); }
         redraw = Fill;
         Render(body, c);
-        return host;
+        return body;
     }
 
     static void Render(StackPanel body, CardCtx c)
     {
         body.Children.Clear();
-        var (free, total) = Free;
-        var btn = Ui.Pill(last == null ? L("Find large folders") : L("Check again"), Ui.OnRow(), () => Scan(c));
-        btn.IsEnabled = !scanning;
-        body.Children.Add(Ui.CardTitle("", L("What takes my disk space?"), Low ? 1 : 0, btn));
-        if (total > 0) body.Children.Add(Ui.Headline(L("%lld GB free", (long)(free / 1e9)), L("of %lld GB", (long)(total / 1e9)), Low ? 1 : 0));
+        var (free, total) = Gb(c.R);
+        bool low = total > 0 && free * 10 < total;
+        body.Children.Add(Ui.CardTitle("\uE7BA", L("What takes my disk space?"), low ? 1 : 0));
+        if (total > 0) body.Children.Add(Ui.Headline(L("%lld GB free", (long)free), L("of %lld GB", (long)total), low ? 1 : 0));
         if (scanning)
         {
             body.Children.Add(Ui.Progress(progress.Done, Math.Max(progress.Total, 1)));
             if (progress.Title.Length > 0) { var l = Ui.Label(L("Checking %@…", progress.Title), 11, secondary: true, wrap: false); body.Children.Add(l); }
             return;
         }
-        if (last == null) { body.Children.Add(Ui.Small(L("Finds the biggest folders in your user folder. Nothing is deleted."))); return; }
-        double largest = last.Rows.Count > 0 ? last.Rows.Max(r => r.Bytes) : 1;
-        foreach (var r in last.Rows)
+        if (last == null) body.Children.Add(Ui.Small(L("Finds the biggest folders in your user folder. Nothing is deleted.")));
+        else
         {
-            var rel = r.Key ?? "";
-            var advice = DiskAdvice.For(rel);
-            var inside = DiskAdvice.BiggestInside(r, rel);
-            var v = new StackPanel { Spacing = 2, Margin = new Thickness(0, 2, 0, 2) };
-            var top = new Grid { ColumnSpacing = 6 };
-            for (int i = 0; i < 5; i++) top.ColumnDefinitions.Add(new() { Width = i == 0 ? new GridLength(1, GridUnitType.Star) : GridLength.Auto });
-            var title = Ui.Label(r.Title, 11, wrap: false); top.Children.Add(title);
-            int col = 1;
-            if (advice is { } a)
-            {
-                var tag = Ui.Tag(DiskAdvice.Label(a.V), a.V switch { Verdict.Safe => Ui.Tone(3), Verdict.Careful => Ui.Tone(1), _ => Ui.OnRow(true) });
-                Grid.SetColumn(tag, col); top.Children.Add(tag);
-            }
-            col = 2;
-            var bar = Ui.Bar(r.Bytes / largest); Grid.SetColumn(bar, col++); top.Children.Add(bar);
-            var size = Ui.Num(Fmt.Bytes(r.Bytes), 11); size.Width = 58; size.TextAlignment = TextAlignment.Right; Grid.SetColumn(size, col++); top.Children.Add(size);
-            var path = r.Path;
-            var show = Ui.Pill(L("Show in Explorer"), Ui.OnRow(), () => Shell.Reveal(path)); Grid.SetColumn(show, col); top.Children.Add(show);
-            v.Children.Add(top);
-            v.Children.Add(Ui.Label(advice?.Text ?? (inside == null ? DiskAdvice.Fallback : ""), 10, secondary: true));
-            if (inside != null) { var ins = Ui.Label(inside, 10, secondary: true); ins.MaxLines = 2; v.Children.Add(ins); }
-            body.Children.Add(v);
+            double largest = last.Rows.Count > 0 ? last.Rows.Max(r => r.Bytes) : 1;
+            var rows = new StackPanel { Spacing = 2, Margin = new Thickness(-8, 4, -8, 0) };
+            foreach (var r in last.Rows) rows.Children.Add(FolderRow(r, largest));
+            body.Children.Add(rows);
+            if (last.NotCounted.Count > 0)
+                body.Children.Add(Ui.Small(L("Not counted (Windows protects these): %@. Sizes are too small without administrator rights.", string.Join(", ", last.NotCounted))));
         }
-        if (last.NotCounted.Count > 0)
-            body.Children.Add(Ui.Small(L("Not counted (Windows protects these): %@. Sizes are too small without administrator rights.", string.Join(", ", last.NotCounted))));
+        body.Children.Add(Ui.Link(last == null ? L("Find large folders") : L("Check again"), () => Scan(c)));
+    }
+
+    /// <summary>One folder: the whole row reveals it in Explorer (click, Enter/Space; tooltip). Name + verdict badge, then bar + size, then advice.</summary>
+    static Button FolderRow(DiskRow r, double largest)
+    {
+        var rel = r.Key ?? "";
+        var advice = DiskAdvice.For(rel);
+        var inside = DiskAdvice.BiggestInside(r, rel);
+        var v = new StackPanel { Spacing = 3 };
+        var top = new Grid { ColumnSpacing = 8 };
+        top.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        top.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        top.Children.Add(Ui.Label(r.Title, 12, wrap: false));
+        if (advice is { } a)
+        {
+            var tag = Ui.Tag(DiskAdvice.Label(a.V), a.V switch { Verdict.Safe => Ui.Tone(3), Verdict.Careful => Ui.Tone(1), _ => Ui.OnRow(true) });
+            Grid.SetColumn(tag, 1); top.Children.Add(tag);
+        }
+        v.Children.Add(top);
+        var size = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+        size.Children.Add(Ui.Bar(r.Bytes / largest, 120));
+        size.Children.Add(Ui.Num(Fmt.Bytes(r.Bytes), 11, secondary: true));
+        v.Children.Add(size);
+        var text = advice?.Text ?? (inside == null ? DiskAdvice.Fallback : "");
+        if (text.Length > 0) v.Children.Add(Ui.Label(text, 11, secondary: true));
+        if (inside != null) { var ins = Ui.Label(inside, 11, secondary: true); ins.MaxLines = 2; v.Children.Add(ins); }
+        var b = new Button { Content = v, Padding = new Thickness(8, 6, 8, 6), CornerRadius = new CornerRadius(4) };
+        Ui.Flat(b);
+        var path = r.Path;
+        b.Click += (_, _) => Shell.Reveal(path);
+        Ui.Tip(b, L("Show in Explorer"));
+        Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(b, $"{r.Title}, {Fmt.Bytes(r.Bytes)}. {L("Show in Explorer")}");
+        return b;
     }
 
     static async void Scan(CardCtx c)
@@ -234,11 +253,11 @@ internal static class SsdHealthCard
 
     public static UIElement Build(CardCtx c)
     {
-        var host = new StackPanel { Spacing = 0 };
-        void Fill() { if (host.XamlRoot != null) Render(host, Fill); }
-        Render(host, Fill);
+        var body = new StackPanel { Spacing = 0 };
+        void Fill() { if (body.XamlRoot != null) Render(body, Fill); }
+        Render(body, Fill);
         if ((disks == null || DateTime.Now - disksAt > TimeSpan.FromHours(1)) && !loading) Load(Fill);
-        return host;
+        return body;
     }
 
     static async void Load(Action fill)
@@ -250,9 +269,9 @@ internal static class SsdHealthCard
         fill();
     }
 
-    static void Render(StackPanel host, Action fill)
+    static void Render(StackPanel body, Action fill)
     {
-        host.Children.Clear();
+        body.Children.Clear();
         // Shown only when Windows reports a health status for an SSD without admin rights; otherwise nothing at all.
         var ssds = (disks ?? []).Where(d => d.MediaType == "SSD" && d.Health.Length > 0).ToList();
         if (ssds.Count == 0) return;
@@ -274,7 +293,7 @@ internal static class SsdHealthCard
         if (warn) s.Children.Add(Ui.Label(L("The SSD is wearing out or reports errors. Keep a recent backup."), 11));
         if (detail == null)
         {
-            var more = Ui.Pill(L("Show details"), Ui.OnRow(), async () =>
+            var more = Ui.Link(L("Show details"), async () =>
             {
                 if (asking) return;
                 asking = true;
@@ -283,10 +302,9 @@ internal static class SsdHealthCard
                 if (json != null) { var p = CheckupParsers.ParseSsd(json); detail = (p.Counters, p.Error); }
                 fill();
             }, L("Needs administrator permission"));
-            more.HorizontalAlignment = HorizontalAlignment.Left;
             s.Children.Add(more);
         }
-        host.Children.Add(Ui.Card(11, s));
+        body.Children.Add(s);
     }
 
     static readonly System.Globalization.CultureInfo CultureInfoEn = System.Globalization.CultureInfo.GetCultureInfo("en-US");
@@ -305,11 +323,10 @@ internal static class SsdSpeedCard
     public static UIElement Build(CardCtx c)
     {
         var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(12, body);
-        void Fill() { if (host.XamlRoot != null) Render(body); }
+        void Fill() { if (body.XamlRoot != null) Render(body); }
         redraw = Fill;
         Render(body);
-        return host;
+        return body;
     }
 
     static void Render(StackPanel body)
@@ -317,8 +334,7 @@ internal static class SsdSpeedCard
         body.Children.Clear();
         var last = SsdBenchResult.Parse(Prefs.Str("ssdBenchLast"));
         int tone = last == null ? 0 : last.Slow ? 1 : 3;
-        var btn = running ? Ui.Pill(L("Stop"), Ui.OnRow(), () => cts?.Cancel()) : Ui.Pill(last == null ? L("Test speed") : L("Test again"), Ui.OnRow(), Start);
-        body.Children.Add(Ui.CardTitle("", L("SSD speed"), tone, btn));
+        body.Children.Add(Ui.CardTitle("", L("SSD speed"), tone));
         if (running)
         {
             body.Children.Add(Ui.Progress(progress));
@@ -332,6 +348,7 @@ internal static class SsdSpeedCard
         }
         else body.Children.Add(Ui.Small(L("Writes and reads 1 GB in a temporary file (a few seconds), then deletes it.")));
         if (note != null) { var n = Ui.Label(note, 11); n.Foreground = Ui.Blocks ? Ui.OnRow() : Ui.B("FuseboxWarn"); body.Children.Add(n); }
+        body.Children.Add(running ? Ui.Link(L("Stop"), () => cts?.Cancel(), danger: true) : Ui.Link(last == null ? L("Test speed") : L("Test again"), Start));
     }
 
     static async void Start()
