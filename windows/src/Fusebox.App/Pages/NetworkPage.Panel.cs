@@ -251,12 +251,15 @@ public sealed partial class NetworkPage
             }
             var pill = Pill("", finding == null ? L("Find the problem") : L("Check again"),
                 L("Is it your Wi-Fi or the internet? About 6 s: pings your router and 1.1.1.1, times fresh DNS lookups and reads the Wi-Fi signal"), (_, _) => FindProblem());
-            var save = Pill("", L("Save report…"), L("A text file with signal, ping and speed numbers to send to your provider or helpdesk. No Wi-Fi name or addresses."), (_, _) => ShareReport());
+            var save = SaveReportPill();
             var pills = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Left };
             pills.Children.Add(pill); pills.Children.Add(save);
             summary.Children.Add(pills);
         }
     }
+
+    /// <summary>Shown after every measurement (Find the problem, speed test), so the result can be kept or sent at once.</summary>
+    Button SaveReportPill() => Pill("", L("Save report…"), L("A text file with signal, ping and speed numbers to send to your provider or helpdesk. No Wi-Fi name or addresses."), (_, _) => ShareReport());
 
     /// <summary>"Save report…": builds the text from what is already measured (nothing new runs), scrubs it, shows the share sheet.</summary>
     async void ShareReport()

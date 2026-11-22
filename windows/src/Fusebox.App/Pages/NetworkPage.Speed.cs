@@ -86,6 +86,7 @@ public sealed partial class NetworkPage
                 speedBox.Children.Add(Line(OkGlyph(lv.Ok), lv.Text, OkBrush(lv.Ok)));
             }
             if (history.Count > 1) speedBox.Children.Add(HistoryBars());
+            if (!speedRunning) { var save = SaveReportPill(); save.HorizontalAlignment = HorizontalAlignment.Left; speedBox.Children.Add(save); }
         }
 
         // public IP: only on click, never stored
