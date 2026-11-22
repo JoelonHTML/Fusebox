@@ -151,7 +151,8 @@ sealed partial class ProcRowView
 
         stop.Content = stopGlyph;
         stop.Click += (_, _) => StopClicked?.Invoke(this);
-        stop.Visibility = Visibility.Collapsed;
+        // Never collapsed: the slot keeps its width, so rows without Stop (Windows itself, Fusebox) stay aligned with the others.
+        stop.IsHitTestVisible = stop.IsTabStop = false;
 
         // Summary = [hit button spanning the columns][stop slot]
         var line = new Grid();
@@ -185,7 +186,7 @@ sealed partial class ProcRowView
     void UpdateStop()
     {
         bool show = pointerOver || focusWithin;
-        stop.Opacity = show && stop.Visibility == Visibility.Visible ? 1 : 0;
+        stop.Opacity = show && stop.IsHitTestVisible ? 1 : 0;
         stopGlyph.Foreground = ThemeService.Brush(ThemeService.Current.RowStyle == RowStyle.Blocks ? "FuseboxOnRow" : "FuseboxDanger");
     }
 
@@ -245,7 +246,8 @@ sealed partial class ProcRowView
         UpdateBar();
 
         bool canStop = g.CanStop;
-        stop.Visibility = canStop ? Visibility.Visible : Visibility.Collapsed;
+        stop.IsHitTestVisible = stop.IsTabStop = canStop;
+        AutomationProperties.SetAccessibilityView(stop, canStop ? Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Content : Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
         string stopName = Strings.L("Stop %@", nm);
         AutomationProperties.SetName(stop, stopName);
         ToolTipService.SetToolTip(stop, stopName);

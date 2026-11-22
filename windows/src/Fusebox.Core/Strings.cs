@@ -114,7 +114,23 @@ public static partial class Strings
         });
     }
 
-    public static CultureInfo Culture => Language == "en" ? CultureInfo.GetCultureInfo("en-US") : CultureInfo.GetCultureInfo(Language);
+    /// <summary>
+    /// Dates and month/day names in the app language, but numbers always like the Mac (POSIX: "1.5", never "1,5"),
+    /// so "6.2%" and "14.1 GB" never mix separators on one screen.
+    /// </summary>
+    public static CultureInfo Culture
+    {
+        get
+        {
+            var (lang, c) = culture;
+            if (lang == Language && c != null) return c;
+            c = (CultureInfo)CultureInfo.GetCultureInfo(Language == "en" ? "en-US" : Language).Clone();
+            c.NumberFormat = CultureInfo.InvariantCulture.NumberFormat;
+            culture = (Language, c);
+            return c;
+        }
+    }
+    static (string Lang, CultureInfo? C) culture = ("", null);
 
     /// <summary>All keys known for a language (for the translation check in tests).</summary>
     public static IReadOnlyDictionary<string, string> TableFor(string lang)

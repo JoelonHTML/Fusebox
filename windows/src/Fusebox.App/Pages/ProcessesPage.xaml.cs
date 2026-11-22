@@ -189,7 +189,7 @@ public sealed partial class ProcessesPage : Page
             (Col.Cpu, "cpu", "CPU", Strings.L("Sort by %@", "CPU")),
             (Col.Gpu, "gpu", "GPU", Strings.L("Share of the graphics chip's time, like Task Manager's GPU")),
             (Col.Ram, "ram", "RAM", Strings.L("Sort by %@", "RAM")),
-            (Col.Disk, "disk", Strings.L("Disk"), Strings.L("Reading and writing to the disk, per second")),
+            (Col.Disk, "disk", "I/O", Strings.L("Data the app reads and writes per second: files (also from memory), network and devices")),   // Windows' per-app counters are not disk-only
             (Col.Threads, "threads", Strings.L("Threads"), Strings.L("Sort by %@", Strings.L("Threads").ToLower(Strings.Culture))),
             (Col.Procs, "", Strings.L("Proc."), ""),
             (Col.Running, "running", Strings.L("Running"), Strings.L("Sort by %@", Strings.L("Running").ToLower(Strings.Culture))),

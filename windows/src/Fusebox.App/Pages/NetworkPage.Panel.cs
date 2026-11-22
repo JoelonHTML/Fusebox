@@ -15,6 +15,10 @@ public sealed partial class NetworkPage
 {
     StackPanel summary = null!, graphBox = null!;
     ScrollViewer details = null!;
+
+    /// <summary>Open details get at most 40 % of the page and scroll inside; the device list below always keeps room.
+    /// (A fixed "height − 230" left the list 0 px tall, so nothing could scroll.)</summary>
+    double DetailsMaxHeight() => Math.Max(120, Root.ActualHeight * 0.4);
     NetColumns detailsGrid = null!;
     NetGraph graph = null!;
     TextBlock graphCaption = null!;
@@ -188,7 +192,7 @@ public sealed partial class NetworkPage
         details.Visibility = panelOpen ? Visibility.Visible : Visibility.Collapsed;
         ((RotateTransform)chevronIcon.RenderTransform).Angle = panelOpen ? 180 : 0;
         ToolTipService.SetToolTip(chevron, panelOpen ? L("Fewer details") : L("More details: connection, Wi-Fi, quality, speed test"));
-        details.MaxHeight = Math.Max(140, Root.ActualHeight - 230);
+        details.MaxHeight = DetailsMaxHeight();
         if (panelOpen) RenderDetails();
     }
 

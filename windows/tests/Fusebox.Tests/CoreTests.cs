@@ -30,6 +30,19 @@ public class StringsTests
     }
 }
 
+public class CultureTests
+{
+    [Fact]
+    public void NumbersUseADotInEveryLanguageDatesStayLocal()
+    {
+        Strings.Load("nl");
+        Assert.Equal("6.2", 6.2.ToString("0.0", Strings.Culture));
+        Assert.Equal("6.2%", Strings.Format("%.1f%%", [6.2]));
+        Assert.Equal("november", new DateTime(2026, 11, 22).ToString("MMMM", Strings.Culture));
+        Strings.Load("en");
+    }
+}
+
 public class HistoryTests
 {
     [Fact]

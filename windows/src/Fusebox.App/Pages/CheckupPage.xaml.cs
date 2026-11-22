@@ -156,7 +156,7 @@ public sealed partial class CheckupPage : Page
         num.Children.Add(score);
         var of = Ui.Num("/10", 14, secondary: true); of.VerticalAlignment = VerticalAlignment.Bottom; of.Margin = new Thickness(0, 0, 0, 8);
         num.Children.Add(of);
-        grid.Children.Add(num);
+        if (r.Score != null) grid.Children.Add(num);   // no "– /10" placeholder: the text says why there is no score yet
         var text = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(Ui.Label(L("Health"), 14, bold: true));
         text.Children.Add(Ui.Label(r.Reason, 12, secondary: true));
@@ -275,7 +275,7 @@ public sealed partial class CheckupPage : Page
         {
             case "perf":
                 s.Children.Add(CheckupCards.Why(c));
-                if (c.Show("tops"))
+                if (c.Show("tops") && (c.R.TopCpu.Count > 0 || c.R.TopRam.Count > 0))   // empty Top 5 cards stay hidden
                 {
                     var tops = new TwoUp(388, w, 8);
                     tops.Left.Children.Add(CheckupCards.Top(c, true)); tops.Right.Children.Add(CheckupCards.Top(c, false));

@@ -49,6 +49,18 @@ internal static class Ui
 
     public static TextBlock Small(string text) => Label(text, 11, secondary: true);
 
+    /// <summary>Zero state: one calm line with a check, instead of a big green "None" (empty things stay quiet).</summary>
+    public static Grid Calm(string text)
+    {
+        var g = new Grid { ColumnSpacing = 6 };
+        g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+        g.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
+        g.Children.Add(Icon("\uE73E", 11, Tone(3)));
+        var t = Small(text); t.TextWrapping = TextWrapping.Wrap;
+        Grid.SetColumn(t, 1); g.Children.Add(t);
+        return g;
+    }
+
     public static FontIcon Icon(string glyph, double pt, Brush? color = null) =>
         new() { Glyph = glyph, FontSize = T.Size(pt), Foreground = color ?? Tone(0), VerticalAlignment = VerticalAlignment.Center };
 

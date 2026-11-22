@@ -192,7 +192,7 @@ internal static class CheckupCards
         var s = new StackPanel { Spacing = 5 };
         s.Children.Add(Ui.CardTitle("", L("Peaks")));
         if (r.Peaks.Count == 0)
-            s.Children.Add(Ui.Headline(L("None"), L("No peaks recorded %@ (CPU or GPU ≥ 80%%, hot, memory pressure or heavy disk use)", r.When), 3));
+            s.Children.Add(Ui.Calm(L("No peaks recorded %@ (CPU or GPU ≥ 80%%, hot, memory pressure or heavy disk use)", r.When)));
         else
         {
             s.Children.Add(Ui.Headline(r.Peaks.Count.ToString(), r.Peaks.Count == 1 ? L("peak %@", r.When) : L("peaks %@", r.When), 0));
@@ -259,7 +259,8 @@ internal static class CheckupCards
         var r = c.R;
         var s = new StackPanel { Spacing = 4 };
         s.Children.Add(Ui.CardTitle("", L("Busy moments"), r.Busy.Count > 0 ? 1 : 0));
-        s.Children.Add(Ui.Headline(r.Busy.Count == 0 ? L("None") : r.Busy.Count.ToString(), L("periods of ≥ 5 min above 85%% CPU %@", r.When), r.Busy.Count == 0 ? 3 : 1));
+        if (r.Busy.Count == 0) s.Children.Add(Ui.Calm(L("No busy moments %@", r.When)));
+        else s.Children.Add(Ui.Headline(r.Busy.Count.ToString(), L("periods of ≥ 5 min above 85%% CPU %@", r.When), 1));
         foreach (var b in r.Busy) s.Children.Add(Ui.ItemRow(b.App != null ? L("Mostly %@", b.App) : L("Busy"), $"{CheckupFmt.Span(b.Start, b.End)} · {Fmt.Pct(b.Cpu)}"));
         return Ui.Card(4, s);
     }
@@ -331,7 +332,7 @@ internal static class CheckupCards
         if (!k.Any)
         {
             s.Children.Add(Ui.CardTitle("", L("Crashes"), 3));
-            s.Children.Add(Ui.Headline(L("None"), L("No apps crashed or stopped responding %@", c.R.When), 3));
+            s.Children.Add(Ui.Calm(L("No apps crashed or stopped responding %@", c.R.When)));
             return Ui.Card(8, s);
         }
         bool bad = k.Apps.Count > 0 || k.BlueScreens > 0;

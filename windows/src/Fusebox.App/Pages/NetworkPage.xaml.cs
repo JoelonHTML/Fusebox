@@ -429,7 +429,7 @@ public sealed partial class NetworkPage : Page
     void RootSizeChanged(object sender, SizeChangedEventArgs e)
     {
         ApplyBand();
-        if (details != null) details.MaxHeight = Math.Max(140, Root.ActualHeight - 230);
+        if (details != null) details.MaxHeight = DetailsMaxHeight();
     }
 
     void ApplyBand(bool force = false)

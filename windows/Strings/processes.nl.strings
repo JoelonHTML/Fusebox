@@ -48,3 +48,5 @@
 "Windows doesn't allow it for %@." = "Windows staat dit niet toe voor %@.";
 "Windows itself" = "Windows zelf";
 "Windows' audio engine" = "De geluidsengine van Windows";
+"Data the app reads and writes per second: files (also from memory), network and devices" = "Gegevens die de app per seconde leest en schrijft: bestanden (ook uit het geheugen), netwerk en apparaten";
+"Reads %@ and writes %@ (files, network and devices)." = "Leest %@ en schrijft %@ (bestanden, netwerk en apparaten).";

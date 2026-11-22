@@ -70,6 +70,7 @@ public partial class App : Application
             {
                 SettingsWindow.Current?.Close();
                 Prefs.Set("appearanceMode", "dark");
+                Prefs.Set("netPanelOpen", true);   // pass 2 shows Network with the internet details open (list must keep room)
                 Main.AppWindow.Resize(new Windows.Graphics.SizeInt32(1000, 680));
                 Main.AppWindow.Move(new Windows.Graphics.PointInt32(10, 10));
                 Main.Activate();

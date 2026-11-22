@@ -62,7 +62,7 @@ public static class ProcessText
             l.Add(("\uE8F1", g.Parts.Count > 0 ? L("It consists of %lld parts (processes), including %@.", g.Pids.Count, string.Join(", ", g.Parts))
                                               : L("It consists of %lld parts (processes).", g.Pids.Count)));
         if (g.Gpu >= 0.5) l.Add(("\uE7F4", L("Uses the graphics chip %@ of the time.", Pct(Math.Min(g.Gpu, 100)))));
-        if (g.DiskRead + g.DiskWrite >= 1000) l.Add(("\uEDA2", L("Reading %@ and writing %@ on the SSD.", Fmt.Rate(g.DiskRead), Fmt.Rate(g.DiskWrite))));
+        if (g.DiskRead + g.DiskWrite >= 1000) l.Add(("\uEDA2", L("Reads %@ and writes %@ (files, network and devices).", Fmt.Rate(g.DiskRead), Fmt.Rate(g.DiskWrite))));
         if (g.Threads > 0) l.Add(("\uE8AB", L("Runs %lld threads (tasks at the same time).", g.Threads)));
         if (g.StartedLocal is { } s) l.Add(("\uE917", L("Running for %@.", Duration(Math.Max((int)(now - s).TotalMinutes, 1)))));
         return l;
