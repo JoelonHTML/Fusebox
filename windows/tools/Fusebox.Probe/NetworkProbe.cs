@@ -21,7 +21,7 @@ public static class NetworkProbe
             var ping = NetProbe.PingOnce(NetProbe.ToAddress(gw), 1000).GetAwaiter().GetResult();
             n["gatewayPingMs"] = ping;
             var mac = NetProbe.Arp(gw);
-            n["gatewayMac"] = mac == null ? null : NetAddress.MacString(mac);
+            n["gatewayMacFound"] = mac != null;   // never the address itself: probe output is a public CI log (PLAN §7.8)
             n["gatewayVendor"] = mac == null ? null : Devices.Vendor(mac);
         }
         n["dnsMs"] = NetProbe.FreshDns().GetAwaiter().GetResult();
