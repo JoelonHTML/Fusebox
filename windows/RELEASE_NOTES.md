@@ -1,8 +1,4 @@
-- New design: same look as Fusebox on the Mac, with the six styles (Instrument, Terminal, Minimal light, Glass, Color blocks, Liquid Glass), light and dark, seven fonts and text size
-- Live: compact cards that fit any window size, smooth graphs, details per measurement and peaks with the app that caused them
-- Tray: icon with your numbers and a panel like Quick Settings, with your health score and quick buttons
-- Processes: one row per app, Efficiency mode per app, and an app page with history
-- Checkup: health score 1–10, why your PC is slow, startup apps you can switch off, disk space, SSD and battery health, crashes, shareable report
-- Network: router and internet check, speed test with history, all devices on your network with names and makers
-- Docked: what is plugged in, USB speed now versus maximum, displays and Bluetooth batteries
-- Settings in their own window, setup on first start, and notifications when something needs you
+- Network: save a network report (Wi-Fi signal, router and internet quality, speed test) to send to a helpdesk or your provider; it never contains your Wi-Fi name or addresses
+- Network: scrolling works again with the internet details open
+- Processes: all rows line up, numbers always use a dot, and the "Disk" column is now honestly called "I/O"
+- Checkup: calmer when there is little data yet (no empty cards, no placeholder score)
