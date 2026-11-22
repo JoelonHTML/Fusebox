@@ -73,6 +73,8 @@ public static class SelfUsage
         double secs = (DateTime.UtcNow - t0).TotalSeconds;
         string now = $"Right now (5 s): {100 * (after.Cpu - before.Cpu).TotalSeconds / secs:0.00}% of one core · {after.MemMb:0} MB private memory · {after.Threads} threads"
             + $" · GC collections {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)} · low impact {(LowImpact.On ? "on" : "off")}";
+        int displays = 1;
+        try { displays = DisplayArea.FindAll().Count; } catch { }   // Microsoft.UI.Windowing: on the UI thread, not in the worker below
         var report = await Task.Run(() =>
         {
             var rows = new List<SelfRow>();
@@ -80,8 +82,6 @@ public static class SelfUsage
             for (var d = from; d <= DateTime.Now.Date; d = d.AddDays(1))
                 try { rows.AddRange(SelfLog.Parse(File.ReadAllText(CsvLog.FileFor(d, "self")))); } catch { }
             var hw = App.Live.Hardware;
-            int displays = 1;
-            try { displays = DisplayArea.FindAll().Count; } catch { }
             string machine = $"{hw.CpuName} · Windows {Environment.OSVersion.Version} · {RuntimeInformation.ProcessArchitecture} · {Environment.ProcessorCount} cores"
                 + $" · {(double.IsFinite(App.Live.Last?.RamTotal ?? double.NaN) ? $"{Math.Round(App.Live.Last!.RamTotal / 1e9)} GB" : "? GB")} · {displays} display(s)";
             var text = SelfLog.Report(rows, $"{BuildInfo.Version} ({BuildInfo.Build})", machine, now);

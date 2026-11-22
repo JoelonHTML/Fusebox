@@ -168,6 +168,52 @@ public class CheckupItemsTests
         Assert.Equal("'ab'", ElevatedScripts.Quote("a\nb"));
     }
 
+    /// <summary>PowerShell's single-quoted literal rule: any of ' ‘ ’ ‚ ‛ opens/closes, a doubled one is one literal quote char.
+    /// Returns the literal's value and where it ended.</summary>
+    static (string Value, int End) ReadPsLiteral(string s, int start)
+    {
+        static bool Q(char c) => c is '\'' or '‘' or '’' or '‚' or '‛';
+        Assert.True(Q(s[start]));
+        var sb = new System.Text.StringBuilder();
+        for (int i = start + 1; i < s.Length; i++)
+        {
+            if (!Q(s[i])) { sb.Append(s[i]); continue; }
+            if (i + 1 < s.Length && Q(s[i + 1])) { sb.Append(s[i]); i++; continue; }
+            return (sb.ToString(), i + 1);
+        }
+        throw new Xunit.Sdk.XunitException("unterminated literal");
+    }
+
+    [Theory]
+    [InlineData("it's")]
+    [InlineData("x';calc;'")]
+    [InlineData("$(Start-Process calc)")]
+    [InlineData("`$(calc)`")]
+    [InlineData("a’;calc;‘b")]
+    [InlineData("‛‚'’‘")]
+    [InlineData("line1\n'; calc; '\r\nline2")]
+    [InlineData("\"; calc; \"")]
+    public void Hostile_names_stay_one_literal_in_every_toggle(string hostile)
+    {
+        string clean = new(hostile.Where(c => !char.IsControl(c)).ToArray());
+        var q = ElevatedScripts.Quote(hostile);
+        Assert.Equal((clean, q.Length), ReadPsLiteral(q, 0));
+        // In the real scripts the literal is followed by the expected next token, so nothing of the name runs as code.
+        var run = ElevatedScripts.Toggle(StartupKind.Run, StartupScope.Machine, hostile, false)!;
+        var (v, end) = ReadPsLiteral(run, run.IndexOf("-Name ", StringComparison.Ordinal) + 6);
+        Assert.Equal(clean, v);
+        Assert.StartsWith(" -Type Binary", run[end..]);
+        var svc = ElevatedScripts.Toggle(StartupKind.Service, StartupScope.Machine, hostile, true)!;
+        (v, end) = ReadPsLiteral(svc, svc.IndexOf("-Name ", StringComparison.Ordinal) + 6);
+        Assert.Equal(clean, v);
+        Assert.StartsWith(" -StartupType Automatic", svc[end..]);
+        var task = ElevatedScripts.Toggle(StartupKind.Task, StartupScope.Machine, @"\Vendor\" + hostile, false)!;
+        (v, end) = ReadPsLiteral(task, task.IndexOf("-TaskName ", StringComparison.Ordinal) + 10);
+        Assert.Equal(clean, v);
+        Assert.StartsWith(" | Out-Null", task[end..]);
+        Assert.DoesNotContain('\n', run + svc + task);
+    }
+
     [Fact]
     public void Toggle_scripts()
     {

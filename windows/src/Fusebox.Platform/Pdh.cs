@@ -11,6 +11,7 @@ public sealed unsafe partial class PdhQuery : IDisposable
 {
     IntPtr query;
     readonly List<(string path, IntPtr counter)> counters = [];
+    byte[] arrayBuf = [];
 
     public PdhQuery() { if (PdhOpenQueryW(null, 0, out query) != 0) query = 0; }
 
@@ -40,8 +41,11 @@ public sealed unsafe partial class PdhQuery : IDisposable
         uint size = 0, count = 0;
         int r = PdhGetFormattedCounterArrayW(c, PDH_FMT_DOUBLE | PDH_FMT_NOCAP100, ref size, out count, null);
         if (r != PDH_MORE_DATA || size == 0) return result;
-        var buf = new byte[size];
-        fixed (byte* p = buf)
+        // \GPU Engine(*) has an instance per process and engine: easily over 85 KB. Reused, so the 2 s tick doesn't put a new
+        // large-object-heap array on the GC every time.
+        if (arrayBuf.Length < size) arrayBuf = new byte[size + size / 4];
+        size = (uint)arrayBuf.Length;
+        fixed (byte* p = arrayBuf)
         {
             if (PdhGetFormattedCounterArrayW(c, PDH_FMT_DOUBLE | PDH_FMT_NOCAP100, ref size, out count, p) != 0) return result;
             var items = (PDH_FMT_COUNTERVALUE_ITEM_W*)p;

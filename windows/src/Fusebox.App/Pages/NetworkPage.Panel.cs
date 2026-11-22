@@ -139,9 +139,12 @@ public sealed partial class NetworkPage
         {
             while (!ct.IsCancellationRequested)
             {
-                bool graphOn = band >= NetBand.Kind && net != null;
+                // The page stays navigated while the window is hidden in the tray or minimized: then no pings, just a cheap wait.
+                bool shown = App.Main?.IsOnScreen ?? false;
+                bool graphOn = shown && band >= NetBand.Kind && net != null;
                 await Task.Delay(graphOn ? 1000 : 5000, ct);
                 if (!visible) return;
+                if (!shown) continue;
                 if (graphOn && net is { } cur)
                 {
                     var tgt = target; bool tcp = viaTcp;

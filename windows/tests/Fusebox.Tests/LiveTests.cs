@@ -156,6 +156,8 @@ public class LiveTests
             Assert.Equal(3, CsvLog.Prune(30, new DateTime(2026, 2, 5, 9, 0, 0), dir));
             Assert.Equal(["battery-health.csv", "notes.csv", "peaks-2026-01-10.csv"], Directory.EnumerateFiles(dir).Select(Path.GetFileName).Order());
             Assert.Equal(0, CsvLog.Prune(0, new DateTime(2030, 1, 1), dir));
+            CsvLog.DeleteAll(dir);   // only Fusebox day files
+            Assert.Equal(["battery-health.csv", "notes.csv"], Directory.EnumerateFiles(dir).Select(Path.GetFileName).Order());
             File.Delete(Path.Combine(dir, CsvLog.BatteryFile));
             Assert.True(CsvLog.AppendBatteryHealth(T0, 91.26, 312, dir));
             Assert.False(CsvLog.AppendBatteryHealth(T0.AddHours(3), 91, 312, dir));
