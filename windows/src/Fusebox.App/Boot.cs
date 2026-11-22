@@ -37,6 +37,7 @@ public static class Boot
         AlertRunner.Start();   // per-minute alerts (§11.2)
         SelfUsage.Start();     // own-use log for the performance report (§11.5)
         Updater.Start();
+        Task.Run(() => Uninstaller.EnsureRegistered());   // keeps the version in Windows' Installed apps current
         if (NeedsSetup) ShowSetup();
         else if (Background)
         {

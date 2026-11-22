@@ -98,6 +98,7 @@ public static partial class Installer
         CopyDir(me, target);
         var lnk = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.Programs), "Fusebox.lnk");
         SettingsNative.CreateShortcut(lnk, Path.Combine(target, "Fusebox.exe"), target);
+        Uninstaller.EnsureRegistered(Path.Combine(target, "Fusebox.exe"), target);
         OpenAndExit(target);
     }
 

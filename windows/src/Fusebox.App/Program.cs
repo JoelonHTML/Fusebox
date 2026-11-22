@@ -10,6 +10,7 @@ public static class Program
     static int Main(string[] args)
     {
         WinRT.ComWrappersSupport.InitializeComWrappers();
+        if (args.Contains("--uninstall")) return Uninstaller.Run(args);   // from Windows Settings > Installed apps; no UI, no single instance
         // Waits for an updating/restarting predecessor (--wait-pid), loads the language, offers "Move to Programs".
         Boot.BeforeUi(args);
 
