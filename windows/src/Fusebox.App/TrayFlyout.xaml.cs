@@ -423,7 +423,11 @@ public sealed partial class TrayFlyout : Window
         if (App.Tray?.IconRect() is { } r) icon = r;
         else { Win32.GetCursorPos(out var pt); icon = new Box(pt.X, pt.Y, 1, 1); }
         var work = DisplayArea.GetFromPoint(new((int)icon.X, (int)icon.Y), DisplayAreaFallback.Nearest).WorkArea;
-        var (x, y) = Placement.Flyout(icon, new Box(work.X, work.Y, work.Width, work.Height), w, h, 12 * s);
-        AppWindow.MoveAndResize(new((int)x, (int)y, w, h));
+        // Size the CLIENT area to the panel: MoveAndResize sets the outer size, which includes Windows 11's invisible
+        // resize borders, so the panel was clipped on the right (seen in CI). Place with the resulting outer size.
+        AppWindow.ResizeClient(new Windows.Graphics.SizeInt32(w, h));
+        var outer = AppWindow.Size;
+        var (x, y) = Placement.Flyout(icon, new Box(work.X, work.Y, work.Width, work.Height), outer.Width, outer.Height, 12 * s);
+        AppWindow.Move(new((int)x, (int)y));
     }
 }
