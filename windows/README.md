@@ -4,12 +4,12 @@
 
 > **Beta.** Fusebox for Windows is still in development. Expect rough edges; updates arrive automatically.
 
-**Runs on:** Windows 11 (x64 or Arm).
+**Runs on:** Windows 11 on an Intel or AMD (x64) PC. Arm PCs are not supported.
 
 ## Install
 
 1. Go to the [Releases page](https://github.com/JoelonHTML/Fusebox/releases) and pick the latest release whose name starts with **Fusebox for Windows**.
-2. Download **`Fusebox-Windows-x64.zip`** (most PCs) or **`Fusebox-Windows-arm64.zip`** (Snapdragon and other Arm PCs).
+2. Download **`Fusebox-Windows-x64.zip`**.
 3. Unzip it and open **`Fusebox.exe`**.
 
 Fusebox isn't code-signed yet, so Windows SmartScreen says *"Windows protected your PC"*. Click **More info**, then **Run anyway**. You only need to do this once.
@@ -55,7 +55,7 @@ Measurements are saved in `Documents\Fusebox` as CSV (one small file per day). N
 
 1. Optionally set the version in `windows/Directory.Build.props` (`<Version>`).
 2. Write what's new in `windows/RELEASE_NOTES.md` as bullets (each `- Topic: what` appears in the update notification), commit and push to the `windows` branch.
-3. GitHub Actions builds x64 and Arm, runs all tests and the smoke test, and only then publishes **`Fusebox for Windows <version> beta`**. Like `release.sh` on the Mac: no other steps.
+3. GitHub Actions builds the x64 version, runs all tests and the smoke test, and only then publishes **`Fusebox for Windows <version> beta`**. Like `release.sh` on the Mac: no other steps.
 
 ### How updates are checked
 
@@ -69,7 +69,7 @@ Tags look like **`win-v<version>-beta-<build>`**, where the build number is the 
 
 ## Building
 
-CI builds on GitHub Actions for both architectures (`windows-latest` for x64, `windows-11-arm` for Arm). The workflow runs the unit tests, a probe on a real Windows machine, a smoke test, and then publishes the zips as artifacts.
+CI builds on GitHub Actions (`windows-latest`, x64). The workflow runs the unit tests, a probe on a real Windows machine, a smoke test, and then publishes the zips as artifacts.
 
 To build locally on Windows (with the .NET 10 SDK):
 
@@ -77,4 +77,3 @@ To build locally on Windows (with the .NET 10 SDK):
 dotnet publish windows/src/Fusebox.App -c Release -r win-x64 -p:Platform=x64
 ```
 
-Use `-r win-arm64 -p:Platform=arm64` on an Arm PC.

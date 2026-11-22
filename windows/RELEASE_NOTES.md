@@ -1,4 +1,3 @@
-- Network: save a network report (Wi-Fi signal, router and internet quality, speed test) to send to a helpdesk or your provider; it never contains your Wi-Fi name or addresses
-- Network: scrolling works again with the internet details open
-- Processes: all rows line up, numbers always use a dot, and the "Disk" column is now honestly called "I/O"
-- Checkup: calmer when there is little data yet (no empty cards, no placeholder score)
+- Fixed: Fusebox didn't open anymore after its first start (it crashed while restoring the window position)
+- Network: "Save report…" also right under a speed test result
+- Windows on Arm is no longer built (x64 only)

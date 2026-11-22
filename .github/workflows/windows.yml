@@ -71,11 +71,9 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        include:
+        include:   # x64 only: Arm PCs are not supported
           - arch: x64
             os: windows-latest
-          - arch: arm64
-            os: windows-11-arm
     runs-on: ${{ matrix.os }}
     defaults:
       run:
@@ -193,10 +191,6 @@ jobs:
         with:
           name: Fusebox-Windows-x64
           path: dist
-      - uses: actions/download-artifact@v4
-        with:
-          name: Fusebox-Windows-arm64
-          path: dist
       - name: Build the signer (no secret in this step)
         run: dotnet build windows/tools/Fusebox.Sign -c Release -o signer
       - name: Sign when a release key is configured
@@ -206,7 +200,7 @@ jobs:
           haskey=$(grep -c 'ReleaseKey = "[A-Za-z0-9+/=]\{60,\}"' windows/src/Fusebox.Core/Update/Signing.cs || true)
           if [ "$haskey" = "0" ]; then echo "No release key in the app: publishing with GitHub's SHA-256 digests only."; exit 0; fi
           if [ -z "$FUSEBOX_WIN_SIGNING_KEY" ]; then echo "::error::The app has a release key but the secret FUSEBOX_WIN_SIGNING_KEY is missing."; exit 1; fi
-          for a in x64 arm64; do
+          for a in x64; do
             dotnet signer/Fusebox.Sign.dll sign "dist/Fusebox-Windows-$a.zip"
             dotnet signer/Fusebox.Sign.dll verify "dist/Fusebox-Windows-$a.zip" "dist/Fusebox-Windows-$a.zip.sig"
           done

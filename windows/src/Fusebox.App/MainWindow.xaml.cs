@@ -277,8 +277,10 @@ public sealed partial class MainWindow : Window
         Windows.Graphics.PointInt32? pos = null;
         if (tl.Length == 2 && int.TryParse(tl[0], out var x) && int.TryParse(tl[1], out var y))
         {
-            var areas = DisplayArea.FindAll().Select(a => new Box(a.WorkArea.X, a.WorkArea.Y, a.WorkArea.Width, a.WorkArea.Height)).ToList();
-            if (Placement.TopLeftVisible(x, y, areas)) pos = new(x, y);
+            // Ask Windows which screen holds the point instead of enumerating DisplayArea.FindAll(): enumerating that WinRT list
+            // throws InvalidCastException under Native AOT (crashed every start that had a saved position, on a real PC).
+            if (DisplayArea.GetFromPoint(new(x + 20, y + 20), DisplayAreaFallback.None) is { } da
+                && Placement.TopLeftVisible(x, y, [new Box(da.WorkArea.X, da.WorkArea.Y, da.WorkArea.Width, da.WorkArea.Height)])) pos = new(x, y);
         }
         var work = WorkArea(pos);
         var start = pos ?? AppWindow.Position;
