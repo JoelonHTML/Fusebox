@@ -6,3 +6,7 @@
 "Windows is blocking the scan. Allow Fusebox in Windows Security under Firewall & network protection, then press Scan." = "Windows blockiert den Scan. Erlaube Fusebox in der Windows-Sicherheit unter Firewall- & Netzwerkschutz und drück dann „Scan“.";
 "Yes: Windows and apps may hold back big downloads" = "Ja: Windows und Apps halten große Downloads evtl. zurück";
 "this network (found automatically)" = "dieses Netzwerk (automatisch gefunden)";
+"Save report…" = "Bericht speichern…";
+"Network report" = "Netzwerkbericht";
+"Contains no Wi-Fi name, network addresses, computer name or user name." = "Enthält keinen WLAN-Namen, keine Netzwerkadressen, keinen Computernamen und keinen Benutzernamen.";
+"A text file with signal, ping and speed numbers to send to your provider or helpdesk. No Wi-Fi name or addresses." = "Eine Textdatei mit Signal-, Ping- und Geschwindigkeitswerten für Ihren Anbieter oder den Helpdesk. Ohne WLAN-Namen und Adressen.";

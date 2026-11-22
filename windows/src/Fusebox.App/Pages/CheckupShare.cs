@@ -30,9 +30,12 @@ internal static class CheckupShare
         });
     }
 
-    public static async Task ShareAsync(XamlRoot root, CheckupBundle b)
+    public static async Task ShareAsync(XamlRoot root, CheckupBundle b) =>
+        await ShowSheetAsync(root, L("Share report"), L("Contains no user name, file names, computer name, serial number or network addresses."), await BuildTextAsync(b), "fusebox-report");
+
+    /// <summary>Sheet for already scrubbed text: Copy / Save as .txt / Close. Also used by the Network report.</summary>
+    public static async Task ShowSheetAsync(XamlRoot root, string title, string noteText, string text, string fileName)
     {
-        var text = await BuildTextAsync(b);
         var box = new TextBox
         {
             Text = text, IsReadOnly = true, AcceptsReturn = true, TextWrapping = TextWrapping.NoWrap, FontFamily = new FontFamily("Cascadia Mono, Consolas"), FontSize = 11,
@@ -40,7 +43,7 @@ internal static class CheckupShare
         };
         ScrollViewer.SetHorizontalScrollBarVisibility(box, ScrollBarVisibility.Auto);
         ScrollViewer.SetVerticalScrollBarVisibility(box, ScrollBarVisibility.Auto);
-        var note = new TextBlock { Text = L("Contains no user name, file names, computer name, serial number or network addresses."), TextWrapping = TextWrapping.Wrap, Opacity = 0.7, FontSize = 12 };
+        var note = new TextBlock { Text = noteText, TextWrapping = TextWrapping.Wrap, Opacity = 0.7, FontSize = 12 };
         var status = new TextBlock { FontSize = 12, Opacity = 0.7 };
         var copy = new Button { Content = L("Copy") };
         var save = new Button { Content = L("Save as .txt…") };
@@ -51,13 +54,13 @@ internal static class CheckupShare
             Windows.ApplicationModel.DataTransfer.Clipboard.SetContent(dp);
             status.Text = L("Copied");
         };
-        save.Click += async (_, _) => status.Text = await SaveAsync("fusebox-report", ".txt", L("Text"), text) ?? "";
+        save.Click += async (_, _) => status.Text = await SaveAsync(fileName, ".txt", L("Text"), text) ?? "";
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
         row.Children.Add(copy); row.Children.Add(save); row.Children.Add(status);
         status.VerticalAlignment = VerticalAlignment.Center;
         var content = new StackPanel { Spacing = 10 };
         content.Children.Add(note); content.Children.Add(box); content.Children.Add(row);
-        await new ContentDialog { XamlRoot = root, Title = L("Share report"), Content = content, CloseButtonText = L("Close"), DefaultButton = ContentDialogButton.Close }.ShowAsync();
+        await new ContentDialog { XamlRoot = root, Title = title, Content = content, CloseButtonText = L("Close"), DefaultButton = ContentDialogButton.Close }.ShowAsync();
     }
 
     /// <summary>All main logs of the period, merged in the current column order.</summary>

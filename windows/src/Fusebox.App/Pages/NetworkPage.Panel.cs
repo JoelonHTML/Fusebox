@@ -251,9 +251,26 @@ public sealed partial class NetworkPage
             }
             var pill = Pill("", finding == null ? L("Find the problem") : L("Check again"),
                 L("Is it your Wi-Fi or the internet? About 6 s: pings your router and 1.1.1.1, times fresh DNS lookups and reads the Wi-Fi signal"), (_, _) => FindProblem());
-            pill.HorizontalAlignment = HorizontalAlignment.Left;
-            summary.Children.Add(pill);
+            var save = Pill("", L("Save report…"), L("A text file with signal, ping and speed numbers to send to your provider or helpdesk. No Wi-Fi name or addresses."), (_, _) => ShareReport());
+            var pills = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Left };
+            pills.Children.Add(pill); pills.Children.Add(save);
+            summary.Children.Add(pills);
         }
+    }
+
+    /// <summary>"Save report…": builds the text from what is already measured (nothing new runs), scrubs it, shows the share sheet.</summary>
+    async void ShareReport()
+    {
+        var n = net; var w = wifi is { Connected: true, Rssi: not null } ? wifi : null; var x = extras;
+        var inet = Prefs.Str("pingHost").Length > 0 ? internet : null;
+        var wide = n?.IsWifi == true ? w : null;
+        var v6 = n == null ? (bool?)null : n.Ipv6Global.Length > 0 && n.Ipv6Router;
+        var input = new NetReportInput(DateTime.Now, n == null ? null : Kind(n), x?.Vpn, x?.ProfileCategory, x?.EncryptedDns, x?.Metered,
+            wide?.Rssi, (wide?.TxMbps ?? wide?.RxMbps) is > 0 and var rate ? rate : null, wide?.Channel, wide?.Band, wide?.WidthMhz, wide?.Phy,
+            router, inet, dnsMs, v6, finding, history.FirstOrDefault(), all.Count > 0 ? all.Count : null);
+        var text = await Task.Run(() => NetReport.Build(input, Fusebox.Platform.Checkup.CheckupReader.Identity()));
+        if (!visible) return;
+        await CheckupShare.ShowSheetAsync(XamlRoot, L("Network report"), L("Contains no Wi-Fi name, network addresses, computer name or user name."), text, "Fusebox-network-" + DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
     }
 
     static string OkGlyph(bool? ok) => ok == false ? "" : ok == true ? "" : "";
