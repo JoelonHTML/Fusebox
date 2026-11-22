@@ -62,7 +62,9 @@ public sealed partial class TrayFlyout : Window
     {
         InitializeComponent();
         hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
-        var p = (OverlappedPresenter)AppWindow.Presenter;
+        // Own presenter instead of casting AppWindow.Presenter (that cast threw InvalidCastException under Native AOT in CI).
+        var p = OverlappedPresenter.Create();
+        AppWindow.SetPresenter(p);
         p.SetBorderAndTitleBar(true, false);   // keeps the Windows 11 rounded corners and shadow
         p.IsResizable = p.IsMaximizable = p.IsMinimizable = false;
         p.IsAlwaysOnTop = true;

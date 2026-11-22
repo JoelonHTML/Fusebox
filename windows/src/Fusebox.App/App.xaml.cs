@@ -96,6 +96,7 @@ public partial class App : Application
                 return;
             }
             t.Stop(); beat.Stop();
+            report.AppendLine($"presenter check: main window presenter is OverlappedPresenter = {Main.AppWindow.Presenter is OverlappedPresenter} ({Main.AppWindow.Presenter?.GetType().Name})");
             File.WriteAllText(Path.Combine(AppContext.BaseDirectory, "smoke-ok.txt"), report.ToString());
             Quit();
         };
