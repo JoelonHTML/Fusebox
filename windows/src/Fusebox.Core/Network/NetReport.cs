@@ -4,12 +4,14 @@ using Fusebox.Core.Checkup;
 
 namespace Fusebox.Core.Network;
 
-/// <summary>What the Network page already knows (nothing new is measured). No Wi-Fi name, BSSID or other devices' addresses go in here on purpose.</summary>
+/// <summary>What the Network page already knows (nothing new is measured). Speeds = history newest first; Live* = the graph's last minute of
+/// reply times (1 per second); Pc = processor, memory and Windows version (no names) for the PDF header. No Wi-Fi name, BSSID or other devices' addresses go in here on purpose.</summary>
 public sealed record NetReportInput(
     DateTime Now, string? Kind, bool? Vpn = null, int? ProfileCategory = null, bool? EncryptedDns = null, bool? Metered = null,
     int? Rssi = null, int? LinkMbps = null, int? Channel = null, string? Band = null, int? WidthMhz = null, string? Standard = null,
     PingStats? Router = null, PingStats? Internet = null, double? DnsMs = null, bool? Ipv6Internet = null,
-    Finding? Finding = null, SpeedEntry? Speed = null, int? Devices = null);
+    Finding? Finding = null, SpeedEntry? Speed = null, int? Devices = null,
+    IReadOnlyList<SpeedEntry>? Speeds = null, IReadOnlyList<double>? LiveRouter = null, IReadOnlyList<double>? LiveInternet = null, string Pc = "");
 
 /// <summary>Plain-English network report for a helpdesk or provider (English on purpose, like the Checkup report). Sections without data are left out.</summary>
 public static class NetReport

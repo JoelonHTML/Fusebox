@@ -171,10 +171,10 @@ public static class CsvLog
 
     /// <summary>One minute of the main log as Checkup aggregates it (§5.4).</summary>
     public sealed record Minute(DateTime Time, double Cpu, double RamGb, int Pressure, double Temp, double DiskFreeGb, double DiskTotalGb,
-        double Ping, bool Offline, bool WifiDrop, double Wifi, int Samples);
+        double Ping, bool Offline, bool WifiDrop, double Wifi, int Samples, double Down = double.NaN, double Up = double.NaN);
 
     /// <summary>
-    /// §5.4 minute aggregation: mean CPU and RAM GB, highest pressure, mean temperature (non-empty only), last disk free/total, mean ping;
+    /// §5.4 minute aggregation: mean CPU and RAM GB, highest pressure, mean temperature (non-empty only), last disk free/total, mean ping and down/up rate;
     /// offline = the ping column exists but fewer than half the samples have a ping; wifiDrop = any wifi_dbm 0; mean of negative Wi-Fi values.
     /// </summary>
     public static List<Minute> ReadMinutes(string csv)
@@ -201,7 +201,9 @@ public static class CsvLog
                 ping >= 0 && pings.Count(double.IsFinite) * 2 < rows.Count,
                 wifis.Any(v => v == 0),
                 Mean(wifis.Where(v => v < 0).ToList()),
-                rows.Count));
+                rows.Count,
+                Mean(rows.Select(r => t.Num(r, "down_Bps")).ToList()),
+                Mean(rows.Select(r => t.Num(r, "up_Bps")).ToList())));
         }
         return result;
     }

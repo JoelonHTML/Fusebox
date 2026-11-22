@@ -80,6 +80,9 @@ live and how a page uses them. Section numbers like §3.2 refer to FEATURES.md.
   `CsvLog.DeleteAll()`. Today's files with an old header are remapped by name (`CsvLog.MigrateHeader`).
 - Readers for Checkup (malformed lines skipped): `CsvLog.ReadSamples(csv)`, `CsvLog.ReadMinutes(csv)` (§5.4 minute aggregation:
   offline, wifiDrop …), `AppsLog.Parse(csv)` (header or fixed Mac order), `PeakWatch.Parse(csv)`, generic `CsvTable`.
+- PDF reports (`Core/Reports`): `Pdf` = tiny PDF 1.4 writer (A4, Helvetica in cp1252, lines/rects/polylines; no package), `ReportPdf` = the
+  light page kit (At a glance / Stands out boxes, tables, line and bar charts, page breaks, footer, scrubber on every text), `NetPdf` and
+  `CheckupPdf` build the two reports from what is already known. Saved via the share sheet ("Save as PDF…") and Checkup's "Export PDF".
 - Peaks (`PeakWatch`, §3.9): cpu/gpu ≥ 80, temp ≥ warnTemp, mem pressure ≥ 2 (1 sample), io ≥ max(50 MB/s, p95 of the hour). Cause =
   biggest app of the last minute (`LiveHub.Blame`); the Live agent can refine with a snapshot on `Peaks.Started`.
 
