@@ -49,11 +49,14 @@ public partial class App : Application
     /// CI only: Live 20 s, then every other tab 5 s, then the Settings window 5 s (the workflow screenshots each), then quit cleanly.
     /// Writes per page how long opening took and the longest UI-thread stall (a 100 ms heartbeat that arrived late).
     /// </summary>
+    /// <summary>Every Settings page gets a screenshot in CI (Battery only exists with a battery).</summary>
+    static readonly string[] SettingsShots = ["live", "processes", "checkup", "network", "docked", "menubar", "alerts", "data", "about"];
+
     static void SmokeTour()
     {
         // Pass 1: default size, system (light) appearance. Pass 2: wide window, dark appearance, plus Settings › Appearance.
         var tabs = MainWindow.Tabs.Select(t => t.Tag).ToList();
-        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").Append("tray").Append("close-settings").ToList();
+        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").Concat(SettingsShots.Select(id => "Settings:" + id)).Append("tray").Append("close-settings").ToList();
         var report = new System.Text.StringBuilder();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         long lastBeat = 0, worst = 0;

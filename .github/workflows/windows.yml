@@ -132,14 +132,14 @@ jobs:
           $p.Refresh()
           "Working set: {0:N0} MB, idle CPU on Live: {1:N2}% of one core" -f ($p.WorkingSet64 / 1MB), (($p.TotalProcessorTime.TotalSeconds - $c1) / 8 * 100) | Tee-Object smoke.txt
           Shot "0-live"
-          $pages = "1-processes", "2-checkup", "3-network", "4-docked", "5-settings", "6-wide-dark", "7-live-wide-dark", "8-processes-wide-dark", "9-checkup-wide-dark", "10-network-wide-dark", "11-docked-wide-dark", "12-settings-look-dark", "13-tray-flyout-dark", "14-after-settings-closed"
+          $pages = "1-processes", "2-checkup", "3-network", "4-docked", "5-settings", "6-wide-dark", "7-live-wide-dark", "8-processes-wide-dark", "9-checkup-wide-dark", "10-network-wide-dark", "11-docked-wide-dark", "12-settings-look-dark", "13-settings-live-dark", "14-settings-processes-dark", "15-settings-checkup-dark", "16-settings-network-dark", "17-settings-docked-dark", "18-settings-menubar-dark", "19-settings-alerts-dark", "20-settings-data-dark", "21-settings-about-dark", "22-tray-flyout-dark", "23-after-settings-closed"
           Start-Sleep -Seconds 5
           foreach ($pg in $pages) {
             if ($p.HasExited) { Fail "Fusebox exited before $pg with code $($p.ExitCode)" }
             Shot $pg
             Start-Sleep -Seconds 5
           }
-          if (-not $p.WaitForExit(30000)) { Stop-Process -Id $p.Id -Force; Fail "Fusebox did not quit after the tour" }
+          if (-not $p.WaitForExit(40000)) { Stop-Process -Id $p.Id -Force; Fail "Fusebox did not quit after the tour" }
           if (-not (Test-Path out/Fusebox/smoke-ok.txt)) { Fail "Tour did not finish (exit code $($p.ExitCode))" }
           Get-Content out/Fusebox/smoke-ok.txt | Tee-Object -Append smoke.txt
           Remove-Item out/Fusebox/smoke-ok.txt
