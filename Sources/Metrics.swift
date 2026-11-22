@@ -1,5 +1,6 @@
 import SwiftUI
 import CoreWLAN
+import SystemConfiguration
 
 // MARK: - Metingen: elke meting is een `Metric`; welke en in welke volgorde kies je in Instellingen.
 //
@@ -247,8 +248,14 @@ enum LinkRate {
     private static func read() {
         guard Date().timeIntervalSince(cached.at) > 10 else { return }
         let i = CWWiFiClient.shared().interface(), r = i?.transmitRate() ?? 0
-        cached = (Date(), r > 0 ? r : nil, i?.rssiValue() ?? 0, i?.wlanChannel()?.channelNumber ?? 0)
+        // Alleen Wi-Fi als die ook echt het internet levert: met een kabel erin en Wi-Fi nog aan is de kabel de primaire verbinding.
+        let primary = (SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any])?["PrimaryInterface"] as? String
+        let used = primary == nil || primary == i?.interfaceName
+        if primary != nil { wasPrimary = used }   // zonder primaire verbinding (uitval zelf) de vorige stand houden
+        cached = (Date(), r > 0 && used ? r : nil, i?.rssiValue() ?? 0, i?.wlanChannel()?.channelNumber ?? 0)
     }
+    /// Leverde Wi-Fi bij de laatste meting het internet? Leest niet opnieuw, zodat een uitval zelf dit niet wist.
+    nonisolated(unsafe) static var wasPrimary = true
     static func wifiMbit() -> Double? { read(); return cached.mbit }
     /// Signaal in dBm als Wi-Fi verbonden is (hooguit 10 s oud), anders nil.
     static var rssi: Int? { read(); return cached.mbit != nil && cached.rssi < 0 ? cached.rssi : nil }
@@ -286,7 +293,7 @@ final class WifiWatch: NSObject, CWEventDelegate, @unchecked Sendable {
         let i = CWWiFiClient.shared().interface(withName: name)
         let up = (i?.rssiValue() ?? 0) != 0, on = i?.powerOn() ?? false
         lock.withLock {
-            if up || !on || Date() < quietUntil { down = false; return }
+            if up || !on || Date() < quietUntil || !LinkRate.wasPrimary { down = false; return }   // via de kabel online: Wi-Fi-uitval doet er niet toe
             if !down { dropped = true }
             down = true
         }
