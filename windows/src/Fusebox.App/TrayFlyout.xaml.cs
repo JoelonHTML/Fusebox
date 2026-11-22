@@ -314,7 +314,8 @@ public sealed partial class TrayFlyout : Window
         var label = new TextBlock { Text = Metrics.Label(m), Foreground = B("FuseboxOnRowSecondary"), VerticalAlignment = VerticalAlignment.Center };
         Look.Label(label, 11);
         var spark = new Sparkline { Height = 14, VerticalAlignment = VerticalAlignment.Center };
-        var value = new TextBlock { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, Foreground = B("FuseboxOnRow") };
+        // Fill the 78 px column and right-align the text inside it: a right-aligned auto-width TextBlock got clipped at its right edge in CI.
+        var value = new TextBlock { HorizontalAlignment = HorizontalAlignment.Stretch, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, TextWrapping = TextWrapping.NoWrap, Foreground = B("FuseboxOnRow") };
         Look.Number(value, 12);
         Grid.SetColumn(label, 1); Grid.SetColumn(spark, 2); Grid.SetColumn(value, 3);
         g.Children.Add(icon); g.Children.Add(label); g.Children.Add(spark); g.Children.Add(value);
