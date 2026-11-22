@@ -146,6 +146,13 @@ jobs:
           Get-Content out/Fusebox/smoke-ok.txt | Tee-Object -Append smoke.txt
           Remove-Item out/Fusebox/smoke-ok.txt
           "Visited all pages, quit cleanly." | Tee-Object -Append smoke.txt
+          # Second start, now WITH the saved window position and settings of the first run (a real user's every-day start).
+          Remove-Item "$env:LOCALAPPDATA/Fusebox/crash.log" -ErrorAction SilentlyContinue
+          $p2 = Start-Process out/Fusebox/Fusebox.exe -PassThru
+          Start-Sleep -Seconds 10
+          if ($p2.HasExited) { Fail "Second start (saved position/settings) exited with code $($p2.ExitCode)" }
+          Stop-Process -Id $p2.Id -Force
+          "Second start with saved settings: OK" | Tee-Object -Append smoke.txt
           if (Test-Path "$env:LOCALAPPDATA/Fusebox/crash.log") { "--- handled exceptions (crash.log) ---"; Get-Content "$env:LOCALAPPDATA/Fusebox/crash.log" | Tee-Object -Append smoke.txt }
 
       - name: Zip
