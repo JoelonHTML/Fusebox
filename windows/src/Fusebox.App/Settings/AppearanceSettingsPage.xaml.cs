@@ -18,20 +18,17 @@ public sealed partial class AppearanceSettingsPage : Page
         SettingsUi.TranslateOnce(this);
 
         Body.Children.Add(Section("Style"));
-        Body.Children.Add(Card("Mode", "", Segmented("appearanceMode", [("system", L("System")), ("light", L("Light")), ("dark", L("Dark"))]), ""));
-        Body.Children.Add(Parts.ThemeTiles());
+        Body.Children.Add(Card("Mode", "", Choice("appearanceMode", [("system", L("System")), ("light", L("Light")), ("dark", L("Dark"))]), ""));
+        Body.Children.Add(Block(Parts.ThemeTiles()));
+        Body.Children.Add(Card("Accent color", "", Parts.AccentPicker(), ""));
 
         Body.Children.Add(Section("Text size"));
-        Body.Children.Add(Parts.TextSizeCards());
+        Body.Children.Add(Block(Parts.TextSizeCards()));
 
         Body.Children.Add(Section("Font"));
-        Body.Children.Add(Parts.FontCards());
-
-        var accent = Card("Accent color", "", Parts.AccentPicker(), "");
-        accent.Margin = new Thickness(0, 14, 0, 0);
-        Body.Children.Add(accent);
+        Body.Children.Add(Block(Parts.FontCards()));
         var numbers = Card("Number changes", "", Kit.Row(12, Previews.NumberDemo(),
-            Segmented("numberStyle", [("roll", L("Roll")), ("fade", L("Fade")), ("instant", L("Instant"))])), "");
+            Choice("numberStyle", [("roll", L("Roll")), ("fade", L("Fade")), ("instant", L("Instant"))])), "");
         ToolTipService.SetToolTip(numbers, L("Roll: digits flip from top to bottom · Fade: a short crossfade · Instant: no animation"));
         Body.Children.Add(numbers);
 

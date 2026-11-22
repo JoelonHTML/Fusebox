@@ -28,7 +28,7 @@ public sealed partial class PrivacySettingsPage : Page
         folder.SetDescriptionText(SettingsText.Tilde(CsvLog.Dir, Environment.GetFolderPath(Environment.SpecialFolder.UserProfile)));
         Body.Children.Add(folder);
 
-        var delete = Destructive(L("Delete all logs…"));
+        var delete = new Button { Content = L("Delete all logs…") };   // the confirmation dialog is the safety
         delete.Click += async (_, _) =>
         {
             if (await Confirm(XamlRoot, L("Delete all logs?"), L("All CSV files in the log folder will be removed. This can't be undone."), L("Delete")))
@@ -41,20 +41,17 @@ public sealed partial class PrivacySettingsPage : Page
         var host = new TextBox { Text = Prefs.Str("pingHost"), MinWidth = 200, MaxLength = 200 };
         var ping = Card("Measure internet latency (ping)", "", null, "");
         var toggle = new ToggleSwitch { IsOn = Prefs.Str("pingHost").Length > 0, MinWidth = 0 };
-        var hostCard = Card("Measure to", "", host);
-        var note = Kit.CaptionText("");
+        var hostCard = Item(Card("Measure to", "", host));
         void Show()
         {
-            hostCard.Visibility = toggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
-            note.Text = toggle.IsOn ? L("One short connection to this server every 10 s, port 443. Nothing else goes to the internet.")
-                                    : L("Off: Fusebox makes no internet connections at all.");
+            host.IsEnabled = toggle.IsOn;
+            ping.SetDescriptionText(toggle.IsOn ? L("One short connection to this server every 10 s, port 443. Nothing else goes to the internet.")
+                                               : L("Off: Fusebox makes no internet connections at all."));
         }
         toggle.Toggled += (_, _) => { Prefs.Set("pingHost", toggle.IsOn ? "1.1.1.1" : ""); host.Text = Prefs.Str("pingHost"); Show(); };
         host.LostFocus += (_, _) => { var h = host.Text.Trim(); if (h.Length > 0 && h.Length <= 200) Prefs.Set("pingHost", h); else host.Text = Prefs.Str("pingHost"); };
         ping.Action = toggle;
-        Body.Children.Add(ping);
-        Body.Children.Add(hostCard);
-        Body.Children.Add(note);
+        Body.Children.Add(Expand(ping, hostCard));
         Show();
     }
 }

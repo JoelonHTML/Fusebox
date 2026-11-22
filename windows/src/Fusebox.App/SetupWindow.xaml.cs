@@ -14,7 +14,8 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App;
 
 /// <summary>
-/// First-run setup (FEATURES.md §11.7): 560×480, "Step n of 12" with a progress bar, one question per step, the same cards as Settings.
+/// First-run setup (FEATURES.md §11.7): 600×540, "Step n of 12" with a progress bar, one question per step, the same cards, tiles and
+/// drop-downs as Settings.
 /// Every choice is applied at once (the main window changes behind it). Closing the window cancels: the starting settings come back,
 /// but setupDone is set so it isn't asked again at every start. "Skip setup" and "Start using Fusebox" keep the choices.
 /// </summary>
@@ -40,7 +41,7 @@ public sealed partial class SetupWindow : Window
         ThemeService.Attach(this, themed: false);
         double s = Win32.Scale(WinRT.Interop.WindowNative.GetWindowHandle(this));
         var work = DisplayArea.GetFromWindowId(AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        int w = (int)(560 * s), h = (int)(480 * s);
+        int w = (int)(600 * s), h = (int)(540 * s);
         AppWindow.MoveAndResize(new(work.X + (work.Width - w) / 2, work.Y + (work.Height - h) / 2, w, h));
         NextButton.KeyboardAccelerators.Add(new KeyboardAccelerator { Key = Windows.System.VirtualKey.Enter });
         Closed += (_, _) =>
@@ -185,7 +186,7 @@ public sealed partial class SetupWindow : Window
     void Data()
     {
         (long Days, string Label)[] keep = [(7, L("7 days")), (30, L("30 days")), (90, L("90 days")), (0, L("Forever"))];
-        var bar = Kit.Segmented(keep.Select(k => (k.Days.ToString(), k.Label)).ToArray(), Prefs.Long("keepDays").ToString(), id => Prefs.Set("keepDays", long.Parse(id)));
+        var bar = Kit.Pick(keep.Select(k => (k.Days.ToString(), k.Label)).ToArray(), Prefs.Long("keepDays").ToString(), id => Prefs.Set("keepDays", long.Parse(id)));
         BodyHost.Children.Add(Card("Keep measurement history for", "", bar, ""));
         var ping = new ToggleSwitch { IsOn = Prefs.Str("pingHost").Length > 0, MinWidth = 0 };
         ping.Toggled += (_, _) => Prefs.Set("pingHost", ping.IsOn ? "1.1.1.1" : "");

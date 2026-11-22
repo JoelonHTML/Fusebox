@@ -100,13 +100,16 @@ live and how a page uses them. Section numbers like §3.2 refer to FEATURES.md.
 
 ## 7. Settings window — `App/Settings/`
 
-- `SettingsWindow.Open(tabId?)`: one fixed 740×560 window, placed right/left/centered of the main window (§9.1), system look (Mica),
-  remembers `settingsTab`. Sidebar = `SettingsWindow.Tabs` (Mac ids profile, look, live, processes, checkup, network, docked, menubar =
+- `SettingsWindow.Open(tabId?)`: one window shaped like Windows 11 Settings: resizable (1000×700 default, minimum 640×500 DIPs, size in
+  `settingsSize`), sidebar open from 860 DIPs (icons only below), placed right/left/centered of the main window (§9.1), system look
+  (Mica), remembers `settingsTab`. Sidebar = `SettingsWindow.Tabs` (Mac ids profile, look, live, processes, checkup, network, docked, menubar =
   "Tray icon", alerts, battery (only with a battery), data, about; no fans).
-- One Page per tab (`ProfileSettingsPage` … `AboutSettingsPage`, all built), each with a title and an `x:Name="Body"` StackPanel.
+- One Page per tab (`ProfileSettingsPage` … `AboutSettingsPage`, all built): a fixed title (28) above a scrolling `x:Name="Body"`
+  StackPanel, content at most 1000 wide and centred, rows 4 apart.
   Shared pieces: `Parts` (theme/text-size/font/graph/tray-style tiles, accent picker, alert rows, taskbar card, share/import settings),
-  `Previews` (live-looking samples of rows, tables, tray styles, the number-change demo; timers only while loaded), `Kit` (segmented,
-  stepper, chips, `WhilePrefs(el, h)` / `WhileTheme(el, h)` = subscribe on Loaded, unsubscribe on Unloaded, already on the UI thread).
+  `Previews` (live-looking samples of rows, tables, tray styles, the number-change demo, all radius 6; timers only while loaded), `Tile`
+  (one tile style: radius 8, calm fill + subtle stroke, selected = 2 px accent ring; `Parts.Arrange`/`TileGrid` cap tile widths), `Kit`
+  (`Pick` drop-down, stepper, `WhilePrefs(el, h)` / `WhileTheme(el, h)` = subscribe on Loaded, unsubscribe on Unloaded, already on the UI thread).
 - **Shortcut**: `HotkeyRecorder.Create(card, conflictBar)` (Appearance) records Ctrl/Alt (+Shift) + key via `HotkeyLogic.Record` into
   `hotkeyCode`/`hotkeyMods`/`hotkeyLabel`; Esc cancels, Delete = off. `Hotkey.Suspend(true)` while it listens; `Hotkey.Conflict` = another
   app owns the combination.
@@ -123,7 +126,10 @@ live and how a page uses them. Section numbers like §3.2 refer to FEATURES.md.
 - Building blocks: `<s:SettingsCard Glyph="&#xE713;" Header="…" Description="…"><ToggleSwitch/></s:SettingsCard>` (header/description
   are English keys, translated by the card; `SetDescriptionText` for built text), section header
   `<TextBlock Style="{StaticResource SettingsSectionHeader}" Text="…"/>`, title style `SettingsPageTitle`. In code: `SettingsUi.Card`,
-  `Section`, `Toggle(key)`, `Choice(key, items)`, `TranslateOnce(page)`. `tools/strings-check.py` knows Card/Section/SettingsCard text.
+  `Section`, `Toggle(key)`, `Choice(key, items)` / `ChoiceBool` / `LongChoice` (choices are drop-downs, like Windows), `Block(content)` (a
+  card holding tiles or a preview), `Expand(headCard, items…)` + `Item(card)` (SettingsExpander on the WinUI Expander), `CheckList` /
+  `HiddenList` (column and section choices as check boxes in an expander), `TranslateOnce(page)`. A ToggleSwitch in a card gets "On"/"Off"
+  on its left (`Switch`). Destructive actions are normal buttons with a `Confirm` dialog; at most one accent button per page. `tools/strings-check.py` knows Card/Section/SettingsCard text.
 
 ## 8. Tray — `App/Tray.cs`, `App/TrayFlyout.xaml(.cs)`
 

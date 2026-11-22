@@ -17,25 +17,44 @@ internal static class Parts
     // ---- tile grids ----
 
     /// <summary>
-    /// Grid of selectable tiles. <paramref name="current"/> = the stored id (selected tile), <paramref name="pick"/> stores a choice.
+    /// <paramref name="child"/> stretched up to <paramref name="maxWidth"/>, then left-aligned (a star column with a maximum): tiles and previews
+    /// never grow huge in a wide window and shrink in a narrow one.
+    /// </summary>
+    public static Grid Capped(double maxWidth, UIElement child)
+    {
+        var g = new Grid();
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star), MaxWidth = maxWidth });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        g.Children.Add(child);
+        return g;
+    }
+
+    /// <summary>Tiles in an aligned grid: <paramref name="columns"/> equal columns, each at most <paramref name="tileWidth"/> wide, 8 apart.</summary>
+    public static Grid Arrange(int columns, double tileWidth, IReadOnlyList<FrameworkElement> tiles)
+    {
+        var grid = new Grid { ColumnSpacing = 8, RowSpacing = 8 };
+        for (int c = 0; c < columns; c++) grid.ColumnDefinitions.Add(new ColumnDefinition());
+        for (int r = 0; r < (tiles.Count + columns - 1) / columns; r++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        for (int i = 0; i < tiles.Count; i++)
+        {
+            tiles[i].HorizontalAlignment = HorizontalAlignment.Stretch;
+            tiles[i].VerticalAlignment = VerticalAlignment.Stretch;
+            Grid.SetColumn(tiles[i], i % columns);
+            Grid.SetRow(tiles[i], i / columns);
+            grid.Children.Add(tiles[i]);
+        }
+        return Capped(columns * tileWidth + (columns - 1) * 8, grid);
+    }
+
+    /// <summary>
+    /// Grid of selectable tiles (<see cref="Arrange"/>). <paramref name="isSelected"/> marks the stored choice, <paramref name="pick"/> stores one.
     /// Previews are rebuilt when the Fusebox theme changes (accent, mode, font …), the selection when <paramref name="key"/> changes.
     /// </summary>
-    public static Grid TileGrid(int columns, (string Id, string Name, Func<UIElement> Content)[] items, string key, Func<string, bool> isSelected,
+    public static Grid TileGrid(int columns, double tileWidth, (string Id, string Name, Func<UIElement> Content)[] items, string key, Func<string, bool> isSelected,
         Action<string> pick, bool rebuildOnTheme)
     {
-        var grid = new Grid { ColumnSpacing = 10, RowSpacing = 10 };
-        for (int c = 0; c < columns; c++) grid.ColumnDefinitions.Add(new ColumnDefinition());
-        for (int r = 0; r < (items.Length + columns - 1) / columns; r++) grid.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
-        var tiles = new List<(string Id, Tile Tile, Func<UIElement> Content)>();
-        for (int i = 0; i < items.Length; i++)
-        {
-            var (id, name, content) = items[i];
-            var tile = new Tile(content(), name, () => pick(id)) { HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch };
-            Grid.SetColumn(tile, i % columns);
-            Grid.SetRow(tile, i / columns);
-            grid.Children.Add(tile);
-            tiles.Add((id, tile, content));
-        }
+        var tiles = items.Select(i => (i.Id, Tile: new Tile(i.Content(), i.Name, () => pick(i.Id)), i.Content)).ToList();
+        var grid = Arrange(columns, tileWidth, tiles.Select(t => (FrameworkElement)t.Tile).ToList());
         void Select() { foreach (var t in tiles) t.Tile.Selected = isSelected(t.Id); }
         Select();
         Kit.WhilePrefs(grid, k => { if (k == key) Select(); });
@@ -56,7 +75,7 @@ internal static class Parts
     // ---- appearance ----
 
     /// <summary>Six theme tiles (3 columns), each a mini Live window in that theme (§11.7). Theme names are never translated.</summary>
-    public static UIElement ThemeTiles() => TileGrid(3,
+    public static UIElement ThemeTiles() => TileGrid(3, 196,
         Themes.All.Select(t => (t.Id, t.Name, (Func<UIElement>)(() => Stack(6, Previews.ThemeTile(Previews.Resolve(t.Id, 1)), Name(t.Name))))).ToArray(),
         "theme", id => Prefs.Str("theme") == id, id => Prefs.Set("theme", id), true);
 
@@ -64,18 +83,15 @@ internal static class Parts
     public static UIElement TextSizeCards()
     {
         (string, string, double)[] sizes = [("normal", L("Normal"), 1.0), ("large", L("Large"), 1.15), ("xl", L("Extra large"), 1.3)];
-        var cards = TileGrid(3,
+        var cards = TileGrid(3, 150,
             sizes.Select(s => (s.Item1, s.Item2, (Func<UIElement>)(() => Stack(4,
                 new TextBlock { Text = "Aa", FontSize = 22 * s.Item3, FontWeight = FontWeights.SemiBold, Height = 36 * 1.3, TextAlignment = TextAlignment.Center, HorizontalAlignment = HorizontalAlignment.Center },
                 Name(s.Item2, 12))))).ToArray(),
             "textScale", id => Math.Abs(Prefs.Double("textScale") - sizes.First(s => s.Item1 == id).Item3) < 0.01,
             id => Prefs.Set("textScale", sizes.First(s => s.Item1 == id).Item3), false);
-        var sample = new ContentPresenter { Content = Previews.TextSample() };
+        var sample = new ContentPresenter { Content = Previews.TextSample(), HorizontalContentAlignment = HorizontalAlignment.Stretch };
         Kit.WhileTheme(sample, () => sample.Content = Previews.TextSample());
-        var all = new StackPanel { Spacing = 10 };
-        all.Children.Add(cards);
-        all.Children.Add(sample);
-        return all;
+        return Capped(3 * 150 + 16, Stack(8, cards, sample));
     }
 
     /// <summary>Seven font cards (4 columns): "17%" in that font with the theme's weight, "CPU 47°", the font name.</summary>
@@ -94,7 +110,7 @@ internal static class Parts
             var small = new TextBlock { Text = "CPU 47°", FontFamily = face, FontSize = 11, FontWeight = FontWeights.Medium, Opacity = 0.75, HorizontalAlignment = HorizontalAlignment.Center };
             return Stack(2, big, small, new TextBlock { Text = name, FontSize = 12, Margin = new Thickness(0, 2, 0, 0), TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, HorizontalAlignment = HorizontalAlignment.Center });
         }
-        return TileGrid(4, fonts.Select(f => (f.Id, f.Name, (Func<UIElement>)(() => Card(f.Id, f.Name)))).ToArray(),
+        return TileGrid(4, 140, fonts.Select(f => (f.Id, f.Name, (Func<UIElement>)(() => Card(f.Id, f.Name)))).ToArray(),
             "font", id => Prefs.Str("font") == id, id => Prefs.Set("font", id), true);
     }
 
@@ -142,7 +158,7 @@ internal static class Parts
             return Stack(5, icon, new TextBlock { Text = title, FontWeight = FontWeights.SemiBold, HorizontalAlignment = HorizontalAlignment.Center },
                 new TextBlock { Text = detail, FontSize = 12, Opacity = 0.75, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MinHeight = 32 });
         }
-        return TileGrid(2,
+        return TileGrid(2, 240,
         [
             ("auto", L("Automatic"), () => Card("", false, L("Automatic"), L("Graphs appear when the window is big enough"))),
             ("never", L("Never"), () => Card("123", true, L("Never"), L("Always just the numbers"))),
@@ -160,7 +176,7 @@ internal static class Parts
         var card = new SettingsCard { Header = Metrics.Title(m) };
         card.SetDescriptionText(L("%% shows %@ · %@ shows %@", pct, unit, abs));
         string id = Metrics.Id(m);
-        card.Action = Kit.Segmented([("pct", "%"), ("abs", unit)], Prefs.List("absolute").Contains(id) ? "abs" : "pct", v =>
+        card.Action = Kit.Pick([("pct", "%"), ("abs", unit)], Prefs.List("absolute").Contains(id) ? "abs" : "pct", v =>
         {
             var l = Prefs.List("absolute").Where(x => x != id).ToList();
             if (v == "abs") l.Add(id);
@@ -183,12 +199,12 @@ internal static class Parts
         {
             "text" => L("Text (CPU 23%)"), "compact" => L("Compact (small symbols)"), "bars" => L("Bars"), "graph" => L("Graphs"), "icon" => L("Just an icon"), _ => L("Don't show"),
         };
-        var grid = TileGrid(3, TrayStyles.Select(s => (s.Id, TitleOf(s.Id), (Func<UIElement>)(() =>
+        var grid = TileGrid(3, 170, TrayStyles.Select(s => (s.Id, TitleOf(s.Id), (Func<UIElement>)(() =>
             Stack(6, Previews.TrayPreview(s.Id, Metrics.Parse(Prefs.Str("menubarMetrics"))), new TextBlock { Text = TitleOf(s.Id), FontSize = 12, TextAlignment = TextAlignment.Center, TextWrapping = TextWrapping.Wrap, MinHeight = 32 })))).ToArray(),
             "menubarStyle", id => Prefs.Str("menubarStyle") == id, id => Prefs.Set("menubarStyle", id), true);
         void Reach()
         {
-            foreach (var t in grid.Children.OfType<Tile>().Skip(5)) t.SetEnabled(Prefs.Bool("dockIcon"));
+            foreach (var t in ((Grid)grid.Children[0]).Children.OfType<Tile>().Skip(5)) t.SetEnabled(Prefs.Bool("dockIcon"));
         }
         Reach();
         Kit.WhilePrefs(grid, k => { if (k is "dockIcon" or "menubarMetrics") Reach(); });
@@ -197,53 +213,41 @@ internal static class Parts
 
     // ---- alerts ----
 
-    /// <summary>One alert kind (§9.12): toggle with its limit in words; when on (not compact) steppers and an example notification.</summary>
+    /// <summary>
+    /// One alert kind (§9.12): an expandable row (switch, limit in words) whose sub-options are the limit, the minutes in a row and an example
+    /// notification. <paramref name="compact"/> (setup): just the row with its switch.
+    /// </summary>
     public static UIElement AlertRow(string id, bool compact = false)
     {
         string on = AlertKinds.Key(id, "on"), limit = AlertKinds.Key(id, "limit"), min = AlertKinds.Key(id, "min");
         var (lo, hi, step) = AlertKinds.Range(id);
-        var box = new StackPanel { Spacing = 4 };
         var card = new SettingsCard { Header = AlertKinds.Title(id) };
         var toggle = new ToggleSwitch { IsOn = Prefs.Bool(on), MinWidth = 0 };
         card.Action = toggle;
-        var detail = new StackPanel { Spacing = 6, Margin = new Thickness(20, 0, 0, 0) };
-        var limitText = new TextBlock { VerticalAlignment = VerticalAlignment.Center };
+        toggle.Toggled += (_, _) => Prefs.Set(on, toggle.IsOn);
+        var limitRow = SettingsUi.Item(new SettingsCard());
         var toast = new ToastMock("", "");
         void Show()
         {
             double l = Prefs.Double(limit); int m = (int)Prefs.Long(min);
             card.SetDescriptionText(L("%@, %lld min in a row", AlertKinds.Describe(id, l), m));
-            limitText.Text = L("Limit: %@", AlertKinds.Describe(id, l));
+            limitRow.SetHeaderText(L("Limit: %@", AlertKinds.Describe(id, l)));
             toast.Set(AlertKinds.Title(id), AlertKinds.Example(id, l, m));
-            detail.Visibility = toggle.IsOn && !compact ? Visibility.Visible : Visibility.Collapsed;
         }
-        var steppers = new Grid { ColumnSpacing = 12 };
-        steppers.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        steppers.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        var limitStepper = Kit.Stepper(lo, hi, step, Prefs.Double(limit), v => { Prefs.Set(limit, v); Show(); }, 124);
-        var minStepper = Kit.Stepper(1, 60, 1, Prefs.Long(min), v => { Prefs.Set(min, (long)v); Show(); }, 104);
-        Grid.SetColumn(limitStepper, 1);
-        var minLabel = new TextBlock { Text = L("min in a row"), VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Opacity = 0.75 };
-        steppers.Children.Add(limitText); steppers.Children.Add(limitStepper);
-        var minRow = Kit.Row(8, minStepper, minLabel);
-        detail.Children.Add(steppers);
-        detail.Children.Add(minRow);
-        detail.Children.Add(toast);
-        toggle.Toggled += (_, _) => { Prefs.Set(on, toggle.IsOn); Show(); };
         Show();
-        box.Children.Add(card);
-        if (!compact) box.Children.Add(detail);
-        return box;
+        if (compact) return card;
+        limitRow.Action = Kit.Stepper(lo, hi, step, Prefs.Double(limit), v => { Prefs.Set(limit, v); Show(); }, 124);
+        var minRow = SettingsUi.Item(Card("Minutes in a row", "", Kit.Stepper(1, 60, 1, Prefs.Long(min), v => { Prefs.Set(min, (long)v); Show(); }, 124)));
+        return SettingsUi.Expand(card, limitRow, minRow, Example(toast));
     }
 
     /// <summary>"Sustained peak" (§9.12): its own switch and minutes, with an example of the peak notification.</summary>
     public static UIElement PeakRow()
     {
-        var box = new StackPanel { Spacing = 4 };
         var card = new SettingsCard { Header = "Sustained peak" };
         var toggle = new ToggleSwitch { IsOn = Prefs.Bool("alert.peak.on"), MinWidth = 0 };
         card.Action = toggle;
-        var detail = new StackPanel { Spacing = 6, Margin = new Thickness(20, 0, 0, 0) };
+        toggle.Toggled += (_, _) => Prefs.Set("alert.peak.on", toggle.IsOn);
         var toast = new ToastMock("", "");
         void Show()
         {
@@ -251,16 +255,19 @@ internal static class Parts
             card.SetDescriptionText(L("Names the app behind a peak of %lld min or more, with a Stop app button", m));
             string body = m == 1 ? L("%@ %@ for 1 minute", "CPU", "92%") : L("%@ %@ for %lld minutes", "CPU", "92%", m);
             toast.Set(L("%@ is keeping your CPU busy", "Safari"), body);
-            detail.Visibility = toggle.IsOn ? Visibility.Visible : Visibility.Collapsed;
         }
-        detail.Children.Add(Kit.Row(8, Kit.Stepper(1, 30, 1, Prefs.Long("alert.peak.min"), v => { Prefs.Set("alert.peak.min", (long)v); Show(); }, 104),
-            new TextBlock { Text = L("min in a row"), VerticalAlignment = VerticalAlignment.Center, FontSize = 12, Opacity = 0.75 }));
-        detail.Children.Add(toast);
-        toggle.Toggled += (_, _) => { Prefs.Set("alert.peak.on", toggle.IsOn); Show(); };
+        var minRow = SettingsUi.Item(Card("Minutes in a row", "", Kit.Stepper(1, 30, 1, Prefs.Long("alert.peak.min"), v => { Prefs.Set("alert.peak.min", (long)v); Show(); }, 124)));
         Show();
-        box.Children.Add(card);
-        box.Children.Add(detail);
-        return box;
+        return SettingsUi.Expand(card, minRow, Example(toast));
+    }
+
+    /// <summary>The example notification under an alert's options: not wider than a real one, with room below.</summary>
+    static UIElement Example(ToastMock toast)
+    {
+        toast.MaxWidth = 364;
+        toast.HorizontalAlignment = HorizontalAlignment.Left;
+        toast.Margin = new Thickness(0, 4, 0, 10);
+        return toast;
     }
 
     /// <summary>Alert kinds this PC can show: "PC too hot" only when a temperature is measured.</summary>

@@ -99,7 +99,7 @@ internal static class Previews
         return g;
     }
 
-    /// <summary>The theme's window background around content (preview box).</summary>
+    /// <summary>The theme's window background around content (preview box). Every preview uses radius 6, so they read as one family.</summary>
     public static Border Box(Theme t, UIElement content, double radius, double padding) =>
         new() { Child = content, Background = B(Bg(t)), CornerRadius = new CornerRadius(radius), Padding = new Thickness(padding) };
 
@@ -109,7 +109,7 @@ internal static class Previews
         var rows = new StackPanel { Spacing = t.RowStyle is RowStyle.Lines or RowStyle.Plain ? 0 : 4 };
         rows.Children.Add(Row(t, 0, Line(t, "CPU", "47°", "17%", "", 9, 9, 14)));
         rows.Children.Add(Row(t, 1, Line(t, "RAM", "", "11.8", "GB", 9, 9, 14)));
-        var box = Box(t, rows, 8, 8);
+        var box = Box(t, rows, 6, 8);
         box.MinHeight = 86;
         return box;
     }
@@ -118,7 +118,7 @@ internal static class Previews
     public static UIElement OptionPreview(string label, string? glyph, string side, string value, string unit, UIElement? extra = null)
     {
         var t = Current();
-        return Box(t, Row(t, 0, Line(t, label, side, value, unit, 13, 13, 22, glyph, extra)), 10, 8);
+        return Box(t, Row(t, 0, Line(t, label, side, value, unit, 13, 13, 22, glyph, extra)), 6, 8);
     }
 
     /// <summary>Fake table header + one row (Mac TablePreview): columns (title, sample value), the sorted one marked ▾.</summary>
@@ -143,7 +143,7 @@ internal static class Previews
             Put(T(columns[i].Title + (columns[i].Sorted ? " ▾" : ""), t, 10, columns[i].Sorted ? t.OnRow() : t.OnRow(true), false), i + 1, 0);
             Put(T(columns[i].Value, t, 12, t.OnRow(), true), i + 1, 1);
         }
-        return Box(t, Row(t, 0, g), 10, 8);
+        return Box(t, Row(t, 0, g), 6, 8);
     }
 
     // ---- sample data (§9.6 PreviewData) ----
@@ -230,7 +230,7 @@ internal static class Previews
             axis.Children.Add(now);
             page.Children.Add(axis);
         }
-        return Box(t, page, 10, 10);
+        return Box(t, page, 6, 10);
     }
 
     static Border Cell(Theme t, Metric m, int index, bool graphs, bool abs)
@@ -265,7 +265,7 @@ internal static class Previews
     public static UIElement TextSample()
     {
         var t = Current();
-        return Box(t, Row(t, 0, Line(t, "CPU", "47°", "17%", "", 13, 13, 30)), 10, 10);
+        return Box(t, Row(t, 0, Line(t, "CPU", "47°", "17%", "", 13, 13, 30)), 6, 10);
     }
 
     // ---- number change demo (§9.5) ----
@@ -278,7 +278,7 @@ internal static class Previews
         var tb = T(values[0], t, 20, t.OnRow(), true);
         tb.HorizontalAlignment = HorizontalAlignment.Right;
         tb.RenderTransform = new TranslateTransform();
-        var box = new Border { Child = tb, Width = 72, Padding = new Thickness(8, 2, 8, 2), CornerRadius = new CornerRadius(8), Background = B(Bg(t)), VerticalAlignment = VerticalAlignment.Center };
+        var box = new Border { Child = tb, Width = 72, Padding = new Thickness(8, 2, 8, 2), CornerRadius = new CornerRadius(6), Background = B(Bg(t)), VerticalAlignment = VerticalAlignment.Center };
         DispatcherQueueTimer? timer = null;
         int i = 0;
         box.Loaded += (_, _) =>

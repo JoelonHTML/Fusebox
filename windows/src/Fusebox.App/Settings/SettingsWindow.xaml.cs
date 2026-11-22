@@ -8,8 +8,9 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App.Settings;
 
 /// <summary>
-/// The Settings window (FEATURES.md §9.1): fixed 740×560, not resizable, sidebar with the Mac's tabs (Fans hidden on Windows, Battery
-/// only with a battery, "Menu bar" = "Tray icon"), remembered tab (pref settingsTab), placed right of the main window each time it opens.
+/// The Settings window (FEATURES.md §9.1), shaped like Windows 11 Settings: resizable (default 1000×700, minimum 640×500 DIPs, size
+/// remembered in settingsSize), sidebar with the Mac's tabs (Fans hidden on Windows, Battery only with a battery, "Menu bar" = "Tray icon"),
+/// remembered tab (pref settingsTab), placed right of the main window each time it opens.
 /// One instance; <see cref="Open"/> creates or brings it to the front. Each tab is its own Page in this folder.
 /// </summary>
 public sealed partial class SettingsWindow : Window
@@ -34,7 +35,7 @@ public sealed partial class SettingsWindow : Window
         new("about", "About", "\uE946", typeof(AboutSettingsPage)),
     ];
 
-    public const double WidthDip = 740, HeightDip = 560;
+    public const double WidthDip = 1000, HeightDip = 700, MinWidthDip = 640, MinHeightDip = 500;
     static SettingsWindow? current;
     readonly List<Tab> shown;
 
@@ -66,7 +67,7 @@ public sealed partial class SettingsWindow : Window
         InitializeComponent();
         Title = L("Settings");
         AppWindow.SetIcon(Path.Combine(AppContext.BaseDirectory, "Assets", "Fusebox.ico"));
-        if (AppWindow.Presenter is OverlappedPresenter p) { p.IsResizable = false; p.IsMaximizable = false; }
+        unsafe { SettingsNative.SetWindowSubclass(WinRT.Interop.WindowNative.GetWindowHandle(this), &WndProc, 3, 0); }
         ThemeService.Attach(this, themed: false);
         shown = Tabs.Where(t => t.Id != "battery" || HasBattery()).ToList();
         foreach (var t in shown)
@@ -79,6 +80,9 @@ public sealed partial class SettingsWindow : Window
         try { return Windows.System.Power.PowerManager.BatteryStatus != Windows.System.Power.BatteryStatus.NotPresent; }
         catch { return false; }
     }
+
+    void Nav_DisplayModeChanged(NavigationView sender, NavigationViewDisplayModeChangedEventArgs args) =>
+        sender.IsPaneToggleButtonVisible = args.DisplayMode != NavigationViewDisplayMode.Expanded;   // the menu button only when the sidebar is folded
 
     /// <summary>Switch the open window to a tab without moving it (e.g. "Change in Privacy").</summary>
     public static void GoTo(string tab) => current?.Select(tab);
@@ -106,18 +110,61 @@ public sealed partial class SettingsWindow : Window
         Host.BackStack.Clear();
     }
 
-    /// <summary>§9.1 placement: right of the main window (gap 12), else left, else centered over it; tops aligned.</summary>
+    /// <summary>The remembered size in DIPs (settingsSize "w,h"), else 1000×700; never below the minimum.</summary>
+    static (double W, double H) SavedSize()
+    {
+        var p = Prefs.Str("settingsSize").Split(',');
+        var inv = System.Globalization.CultureInfo.InvariantCulture;
+        if (p.Length == 2 && double.TryParse(p[0], System.Globalization.NumberStyles.Float, inv, out var w) && double.TryParse(p[1], System.Globalization.NumberStyles.Float, inv, out var h))
+            return (Math.Max(w, MinWidthDip), Math.Max(h, MinHeightDip));
+        return (WidthDip, HeightDip);
+    }
+
+    /// <summary>§9.1 placement: right of the main window (gap 12), else left, else centered over it; tops aligned. Never larger than the screen.</summary>
     void Place()
     {
+        if (AppWindow.Presenter is OverlappedPresenter { State: OverlappedPresenterState.Maximized }) return;
         double s = Win32.Scale(WinRT.Interop.WindowNative.GetWindowHandle(this));
-        int w = (int)(WidthDip * s), h = (int)(HeightDip * s);
+        var (wd, hd) = SavedSize();
         var main = App.Main;
+        var work = DisplayArea.GetFromWindowId(main != null && main.IsOnScreen ? main.AppWindow.Id : AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
+        // In DIPs, so the 12-DIP gap is the same at every scale.
+        var screen = new Box(work.X / s, work.Y / s, work.Width / s, work.Height / s);
+        wd = Math.Min(wd, screen.W);
+        hd = Math.Min(hd, screen.H);
+        int w = (int)(wd * s), h = (int)(hd * s);
         if (main == null || !main.IsOnScreen) { AppWindow.Resize(new(w, h)); return; }
         var mp = main.AppWindow.Position; var ms = main.AppWindow.Size;
-        var work = DisplayArea.GetFromWindowId(main.AppWindow.Id, DisplayAreaFallback.Nearest).WorkArea;
-        // In DIPs, so the 12-DIP gap is the same at every scale.
-        var (x, y) = Placement.Settings(new Box(mp.X / s, mp.Y / s, ms.Width / s, ms.Height / s),
-                                        new Box(work.X / s, work.Y / s, work.Width / s, work.Height / s), WidthDip, HeightDip);
+        var (x, y) = Placement.Settings(new Box(mp.X / s, mp.Y / s, ms.Width / s, ms.Height / s), screen, wd, hd);
         AppWindow.MoveAndResize(new((int)(x * s), (int)(y * s), w, h));
+    }
+
+    /// <summary>End of a user resize: remember the size (not while maximized).</summary>
+    void SaveSize()
+    {
+        if (AppWindow.Presenter is OverlappedPresenter { State: not OverlappedPresenterState.Restored }) return;
+        double s = Win32.Scale(WinRT.Interop.WindowNative.GetWindowHandle(this));
+        Prefs.Set("settingsSize", FormattableString.Invariant($"{Math.Round(AppWindow.Size.Width / s)},{Math.Round(AppWindow.Size.Height / s)}"));
+    }
+
+    /// <summary>Minimum size (640×500 DIPs) and "resize ended" for the remembered size.</summary>
+    [System.Runtime.InteropServices.UnmanagedCallersOnly]
+    static unsafe nint WndProc(nint h, uint msg, nuint wParam, nint lParam, nuint id, nuint data)
+    {
+        try
+        {
+            if (msg == Win32.WM_GETMINMAXINFO)
+            {
+                var r = SettingsNative.DefSubclassProc(h, msg, wParam, lParam);
+                double s = Win32.Scale(h);
+                var mm = (Win32.MINMAXINFO*)lParam;
+                mm->MinTrackSize.X = Math.Max(mm->MinTrackSize.X, (int)(MinWidthDip * s));
+                mm->MinTrackSize.Y = Math.Max(mm->MinTrackSize.Y, (int)(MinHeightDip * s));
+                return r;
+            }
+            if (msg == Win32.WM_EXITSIZEMOVE) current?.SaveSize();
+        }
+        catch { }
+        return SettingsNative.DefSubclassProc(h, msg, wParam, lParam);
     }
 }

@@ -50,3 +50,5 @@
 "tray icon" = "icône de la zone de notification";
 "Under 1% CPU" = "Moins de 1 % de CPU";
 "Hides items under 1% CPU and under 200 MB memory. \"Show all\" brings them back." = "Masque les éléments sous 1 % de CPU et sous 200 MB de mémoire. « Tout afficher » les fait réapparaître.";
+"Minutes in a row" = "Minutes d’affilée";
+"%lld of %lld shown" = "%lld sur %lld affichés";

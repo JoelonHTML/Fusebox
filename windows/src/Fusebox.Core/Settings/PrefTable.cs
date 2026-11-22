@@ -125,6 +125,7 @@ public static class PrefTable
             new("liveSize", "", B),                // "w,h" in DIPs; "" = 300,340
             new("windowSize", "", B),              // "w,h" in DIPs, all tabs except Live
             new("windowTopLeft", "", B),           // "x,y" in physical screen pixels
+            new("settingsSize", "", B),            // "w,h" in DIPs of the Settings window; "" = 1000,700
             new("failedUpdateBuild", 0L, B),
             new("notifiedUpdate", "", B),
             new("notifyAskRound", 0L, B),
