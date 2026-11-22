@@ -517,6 +517,8 @@ enum NetProbe {
 struct PingStats: Equatable, Sendable {
     let sent: Int, got: Int
     let avg: Double?, min: Double?, max: Double?, jitter: Double?
+    /// 95 van de 100 antwoorden waren minstens zo snel (pas vanaf 10 antwoorden zinvol)
+    let p95: Double?
     /// 0…1
     var loss: Double { sent > 0 ? Double(sent - got) / Double(sent) : 0 }
 
@@ -525,6 +527,7 @@ struct PingStats: Equatable, Sendable {
         self.sent = sent; got = Swift.min(rtts.count, sent)
         avg = rtts.isEmpty ? nil : rtts.reduce(0, +) / Double(rtts.count)
         min = rtts.min(); max = rtts.max()
+        p95 = rtts.count >= 10 ? rtts.sorted()[Int((Double(rtts.count) * 0.95).rounded(.up)) - 1] : nil
         jitter = rtts.count > 1 ? zip(rtts, rtts.dropFirst()).map { abs($1 - $0) }.reduce(0, +) / Double(rtts.count - 1) : nil
     }
 }
