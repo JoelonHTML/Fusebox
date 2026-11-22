@@ -21,7 +21,7 @@ public sealed partial class DockedSettingsPage : Page
         Body.Children.Add(Card("Show wireless", "Bluetooth devices with battery, and a row when your internet runs through a phone hotspot or mobile modem.", Toggle("dockedWireless"), ""));
 
         Body.Children.Add(Section("Speed"));
-        var speed = Card("Link speed", "", SegmentedBool("dockedBytes", "Gbit/s", "GB/s"), "");
+        var speed = Card("Link speed", "", ChoiceBool("dockedBytes", "Gbit/s", "GB/s"), "");
         speed.SetDescriptionText(L("Gbit/s shows 40 Gbit/s · GB/s shows 5 GB/s (handy to compare with a drive)"));
         Body.Children.Add(speed);
     }

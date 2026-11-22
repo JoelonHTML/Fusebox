@@ -48,3 +48,5 @@
 "min in a row" = "Min. in Folge";
 "tray %@" = "Infobereich %@";
 "tray icon" = "Infobereich-Symbol";
+"Minutes in a row" = "Minuten am Stück";
+"%lld of %lld shown" = "%lld von %lld sichtbar";

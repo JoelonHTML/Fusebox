@@ -17,18 +17,20 @@ public sealed partial class TraySettingsPage : Page
         SettingsUi.TranslateOnce(this);
 
         Body.Children.Add(Section("In the system tray"));
-        Body.Children.Add(Parts.TrayStyleCards());
         var dockNote = Kit.CaptionText(L("\"Don't show\" needs the taskbar button on, otherwise you can't find Fusebox."));
         void Note() => dockNote.Visibility = Prefs.Bool("dockIcon") ? Visibility.Collapsed : Visibility.Visible;
         Note();
         Kit.WhilePrefs(dockNote, k => { if (k == "dockIcon") Note(); });
-        Body.Children.Add(dockNote);
+        dockNote.Margin = new Thickness(2, 8, 2, 0);
+        var styles = new StackPanel();
+        styles.Children.Add(Parts.TrayStyleCards());
+        styles.Children.Add(dockNote);
+        Body.Children.Add(Block(styles));
         var split = Card("Each measurement in its own spot (max. 3)", "", Toggle("menubarSplit"), "");
-        split.Margin = new Thickness(0, 10, 0, 0);
         Body.Children.Add(split);
 
         Body.Children.Add(Section("Measurements in the tray (max. 4)"));
-        Body.Children.Add(MetricsEditor.Create("menubarMetrics", limit: 4));
+        Body.Children.Add(Block(MetricsEditor.Create("menubarMetrics", limit: 4)));
 
         Body.Children.Add(Section("When you click it"));
         var details = new StackPanel { Spacing = 4 };
@@ -43,7 +45,7 @@ public sealed partial class TraySettingsPage : Page
                     details.Children.Add(PartToggle(id, header));
             }
         }
-        Body.Children.Add(Card("Type", "", Segmented("menuStyle", [("menu", L("Regular menu")), ("panel", L("Panel with live values"))], Details), ""));
+        Body.Children.Add(Card("Type", "", Choice("menuStyle", [("menu", L("Regular menu")), ("panel", L("Panel with live values"))], Details), ""));
         Body.Children.Add(details);
         Details();
     }

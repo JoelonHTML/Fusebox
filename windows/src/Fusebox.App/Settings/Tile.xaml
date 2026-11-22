@@ -2,15 +2,16 @@
              xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              IsTabStop="True" UseSystemFocusVisuals="True">
-    <!-- Selectable card (Mac "Card", §9.3): radius 12, padding 10, faint fill, 1 pt border; selected = accent border 2.5. The ring is a second
-         border on top so the layout never jumps. Colors are theme resources, so they follow the Settings window's light/dark. -->
+    <!-- Selectable tile, one style for every preview (theme, text size, font, tray style, graphs, profile): radius 8, padding 8, a calm fill
+         and 1 px subtle stroke; selected = 2 px accent ring. The ring is a second border on top so the layout never jumps. Theme resources,
+         so it follows the Settings window's light/dark. -->
     <Grid>
-        <Border x:Name="Face" CornerRadius="12" Padding="10" BorderThickness="1"
+        <Border x:Name="Face" CornerRadius="8" Padding="8" BorderThickness="1"
                 Background="{ThemeResource CardBackgroundFillColorSecondaryBrush}"
-                BorderBrush="{ThemeResource ControlStrokeColorDefaultBrush}">
+                BorderBrush="{ThemeResource CardStrokeColorDefaultBrush}">
             <ContentPresenter x:Name="Host" />
         </Border>
-        <Border x:Name="Ring" CornerRadius="12" BorderThickness="2.5" Visibility="Collapsed" IsHitTestVisible="False"
+        <Border x:Name="Ring" CornerRadius="8" BorderThickness="2" Visibility="Collapsed" IsHitTestVisible="False"
                 BorderBrush="{ThemeResource AccentFillColorDefaultBrush}" />
     </Grid>
 </UserControl>

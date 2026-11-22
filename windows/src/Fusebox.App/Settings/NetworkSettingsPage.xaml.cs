@@ -17,9 +17,7 @@ public sealed partial class NetworkSettingsPage : Page
         Body.Children.Add(Card("Scan when you open Network", "Off: Fusebox only looks for devices on your network when you press Scan.", Toggle("netAutoScan"), ""));
         Body.Children.Add(Card("Notify me about new devices", "While Network scans. Same as the bell on the page.", Toggle("notifyNewDevice"), ""));
 
-        Body.Children.Add(Section("Columns"));
-        Body.Children.Add(HiddenChips("netHide", [("mac", "MAC"), ("vendor", L("Vendor")), ("kind", L("Type"))]));
-        var preview = new ContentPresenter { Margin = new Thickness(0, 6, 0, 0) };
+        var preview = new ContentPresenter();
         void Redraw()
         {
             var hide = Prefs.List("netHide");
@@ -33,11 +31,13 @@ public sealed partial class NetworkSettingsPage : Page
         Redraw();
         Kit.WhileTheme(preview, Redraw);
         Kit.WhilePrefs(preview, k => { if (k == "netHide") Redraw(); });
-        Body.Children.Add(preview);
-        Footer(Body, L("Columns appear when the window is wide enough."));
+        var list = HiddenList("Columns", "\uE9D5", "netHide", [("mac", "MAC"), ("vendor", L("Vendor")), ("kind", L("Type"))],
+            Parts.Capped(640, preview), Kit.CaptionText(L("Columns appear when the window is wide enough.")));
+        list.Margin = new Thickness(0, 20, 0, 0);
+        Body.Children.Add(list);
 
         Body.Children.Add(Section("Speed test"));
-        var speed = Card("Unit", "", SegmentedBool("speedMB", "Mbit/s", "MB/s"), "");
+        var speed = Card("Unit", "", ChoiceBool("speedMB", "Mbit/s", "MB/s"), "");
         speed.SetDescriptionText(L("Mbit/s shows 412 Mbit/s · MB/s shows 51.5 MB/s"));
         Body.Children.Add(speed);
 

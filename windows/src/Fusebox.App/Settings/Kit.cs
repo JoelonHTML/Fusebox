@@ -2,13 +2,12 @@ using System.Diagnostics;
 using Fusebox.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Controls.Primitives;
 using Windows.Foundation;
 using Windows.UI.ViewManagement;
 
 namespace Fusebox.App.Settings;
 
-/// <summary>Flow layout that wraps onto the next line (Mac NetFlow): chips, tiles of unequal width.</summary>
+/// <summary>Flow layout that wraps onto the next line (Mac NetFlow): check boxes of a column list.</summary>
 public sealed partial class WrapPanel : Panel
 {
     public double HSpacing { get; set; } = 6;
@@ -41,27 +40,21 @@ public sealed partial class WrapPanel : Panel
     }
 }
 
-/// <summary>Small controls shared by the Settings pages and the setup: captions, segmented pickers, steppers, chips, live subscriptions.</summary>
+/// <summary>Small controls shared by the Settings pages and the setup: captions, drop-downs, steppers, live subscriptions.</summary>
 internal static class Kit
 {
     /// <summary>Explanatory line under a control (Mac .caption, secondary). Pass the text through L(…) at the call site so the translation check sees the key.</summary>
     public static TextBlock CaptionText(string translated) =>
         new() { Text = translated, FontSize = 12, Opacity = 0.75, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(2, 2, 2, 0) };
 
-    /// <summary>Segmented picker (SelectorBar) over (id, label) items; <paramref name="pick"/> gets the id of a user choice.</summary>
-    public static SelectorBar Segmented((string Id, string Label)[] items, string selected, Action<string> pick)
+    /// <summary>Drop-down over (id, label) items (Windows Settings uses a ComboBox for a choice); <paramref name="pick"/> gets the id of a user choice.</summary>
+    public static ComboBox Pick((string Id, string Label)[] items, string selected, Action<string> pick)
     {
-        var bar = new SelectorBar();
-        SelectorBarItem? sel = null;
-        foreach (var (id, label) in items)
-        {
-            var item = new SelectorBarItem { Text = label, Tag = id };
-            bar.Items.Add(item);
-            if (id == selected) sel = item;
-        }
-        bar.SelectedItem = sel ?? bar.Items.FirstOrDefault();
-        bar.SelectionChanged += (s, _) => { if (s.SelectedItem?.Tag is string id) pick(id); };
-        return bar;
+        var box = new ComboBox { MinWidth = 180 };
+        foreach (var (_, label) in items) box.Items.Add(label);
+        box.SelectedIndex = Math.Max(0, Array.FindIndex(items, i => i.Id == selected));
+        box.SelectionChanged += (_, _) => { if (box.SelectedIndex >= 0) pick(items[box.SelectedIndex].Id); };
+        return box;
     }
 
     /// <summary>Number field with + / − (Mac Stepper). Invalid text (NaN) is ignored.</summary>
@@ -74,27 +67,6 @@ internal static class Kit
         };
         box.ValueChanged += (_, e) => { if (double.IsFinite(e.NewValue)) change(e.NewValue); };
         return box;
-    }
-
-    /// <summary>On/off chip (Mac Chips): capsule, check mark when on, plus when off.</summary>
-    public static ToggleButton Chip(string label, bool on, Action<bool> set)
-    {
-        var icon = new FontIcon { Glyph = on ? "" : "", FontSize = 11 };
-        var text = new TextBlock { Text = label, FontSize = 12 };
-        var content = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        content.Children.Add(icon);
-        content.Children.Add(text);
-        var chip = new ToggleButton { Content = content, IsChecked = on, CornerRadius = new CornerRadius(14), Padding = new Thickness(10, 4, 10, 4), MinHeight = 28 };
-        chip.Click += (_, _) => { bool v = chip.IsChecked == true; icon.Glyph = v ? "" : ""; set(v); };
-        return chip;
-    }
-
-    /// <summary>A wrapping row of chips: (id, label) items, <paramref name="isOn"/> reads the current state, <paramref name="set"/> writes it.</summary>
-    public static WrapPanel Chips((string Id, string Label)[] items, Func<string, bool> isOn, Action<string, bool> set)
-    {
-        var w = new WrapPanel();
-        foreach (var (id, label) in items) w.Children.Add(Chip(label, isOn(id), v => set(id, v)));
-        return w;
     }
 
     public static StackPanel Row(double spacing, params UIElement[] children)

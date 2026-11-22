@@ -4,9 +4,15 @@
       xmlns:s="using:Fusebox.App.Settings">
     <!-- Settings › Network (FEATURES.md §9.9). Add rows to Body: <s:SettingsCard Header="…" Description="…"><ToggleSwitch /></s:SettingsCard>,
          section headers: <TextBlock Style="{StaticResource SettingsSectionHeader}" Text="…" />. -->
-    <ScrollViewer>
-        <StackPanel x:Name="Body" Padding="28,20,28,28" Spacing="4">
-            <TextBlock Text="Network" Style="{StaticResource SettingsPageTitle}" />
-        </StackPanel>
-    </ScrollViewer>
+    <!-- Windows Settings layout: the title stays put, the rows scroll under it; content at most 1000 wide, centred; rows 4 apart. -->
+    <Grid>
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <TextBlock Text="Network" Style="{StaticResource SettingsPageTitle}" Margin="36,28,36,16" MaxWidth="1000" />
+        <ScrollViewer Grid.Row="1">
+            <StackPanel x:Name="Body" Padding="36,0,36,36" Spacing="4" MaxWidth="1072" />
+        </ScrollViewer>
+    </Grid>
 </Page>

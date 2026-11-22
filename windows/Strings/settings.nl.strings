@@ -48,3 +48,5 @@
 "min in a row" = "min achter elkaar";
 "tray %@" = "systeemvak %@";
 "tray icon" = "systeemvakpictogram";
+"Minutes in a row" = "Minuten achter elkaar";
+"%lld of %lld shown" = "%lld van %lld zichtbaar";

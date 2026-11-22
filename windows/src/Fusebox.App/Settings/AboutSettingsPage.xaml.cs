@@ -10,14 +10,16 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App.Settings;
 
 /// <summary>
-/// Settings › About (FEATURES.md §9.16): icon, version and build, credits, updates (status in an InfoBar), the beta performance report,
-/// and "What's new" from the win- release notes with the installed one marked.
+/// Settings › About (FEATURES.md §9.16), like Windows' About: one card with icon, name, version and build, maker; updates (status as the
+/// check row's description, a failure in an InfoBar), the beta performance report, and "What's new" from the win- release notes in a card
+/// with the installed one marked.
 /// </summary>
 public sealed partial class AboutSettingsPage : Page
 {
     readonly Button check = new();
     readonly InfoBar status = new() { IsClosable = false, IsOpen = false };
-    readonly StackPanel changelog = new() { Spacing = 14, Margin = new Thickness(2, 6, 2, 0) };
+    readonly StackPanel changelog = new() { Spacing = 16 };
+    readonly SettingsCard checkCard;
     List<ReleaseInfo>? shownLog;
 
     public AboutSettingsPage()
@@ -25,22 +27,29 @@ public sealed partial class AboutSettingsPage : Page
         InitializeComponent();
         SettingsUi.TranslateOnce(this);
 
-        var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 14, Margin = new Thickness(0, 0, 0, 4) };
-        head.Children.Add(new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Fusebox-256.png")), Width = 56, Height = 56 });
+        // Like Windows' own About: the app's icon, name and version in one calm card, then the rows.
+        var head = new Grid { ColumnSpacing = 20, Padding = new Thickness(0, 4, 0, 0) };
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        head.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        head.Children.Add(new Image { Source = new Microsoft.UI.Xaml.Media.Imaging.BitmapImage(new Uri("ms-appx:///Assets/Fusebox-256.png")), Width = 64, Height = 64, VerticalAlignment = VerticalAlignment.Top });
         var names = new StackPanel { VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
         names.Children.Add(new TextBlock { Text = "Fusebox", FontSize = 20, FontWeight = FontWeights.SemiBold });
-        names.Children.Add(new TextBlock { Text = L("Version %@", Updater.CurrentVersion), Opacity = 0.75 });
+        names.Children.Add(Quiet(L("Version %@", Updater.CurrentVersion)));
+        names.Children.Add(Quiet(L("Made by") + " ClaudIA Software & Development"));
+        var blurb = Quiet(L("A lightweight system monitor for your PC: live measurements, apps and advice."));
+        blurb.Margin = new Thickness(0, 6, 0, 0);
+        names.Children.Add(blurb);
+        Grid.SetColumn(names, 1);
         head.Children.Add(names);
-        Body.Children.Add(head);
-        Body.Children.Add(new TextBlock { Text = L("A lightweight system monitor for your PC: live measurements, apps and advice."), Opacity = 0.75, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(0, 0, 0, 8) });
-        Body.Children.Add(new SettingsCard { Header = "Made by", Action = new TextBlock { Text = "ClaudIA Software & Development", Opacity = 0.75 } });
+        Body.Children.Add(Block(head));
 
         Body.Children.Add(Section("Updates"));
-        Body.Children.Add(new SettingsCard { Header = "Installed", Action = new TextBlock { Text = Updater.CurrentVersion, Opacity = 0.75 } });
         Body.Children.Add(Card("Update automatically", "Fusebox checks GitHub every 15 minutes, tells you when there is a new version, installs it and restarts. Your settings stay.", Toggle("autoUpdate"), ""));
         check.Content = L("Check for updates");
+        check.Style = (Style)Application.Current.Resources["AccentButtonStyle"];   // the one primary action of this page
         check.Click += (_, _) => _ = Updater.Check(true);
-        Body.Children.Add(Card("Check for updates", "", check, ""));
+        checkCard = Card("Check for updates", "", check, "");
+        Body.Children.Add(checkCard);
         Body.Children.Add(status);
 
         Body.Children.Add(Section("Beta test"));
@@ -57,7 +66,7 @@ public sealed partial class AboutSettingsPage : Page
         Body.Children.Add(Card("Beta: how light is Fusebox on this PC?", "Fusebox notes its own CPU and memory use once a minute, and looks for 5 seconds at what it is doing right now. This makes a small text file in Downloads (also copied) to send to the maker. Nothing is sent automatically.", share, ""));
 
         Body.Children.Add(Section("What's new"));
-        Body.Children.Add(changelog);
+        Body.Children.Add(Block(changelog));
 
         Loaded += (_, _) => { Updater.Changed += OnUpdater; _ = Updater.LoadChangelog(); ShowUpdate(); };
         Unloaded += (_, _) => Updater.Changed -= OnUpdater;
@@ -72,20 +81,24 @@ public sealed partial class AboutSettingsPage : Page
         status.IsOpen = text.Length > 0;
     }
 
+    /// <summary>Update state as the check row's description (Windows Update style); only a failure gets the red bar.</summary>
     void ShowUpdate()
     {
         check.IsEnabled = Updater.Current is not (Updater.State.Checking or Updater.State.Installing);
-        switch (Updater.Current)
+        checkCard.SetDescriptionText(Updater.Current switch
         {
-            case Updater.State.Checking: Say(InfoBarSeverity.Informational, L("Checking…")); break;
-            case Updater.State.UpToDate: Say(InfoBarSeverity.Success, L("You're up to date")); break;
-            case Updater.State.Available: Say(InfoBarSeverity.Informational, L("Fusebox %@ available", UpdateLogic.Pretty(Updater.Tag ?? ""))); break;
-            case Updater.State.Installing: Say(InfoBarSeverity.Informational, L("Installing…")); break;
-            case Updater.State.Failed: Say(InfoBarSeverity.Error, Updater.Error ?? ""); break;
-            default: Say(InfoBarSeverity.Informational, Updater.LastCheck is { } t ? L("Last checked %@", t.ToLocalTime().ToString("t", Culture)) : ""); break;
-        }
+            Updater.State.Checking => L("Checking…"),
+            Updater.State.UpToDate => L("You're up to date"),
+            Updater.State.Available => L("Fusebox %@ available", UpdateLogic.Pretty(Updater.Tag ?? "")),
+            Updater.State.Installing => L("Installing…"),
+            Updater.State.Failed => "",
+            _ => Updater.LastCheck is { } t ? L("Last checked %@", t.ToLocalTime().ToString("t", Culture)) : "",
+        });
+        Say(InfoBarSeverity.Error, Updater.Current == Updater.State.Failed ? Updater.Error ?? "" : "");
         if (!ReferenceEquals(Updater.Changelog, shownLog) || Updater.Changelog == null) ShowChangelog();
     }
+
+    static TextBlock Quiet(string text) => new() { Text = text, Opacity = 0.75, TextWrapping = TextWrapping.Wrap };
 
     void ShowChangelog()
     {
