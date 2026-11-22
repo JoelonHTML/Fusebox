@@ -1,7 +1,5 @@
-using Fusebox.App.Controls;
 using Fusebox.Core;
 using Fusebox.Core.Checkup;
-using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
@@ -11,7 +9,8 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App.Pages;
 
 /// <summary>
-/// Checkup (§5): period picker, health score 1–10, five collapsible groups (Fluent Expanders, content built only when opened), tips,
+/// Checkup (§5): period picker, health score 1–10, five collapsible groups (one card each: a header button + a content panel built only
+/// when opened; no Expander chrome, no animation), tips,
 /// "Why is my PC slow?", cards, export bar. Reads the CSV logs and Windows' own history off the UI thread when the page opens, the period
 /// changes or Reload is pressed; the cached report shows instantly first. Nothing here runs on a timer.
 /// </summary>
@@ -19,10 +18,12 @@ public sealed partial class CheckupPage : Page
 {
     sealed class Grp
     {
-        public string Id = "";
-        public Expander Exp = null!;
+        public string Id = "", Title = "";
+        public Button Head = null!;
+        public Border Content = null!;
+        public FontIcon Chevron = null!;
         public TextBlock Summary = null!;
-        public bool Built;
+        public bool Open, Built;
     }
 
     static readonly string[] Order = ["perf", "power", "stability", "storage", "history"];
@@ -117,9 +118,12 @@ public sealed partial class CheckupPage : Page
 
     // ---- rendering ----
 
+    /// <summary>Width inside a group card: the page (at most 1032 incl. its 16 px padding) minus the card's 16 px padding.</summary>
+    double InnerWidth => Math.Max(Math.Min(ActualWidth, 1032) - 64, 0);
+
     CardCtx NewCtx() => new()
     {
-        R = bundle!.Report, Tips = bundle.Tips, Root = XamlRoot, Alive = () => visible, Width = Math.Max(ActualWidth - 32, 0), Summaries = RefreshSummaries,
+        R = bundle!.Report, Tips = bundle.Tips, Root = XamlRoot, Alive = () => visible, Width = InnerWidth, Summaries = RefreshSummaries,
         Hide = [.. Prefs.List("checkupHide")], HasBattery = HasBattery,
     };
 
@@ -131,7 +135,9 @@ public sealed partial class CheckupPage : Page
         {
             // First open: the "Why is my PC slow?" card is usable at once, with a small spinner underneath.
             GroupsHost.Children.Clear(); groups.Clear(); groupsDirty = true;
-            ScoreHost.Children.Add(CheckupCards.Why(new CardCtx { Root = XamlRoot, Alive = () => visible, Width = Math.Max(ActualWidth - 32, 0) }));
+            var why = Ui.Surface(CheckupCards.Why(new CardCtx { Root = XamlRoot, Alive = () => visible, Width = InnerWidth }), 1);
+            why.Padding = new Thickness(16, 14, 16, 16);
+            ScoreHost.Children.Add(why);
             var ring = Ui.Spinner(); ring.HorizontalAlignment = HorizontalAlignment.Center; ring.Margin = new Thickness(0, 20, 0, 20);
             ScoreHost.Children.Add(ring);
             return;
@@ -139,33 +145,38 @@ public sealed partial class CheckupPage : Page
         var ctx = NewCtx();
         if (ctx.Show("score")) ScoreHost.Children.Add(ScoreCard(bundle.Report));
         if (groupsDirty) { BuildGroups(ctx); groupsDirty = false; }
-        else foreach (var g in groups.Values.Where(g => g.Exp.IsExpanded)) Fill(g, ctx);
+        else foreach (var g in groups.Values.Where(g => g.Open)) Fill(g, ctx);
         RefreshSummaries();
         if (!groups.ContainsKey("history")) ExportHost.Children.Add(ExportBar());
     }
 
+    /// <summary>Score card: big score + "/10" (only with a score), title, reason and notes; one calm card, nothing boxed inside.</summary>
     UIElement ScoreCard(Report r)
     {
         var level = HealthScore.Level(r.Score);
-        var grid = new Grid { ColumnSpacing = 10 };
+        var grid = new Grid { ColumnSpacing = 20 };
         grid.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         grid.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-        var num = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
-        var color = level is { } lv ? Ui.Tone(lv == 0 ? 3 : lv == 1 ? 1 : 2, false) : Ui.OnRow(true);
-        var score = Ui.Num(r.Score?.ToString() ?? "–", 40, color: Ui.Blocks ? Ui.OnRow() : color);
-        num.Children.Add(score);
-        var of = Ui.Num("/10", 14, secondary: true); of.VerticalAlignment = VerticalAlignment.Bottom; of.Margin = new Thickness(0, 0, 0, 8);
-        num.Children.Add(of);
-        if (r.Score != null) grid.Children.Add(num);   // no "– /10" placeholder: the text says why there is no score yet
-        var text = new StackPanel { Spacing = 3, VerticalAlignment = VerticalAlignment.Center };
+        if (r.Score != null)   // no "– /10" placeholder: the text says why there is no score yet
+        {
+            var num = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
+            var color = level is { } lv ? Ui.Tone(lv == 0 ? 3 : lv == 1 ? 1 : 2, false) : Ui.OnRow(true);
+            num.Children.Add(Ui.Num(r.Score.ToString(), 40, color: Ui.Blocks ? Ui.OnRow() : color));
+            var of = Ui.Num("/10", 14, secondary: true); of.VerticalAlignment = VerticalAlignment.Bottom; of.Margin = new Thickness(0, 0, 0, 8);
+            num.Children.Add(of);
+            grid.Children.Add(num);
+        }
+        var text = new StackPanel { Spacing = 2, VerticalAlignment = VerticalAlignment.Center };
         text.Children.Add(Ui.Label(L("Health"), 14, bold: true));
         text.Children.Add(Ui.Label(r.Reason, 12, secondary: true));
         var cmp = HealthScore.Compare(r.Score, r.PrevScore, Periods.PreviousName(r.Period));
-        if (cmp.Length > 0) text.Children.Add(Ui.Label(cmp, 11, secondary: true));
-        if (r.Minutes < 60) text.Children.Add(Ui.Label(L("Fusebox has only just started measuring. Windows' own history fills in Stability and Battery."), 11, secondary: true));
+        if (cmp.Length > 0) text.Children.Add(Ui.Label(cmp, 12, secondary: true));
+        if (r.Minutes < 60) text.Children.Add(Ui.Label(L("Fusebox has only just started measuring. Windows' own history fills in Stability and Battery."), 12, secondary: true));
         Grid.SetColumn(text, 1);
         grid.Children.Add(text);
-        return Ui.Card(0, grid);
+        var card = Ui.Surface(grid, 0);
+        card.Padding = new Thickness(20, 16, 20, 16);
+        return card;
     }
 
     // ---- groups (§5.2, §5.8) ----
@@ -218,8 +229,8 @@ public sealed partial class CheckupPage : Page
                 var parts = new List<string>();
                 if (StartupCard.Count is { } n) parts.Add(L("%lld items start at login", n));
                 if (StartupCard.Orphans > 0) parts.Add(L("%lld left behind", StartupCard.Orphans));
-                parts.Add(L("%lld GB free", (long)DiskCard.FreeGb));
-                return (L("Startup & storage"), "", StartupCard.Orphans > 0 || DiskCard.Low, Join(parts));
+                parts.Add(L("%lld GB free", (long)DiskCard.Gb(r).Free));
+                return (L("Startup & storage"), "", StartupCard.Orphans > 0 || DiskCard.Low(r), Join(parts));
             }
             default:
                 return (L("History & export"), "", false, Join([L("Measured %@ · %@", CheckupFmt.Duration(r.Minutes),
@@ -231,45 +242,65 @@ public sealed partial class CheckupPage : Page
     {
         GroupsHost.Children.Clear();
         groups.Clear();
+        int n = 0;
         foreach (var id in Order)
         {
             if (!Visible(id, c)) continue;
             var (title, glyph, warn, summary) = Info(id, c);
-            var g = new Grp { Id = id };
-            var head = new Grid { ColumnSpacing = 10, Padding = new Thickness(0, 10, 0, 10) };
-            head.ColumnDefinitions.Add(new() { Width = new GridLength(22) });
+            var g = new Grp { Id = id, Title = title, Open = open.Contains(id) };
+            var head = new Grid { ColumnSpacing = 14 };
+            head.ColumnDefinitions.Add(new() { Width = new GridLength(20) });
             head.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-            var icon = new FontIcon { Glyph = glyph, FontSize = Ui.T.Size(15), VerticalAlignment = VerticalAlignment.Center, Foreground = warn ? Ui.B("FuseboxWarn") : Ui.Blocks ? Ui.B("FuseboxText") : Ui.B("FuseboxAccent") };
-            head.Children.Add(icon);
+            head.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
+            head.Children.Add(Ui.Icon(glyph, 16, warn ? Ui.Tone(1) : Ui.OnRow()));
             var texts = new StackPanel { Spacing = 1, VerticalAlignment = VerticalAlignment.Center };
-            var t = new TextBlock { Text = title, Foreground = Ui.B("FuseboxText"), FontWeight = FontWeights.Bold };
-            Look.Label(t, 15); t.FontWeight = FontWeights.Bold;
-            g.Summary = new TextBlock { Text = summary, Foreground = Ui.B(warn ? "FuseboxWarn" : "FuseboxSecondary"), TextTrimming = TextTrimming.CharacterEllipsis, MaxLines = 1 };
-            Look.Label(g.Summary, 11);
-            texts.Children.Add(t); texts.Children.Add(g.Summary);
+            texts.Children.Add(Ui.Label(title, 14, bold: true, wrap: false));
+            g.Summary = Ui.Label(summary, 12, secondary: true, wrap: false);
+            texts.Children.Add(g.Summary);
             Grid.SetColumn(texts, 1);
             head.Children.Add(texts);
-            g.Exp = new Expander
-            {
-                Header = head, HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
-                BorderBrush = Ui.B("FuseboxLine"), BorderThickness = new Thickness(0, 1, 0, 0), CornerRadius = new CornerRadius(0), Padding = new Thickness(0),
-            };
-            g.Exp.IsExpanded = open.Contains(id);
-            AutomationProperties.SetName(g.Exp, $"{title}, {(g.Exp.IsExpanded ? L("expanded") : L("collapsed"))}");
-            var gid = id;
-            g.Exp.Expanding += (_, _) => { open.Add(gid); SaveOpen(); AutomationProperties.SetName(g.Exp, $"{Info(gid, NewCtx()).Title}, {L("expanded")}"); if (!g.Built && bundle != null) Fill(g, NewCtx()); };
-            g.Exp.Collapsed += (_, _) => { open.Remove(gid); SaveOpen(); g.Exp.Content = null; g.Built = false; AutomationProperties.SetName(g.Exp, $"{Info(gid, NewCtx()).Title}, {L("collapsed")}"); };
+            g.Chevron = Ui.Icon("\uE70D", 12, Ui.OnRow(true));
+            Grid.SetColumn(g.Chevron, 2);
+            head.Children.Add(g.Chevron);
+            g.Head = new Button { Content = head, Padding = new Thickness(16, 12, 16, 12) };
+            Ui.Flat(g.Head);
+            g.Head.Click += (_, _) => Toggle(g);
+            g.Content = new Border { Padding = new Thickness(16, 0, 16, 20) };
+            var stack = new StackPanel();
+            stack.Children.Add(g.Head);
+            stack.Children.Add(g.Content);
+            Mark(g);
             groups[id] = g;
-            GroupsHost.Children.Add(g.Exp);
-            if (g.Exp.IsExpanded) Fill(g, c);
+            GroupsHost.Children.Add(Ui.Surface(stack, ++n));
+            if (g.Open) Fill(g, c);
         }
+    }
+
+    void Toggle(Grp g)
+    {
+        g.Open = !g.Open;
+        if (g.Open) open.Add(g.Id);
+        else { open.Remove(g.Id); g.Content.Child = null; g.Built = false; }
+        SaveOpen();
+        Mark(g);
+        if (g.Open && !g.Built && bundle != null) Fill(g, NewCtx());
+    }
+
+    /// <summary>Open/closed look: content visible, chevron, header corners (rounded only at the top while open), accessible name.</summary>
+    static void Mark(Grp g)
+    {
+        g.Content.Visibility = g.Open ? Visibility.Visible : Visibility.Collapsed;
+        g.Chevron.Glyph = g.Open ? "\uE70E" : "\uE70D";
+        g.Head.CornerRadius = g.Open ? new CornerRadius(8, 8, 0, 0) : new CornerRadius(8);
+        AutomationProperties.SetName(g.Head, $"{g.Title}, {(g.Open ? L("expanded") : L("collapsed"))}");
     }
 
     /// <summary>Builds the content of an open group (tips first, then the cards). Collapsed groups are never built.</summary>
     void Fill(Grp g, CardCtx c)
     {
-        var s = new StackPanel { Spacing = 10, Margin = new Thickness(0, 0, 0, 12) };
-        if (CheckupCards.TipsList(c, g.Id) is { } tips) s.Children.Add(tips);
+        var s = new StackPanel { Spacing = 20 };
+        // Startup & storage: the Startup card has its own "Open Startup apps" link, so the tip doesn't repeat it.
+        if (CheckupCards.TipsList(c, g.Id, g.Id == "storage" && c.Show("startup") ? "ms-settings:startupapps" : null) is { } tips) s.Children.Add(tips);
         double w = c.Width;
         switch (g.Id)
         {
@@ -277,11 +308,11 @@ public sealed partial class CheckupPage : Page
                 s.Children.Add(CheckupCards.Why(c));
                 if (c.Show("tops") && (c.R.TopCpu.Count > 0 || c.R.TopRam.Count > 0))   // empty Top 5 cards stay hidden
                 {
-                    var tops = new TwoUp(388, w, 8);
+                    var tops = new TwoUp(388, w);
                     tops.Left.Children.Add(CheckupCards.Top(c, true)); tops.Right.Children.Add(CheckupCards.Top(c, false));
                     s.Children.Add(tops);
                 }
-                var cols = new TwoUp(588, w);
+                var cols = new TwoUp(640, w);
                 if (c.Show("peaks")) cols.Left.Children.Add(CheckupCards.Peaks(c));
                 if (c.Show("busy")) cols.Right.Children.Add(CheckupCards.Busy(c));
                 if (c.Show("background")) cols.Right.Children.Add(CheckupCards.Background(c));
@@ -289,7 +320,7 @@ public sealed partial class CheckupPage : Page
                 break;
             case "power":
             {
-                var p = new TwoUp(588, w);
+                var p = new TwoUp(640, w);
                 if (c.Show("health") && c.HasBattery) p.Left.Children.Add(BatteryHealthCard.Build(c));
                 else if (c.Show("battery") && c.HasBattery) p.Left.Children.Add(CheckupCards.BatterySimple(c));
                 if (c.Show("drain") && c.HasBattery) p.Left.Children.Add(DrainCard.Build(c));
@@ -300,7 +331,7 @@ public sealed partial class CheckupPage : Page
             }
             case "stability":
             {
-                var p = new TwoUp(588, w);
+                var p = new TwoUp(640, w);
                 p.Left.Children.Add(CheckupCards.Crashes(c));
                 p.Right.Children.Add(CheckupCards.Stability(c));
                 s.Children.Add(p.Done());
@@ -308,7 +339,7 @@ public sealed partial class CheckupPage : Page
             }
             case "storage":
             {
-                var p = new TwoUp(588, w);
+                var p = new TwoUp(640, w);
                 if (c.Show("startup")) p.Left.Children.Add(StartupCard.Build(c));
                 if (c.Show("disk")) { p.Right.Children.Add(DiskCard.Build(c)); p.Right.Children.Add(SsdHealthCard.Build(c)); }
                 if (c.Show("ssdBench")) p.Right.Children.Add(SsdSpeedCard.Build(c));
@@ -317,7 +348,7 @@ public sealed partial class CheckupPage : Page
             }
             default:
             {
-                var p = new TwoUp(588, w);
+                var p = new TwoUp(640, w);
                 if (c.Show("runtime")) p.Left.Children.Add(CheckupCards.Running(c));
                 if (c.Show("log")) p.Right.Children.Add(CheckupCards.Log(c));
                 s.Children.Add(p.Done());
@@ -325,7 +356,7 @@ public sealed partial class CheckupPage : Page
                 break;
             }
         }
-        g.Exp.Content = s;
+        g.Content.Child = s;
         g.Built = true;
     }
 
@@ -338,7 +369,7 @@ public sealed partial class CheckupPage : Page
         {
             var (_, _, warn, summary) = Info(g.Id, c);
             g.Summary.Text = summary;
-            g.Summary.Foreground = Ui.B(warn ? "FuseboxWarn" : "FuseboxSecondary");
+            g.Summary.Foreground = warn ? Ui.Tone(1, false) : Ui.OnRow(true);
         }
     }
 
@@ -346,9 +377,9 @@ public sealed partial class CheckupPage : Page
 
     UIElement ExportBar()
     {
-        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(0, 4, 0, 0) };
-        bar.Children.Add(Ui.Pill(L("Share report…"), Ui.B("FuseboxSecondary"), () => { if (bundle != null && XamlRoot != null) _ = CheckupShare.ShareAsync(XamlRoot, bundle); }));
-        bar.Children.Add(Ui.Pill(L("Export CSV"), Ui.B("FuseboxSecondary"), () => { if (XamlRoot != null) _ = CheckupShare.ExportCsvAsync(XamlRoot, period); }));
+        var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20, HorizontalAlignment = HorizontalAlignment.Right };
+        bar.Children.Add(Ui.Link(L("Share report…"), () => { if (bundle != null && XamlRoot != null) _ = CheckupShare.ShareAsync(XamlRoot, bundle); }));
+        bar.Children.Add(Ui.Link(L("Export CSV"), () => { if (XamlRoot != null) _ = CheckupShare.ExportCsvAsync(XamlRoot, period); }));
         return bar;
     }
 }

@@ -50,41 +50,38 @@ internal static class CheckupCards
 {
     // ---- tips (§5.6.1) ----
 
-    public static UIElement? TipsList(CardCtx c, string group)
+    /// <summary>The group's tips as soft tinted blocks (like a Fluent InfoBar without close button): icon, bold head, text, one action link.
+    /// <paramref name="skipUri"/> = an action the group already offers itself (no second link to the same place).</summary>
+    public static UIElement? TipsList(CardCtx c, string group, string? skipUri = null)
     {
         if (!c.Show("tips")) return null;
         var mine = c.Tips.Where(t => t.Group == group).ToList();
         if (mine.Count == 0) return null;
         var s = new StackPanel { Spacing = 8 };
-        var head = Ui.Label(L("Tips").ToUpper(Culture), 10, secondary: true);
-        head.Margin = new Thickness(0, 4, 0, 0);
-        s.Children.Add(head);
-        int i = 0;
         foreach (var t in mine)
         {
             var (h, rest) = t.Split();
-            var g = new Grid { ColumnSpacing = 8 };
+            var tone = Ui.Tone(t.Serious ? 1 : 0);
+            var g = new Grid { ColumnSpacing = 12 };
             g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
             g.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-            g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var icon = Ui.Icon(t.Serious ? "" : "", 13, Ui.Tone(t.Serious ? 1 : 0));
-            icon.Width = 18; icon.VerticalAlignment = VerticalAlignment.Top;
+            var icon = Ui.Icon(t.Serious ? "\uE7BA" : "\uE946", 14, tone);
+            icon.VerticalAlignment = VerticalAlignment.Top; icon.Margin = new Thickness(0, 2, 0, 0);
             g.Children.Add(icon);
-            var text = new StackPanel { Spacing = 1 };
-            text.Children.Add(Ui.Label(h, 12, bold: true));
-            if (rest.Length > 0) text.Children.Add(Ui.Label(rest, 11, secondary: true));
+            var text = new StackPanel { Spacing = 2 };
+            text.Children.Add(Ui.Label(h, 13, bold: true));
+            if (rest.Length > 0) text.Children.Add(Ui.Label(rest, 12, secondary: true));
+            if (t.Action is { } a && (a.StopApp != null || a.Uri != skipUri))
+            {
+                var link = a.StopApp != null
+                    ? Ui.Link(L("Stop %@", a.StopApp), () => StopApp(c, a.StopApp), danger: true)
+                    : Ui.Link(a.Label, () => Shell.Launch(a.Uri!));
+                link.Margin = new Thickness(0, 2, 0, 0);
+                text.Children.Add(link);
+            }
             Grid.SetColumn(text, 1);
             g.Children.Add(text);
-            if (t.Action is { } a)
-            {
-                var pill = a.StopApp != null
-                    ? Ui.Pill(L("Stop"), Ui.Tone(2), () => StopApp(c, a.StopApp), L("Stop %@", a.StopApp))
-                    : Ui.Pill(a.Label, Ui.OnRow(), () => Shell.Launch(a.Uri!));
-                pill.VerticalAlignment = VerticalAlignment.Top;
-                Grid.SetColumn(pill, 2);
-                g.Children.Add(pill);
-            }
-            s.Children.Add(Ui.Card(5 + i++, g));
+            s.Children.Add(new Border { Child = g, Background = Ui.Tint(tone, 0.12), CornerRadius = new CornerRadius(6), Padding = new Thickness(12, 10, 12, 10) });
         }
         return s;
     }
@@ -108,33 +105,19 @@ internal static class CheckupCards
     public static UIElement Why(CardCtx c)
     {
         var body = new StackPanel { Spacing = 6 };
-        var host = Ui.Card(0, body);
         void Fill()
         {
             body.Children.Clear();
-            var head = new Grid { ColumnSpacing = 6 };
-            head.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            head.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
-            head.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-            var icon = Ui.Icon("", 13, Ui.Tone(0)); icon.Width = 18;
-            head.Children.Add(icon);
-            var title = Ui.Label(L("Why is my PC slow?"), 15, bold: true);
-            Grid.SetColumn(title, 1); head.Children.Add(title);
-            var pill = Ui.Pill(WhyState.Text == null ? L("Check now") : L("Check again"), Ui.OnRow(), Run);
-            pill.IsEnabled = !WhyState.Checking;
-            Grid.SetColumn(pill, 2); head.Children.Add(pill);
-            body.Children.Add(head);
+            var check = Ui.Primary(WhyState.Text == null ? L("Check now") : L("Check again"), Run);
+            check.IsEnabled = !WhyState.Checking;
+            body.Children.Add(Ui.CardTitle("", L("Why is my PC slow?"), 0, check));
             if (WhyState.Checking) body.Children.Add(Ui.Spinner());
             if (WhyState.Text != null)
             {
                 body.Children.Add(Ui.Label(WhyState.Text, 12));
                 if (WhyState.NoApps) body.Children.Add(Ui.Small(L("Apps are measured every minute — the first measurement is coming soon.")));
                 if (WhyState.Culprit is { } cul && (App.Live.Apps?.Any(g => g.Name == cul && g.CanStop) ?? false))
-                {
-                    var stop = Ui.Pill(L("Stop %@", cul), Ui.Tone(2), () => { StopApp(c, cul); Fill(); });
-                    stop.HorizontalAlignment = HorizontalAlignment.Left;
-                    body.Children.Add(stop);
-                }
+                    body.Children.Add(Ui.Link(L("Stop %@", cul), () => { StopApp(c, cul); Fill(); }, danger: true));
             }
         }
         async void Run()
@@ -156,7 +139,7 @@ internal static class CheckupCards
             if (c.Alive()) Fill();
         }
         Fill();
-        return host;
+        return body;
     }
 
     // ---- Top 5 (§5.6.3) ----
@@ -179,9 +162,8 @@ internal static class CheckupCards
             row.Children.Add(bar);
             s.Children.Add(row);
         }
-        var card = Ui.Card(cpu ? 1 : 2, s);
-        card.MinWidth = 190;
-        return card;
+        s.MinWidth = 190;
+        return s;
     }
 
     // ---- Peaks (§5.6.4) ----
@@ -231,7 +213,7 @@ internal static class CheckupCards
             }).ToList();
             s.Children.Add(Ui.Capped(rows));
         }
-        return Ui.Card(4, s);
+        return s;
     }
 
     static string KindName(PeakKind k) => k is PeakKind.Cpu or PeakKind.Gpu ? Peak.Title(k) : Peak.Title(k).ToLower(Culture);
@@ -262,7 +244,7 @@ internal static class CheckupCards
         if (r.Busy.Count == 0) s.Children.Add(Ui.Calm(L("No busy moments %@", r.When)));
         else s.Children.Add(Ui.Headline(r.Busy.Count.ToString(), L("periods of ≥ 5 min above 85%% CPU %@", r.When), 1));
         foreach (var b in r.Busy) s.Children.Add(Ui.ItemRow(b.App != null ? L("Mostly %@", b.App) : L("Busy"), $"{CheckupFmt.Span(b.Start, b.End)} · {Fmt.Pct(b.Cpu)}"));
-        return Ui.Card(4, s);
+        return s;
     }
 
     // ---- What Windows is doing (§5.7.4) ----
@@ -295,7 +277,7 @@ internal static class CheckupCards
         }
         Fill();
         if (jobsNow == null || DateTime.Now - jobsAt > TimeSpan.FromMinutes(1)) Load();
-        return Ui.Card(11, body);
+        return body;
     }
 
     // ---- Running time (§5.6.5) ----
@@ -318,7 +300,7 @@ internal static class CheckupCards
             s.Children.Add(Ui.Sub(L("Seen active longest")));
             foreach (var a in r.SeenLongest) s.Children.Add(Ui.ItemRow(a.Name, CheckupFmt.Duration(a.Minutes)));
         }
-        return Ui.Card(3, s);
+        return s;
     }
 
     static DateTime? CheckupReaderLastUpdate() { try { return CheckupReader.LastUpdate(); } catch (Exception e) when (e is System.Security.SecurityException or UnauthorizedAccessException) { return null; } }
@@ -333,7 +315,7 @@ internal static class CheckupCards
         {
             s.Children.Add(Ui.CardTitle("", L("Crashes"), 3));
             s.Children.Add(Ui.Calm(L("No apps crashed or stopped responding %@", c.R.When)));
-            return Ui.Card(8, s);
+            return s;
         }
         bool bad = k.Apps.Count > 0 || k.BlueScreens > 0;
         s.Children.Add(Ui.CardTitle("", L("Crashes"), bad ? 2 : 1));
@@ -349,7 +331,7 @@ internal static class CheckupCards
         if (k.BlueScreens > 0) rows.Add(Ui.ItemRow(L("Blue screen"), $"{k.BlueScreens}×"));
         if (k.UnexpectedShutdowns > 0) rows.Add(Ui.ItemRow(L("Unexpected shutdown"), $"{k.UnexpectedShutdowns}×"));
         s.Children.Add(Ui.Capped(rows));
-        return Ui.Card(8, s);
+        return s;
     }
 
     // ---- Windows' own stability history (day-one fill) ----
@@ -385,7 +367,7 @@ internal static class CheckupCards
         }
         Fill();
         if (stability == null || DateTime.Now - stabilityAt > TimeSpan.FromMinutes(10)) Load();
-        return Ui.Card(9, body);
+        return body;
     }
 
     // ---- Log (§5.6.9) ----
@@ -413,12 +395,11 @@ internal static class CheckupCards
             }).ToList();
             s.Children.Add(Ui.Capped(rows));
         }
-        s.Children.Add(Ui.Divider());
-        foreach (var f in r.Files.OrderBy(f => f.Name)) s.Children.Add(Ui.LineRow(f.Name, Fmt.Bytes(f.Bytes)));
-        var open = Ui.Pill(L("Open log folder"), Ui.OnRow(), () => Shell.OpenFolder(CsvLog.Dir));
-        open.Margin = new Thickness(0, 2, 0, 0); open.HorizontalAlignment = HorizontalAlignment.Left;
-        s.Children.Add(open);
-        return Ui.Card(6 + c.Tips.Count, s);
+        var files = new StackPanel { Spacing = 4, Margin = new Thickness(0, 10, 0, 0) };
+        foreach (var f in r.Files.OrderBy(f => f.Name)) files.Children.Add(Ui.LineRow(f.Name, Fmt.Bytes(f.Bytes)));
+        files.Children.Add(Ui.Link(L("Open log folder"), () => Shell.OpenFolder(CsvLog.Dir)));
+        s.Children.Add(files);
+        return s;
     }
 
     // ---- simple Battery card (§5.6.6, only when "Battery health" is hidden) ----
@@ -434,6 +415,6 @@ internal static class CheckupCards
         var s = new StackPanel { Spacing = 5 };
         s.Children.Add(Ui.CardTitle("", L("Battery"), worn ? 1 : 0));
         s.Children.Add(Ui.Label(string.Join(" · ", parts), 11));
-        return Ui.Card(7, s);
+        return s;
     }
 }

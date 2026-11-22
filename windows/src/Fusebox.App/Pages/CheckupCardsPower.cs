@@ -35,12 +35,11 @@ internal static class BatteryHealthCard
 
     public static UIElement Build(CardCtx c)
     {
-        var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(15, body);
-        void Fill() { if (host.XamlRoot != null) Render(body); }
+        var body = new StackPanel { Spacing = 6 };
+        void Fill() { if (body.XamlRoot != null) Render(body); }
         Render(body);
         if (!loading && DateTime.Now - loadedAt > TimeSpan.FromMinutes(30)) Load(Fill, c);
-        return host;
+        return body;
     }
 
     static async void Load(Action fill, CardCtx c)
@@ -94,12 +93,11 @@ internal static class DrainCard
 
     public static UIElement Build(CardCtx c)
     {
-        var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(12, body);
-        void Fill() { if (host.XamlRoot != null) Render(body); }
+        var body = new StackPanel { Spacing = 6 };
+        void Fill() { if (body.XamlRoot != null) Render(body); }
         Render(body);
         if (!loading && DateTime.Now - loadedAt > TimeSpan.FromMinutes(5)) Load(Fill);
-        return host;
+        return body;
     }
 
     static async void Load(Action fill)
@@ -162,12 +160,11 @@ internal static class SleepCard
 
     public static UIElement Build(CardCtx c)
     {
-        var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(13, body);
-        void Fill() { if (host.XamlRoot != null) Render(body); }
+        var body = new StackPanel { Spacing = 6 };
+        void Fill() { if (body.XamlRoot != null) Render(body); }
         Render(body);
         if (!loading && DateTime.Now - loadedAt > TimeSpan.FromHours(1)) Load(Fill, c);
-        return host;
+        return body;
     }
 
     static async void Load(Action fill, CardCtx c)
@@ -223,11 +220,10 @@ internal static class AwakeCard
 
     public static UIElement Build(CardCtx c)
     {
-        var body = new StackPanel { Spacing = 5 };
-        var host = Ui.Card(14, body);
-        void Fill() { if (host.XamlRoot != null) Render(body, () => Run(Fill)); }
+        var body = new StackPanel { Spacing = 6 };
+        void Fill() { if (body.XamlRoot != null) Render(body, () => Run(Fill)); }
         Render(body, () => Run(Fill));
-        return host;
+        return body;
     }
 
     static async void Run(Action fill)
@@ -251,8 +247,7 @@ internal static class AwakeCard
         if (holds == null)
         {
             body.Children.Add(Ui.Small(declined ? L("Needs administrator permission") : L("Windows lists this only with administrator permission, so Fusebox asks first.")));
-            var b = Ui.Pill(L("Check now"), Ui.OnRow(), run); b.HorizontalAlignment = HorizontalAlignment.Left;
-            body.Children.Add(b);
+            body.Children.Add(Ui.Link(L("Check now"), run));
             return;
         }
         if (holds.Count == 0) { body.Children.Add(Ui.Small(L("Nothing: your PC can sleep normally"))); return; }

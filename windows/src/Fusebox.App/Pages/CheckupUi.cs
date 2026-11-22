@@ -11,8 +11,9 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App.Pages;
 
 /// <summary>
-/// The Checkup building blocks (§5.6.0 / §5.B.0) built in code: theme text colours, tones, CardTitle, Headline, Pill, Capped, mini bars.
-/// Everything reads the theme at build time; the page rebuilds on ThemeChanged (cached data, so it is cheap).
+/// The Checkup building blocks (§5.6.0 / §5.B.0) built in code: theme text colours, tones, Surface (group card), CardTitle, Headline,
+/// Primary/Link buttons, Capped, mini bars. Checkup never uses the theme's row style: one card surface per group, items inside are
+/// plain sections separated by spacing (no lines, no boxes). Everything reads the theme at build time; the page rebuilds on ThemeChanged.
 /// </summary>
 internal static class Ui
 {
@@ -66,7 +67,36 @@ internal static class Ui
 
     // ---- structure ----
 
-    public static ThemedRow Card(int index, UIElement child) => new() { Index = index, Child = child, HorizontalAlignment = HorizontalAlignment.Stretch };
+    /// <summary>A group card (Fluent card feel in theme colours): radius 8, the theme card fill with a 1 px theme stroke; glass fill + rim in
+    /// Liquid Glass, the block colour (index % 5, no stroke) in Color blocks, where text on it is white (OnRow).</summary>
+    public static Border Surface(UIElement child, int index)
+    {
+        var b = new Border { Child = child, CornerRadius = new CornerRadius(8), HorizontalAlignment = HorizontalAlignment.Stretch };
+        switch (T.RowStyle)
+        {
+            case RowStyle.Blocks: b.Background = B($"FuseboxBlock{index % 5}"); break;
+            case RowStyle.Glass: b.Background = B("FuseboxGlassFill"); b.BorderBrush = B("FuseboxGlassRim"); b.BorderThickness = new Thickness(1); break;
+            default: b.Background = B("FuseboxCardFill"); b.BorderBrush = B("FuseboxLine"); b.BorderThickness = new Thickness(1); break;
+        }
+        return b;
+    }
+
+    /// <summary><paramref name="color"/> at <paramref name="opacity"/> (a soft tint for tips and tags).</summary>
+    public static SolidColorBrush Tint(Brush color, double opacity) => new(ColorOf(color)) { Opacity = opacity };
+
+    /// <summary>A borderless, stretched button that only shows the theme hover tint (group headers, disk rows). The template's states read
+    /// these keys from the button's own resources, so no custom template is needed.</summary>
+    public static void Flat(Button b)
+    {
+        var none = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        b.Background = none; b.BorderThickness = new Thickness(0); b.MinHeight = 0; b.MinWidth = 0;
+        b.HorizontalAlignment = HorizontalAlignment.Stretch; b.HorizontalContentAlignment = HorizontalAlignment.Stretch;
+        foreach (var s in new[] { "", "PointerOver", "Pressed" })
+        {
+            b.Resources["ButtonBackground" + s] = s.Length == 0 ? none : B("FuseboxHover");
+            b.Resources["ButtonBorderBrush" + s] = none;
+        }
+    }
 
     public static StackPanel Stack(double spacing = 5, params UIElement[] children)
     {
@@ -75,17 +105,17 @@ internal static class Ui
         return s;
     }
 
-    /// <summary>Icon (16 wide), title (semibold 12) and an optional trailing element pushed to the right.</summary>
+    /// <summary>Section title (semibold 13, wraps) and an optional trailing element pushed to the right. The glyph shows only for a real
+    /// problem (tone 1 watch out / 2 serious), in that colour; calm sections have no icon.</summary>
     public static Grid CardTitle(string glyph, string title, int tone = 0, UIElement? trailing = null)
     {
         var g = new Grid { ColumnSpacing = 6 };
         g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
         g.ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         g.ColumnDefinitions.Add(new() { Width = GridLength.Auto });
-        var icon = Icon(glyph, 11, Tone(tone));
-        icon.Width = 16;
-        g.Children.Add(icon);
-        var t = Label(title, 12, bold: true, wrap: false);
+        if (tone is 1 or 2) g.Children.Add(Icon(glyph, 12, Tone(tone)));
+        var t = Label(title, 13, bold: true);
+        t.VerticalAlignment = VerticalAlignment.Center;
         Grid.SetColumn(t, 1);
         g.Children.Add(t);
         if (trailing != null) { Grid.SetColumn((FrameworkElement)trailing, 2); g.Children.Add(trailing); }
@@ -95,7 +125,7 @@ internal static class Ui
     public static StackPanel Headline(string big, string? small = null, int tone = 0)
     {
         var s = new StackPanel { Spacing = 1, Margin = new Thickness(0, 0, 0, 2) };
-        var b = Num(big, 22, color: Tone(tone, false));
+        var b = Num(big, 20, color: Tone(tone, false));
         b.TextTrimming = TextTrimming.CharacterEllipsis;
         s.Children.Add(b);
         if (!string.IsNullOrEmpty(small)) s.Children.Add(Small(small));
@@ -129,37 +159,44 @@ internal static class Ui
         return g;
     }
 
-    public static UIElement Sub(string text) { var t = Label(text, 10, secondary: true); t.Margin = new Thickness(0, 3, 0, 0); return t; }
-
-    public static Rectangle Divider() => new() { Height = 1, Fill = Blocks ? new SolidColorBrush(Microsoft.UI.Colors.White) { Opacity = 0.3 } : B("FuseboxLine"), Margin = new Thickness(0, 3, 0, 3) };
+    public static UIElement Sub(string text) { var t = Label(text, 10, secondary: true); t.Margin = new Thickness(0, 6, 0, 0); return t; }
 
     // ---- controls ----
 
-    /// <summary>Small outlined capsule button; <paramref name="text"/> and <paramref name="tooltip"/> are already translated (call sites write L("…") so the translation check sees them). (1 px stroke at 60 % of its colour, no fill).</summary>
-    public static Button Pill(string text, Brush? color, Action click, string? tooltip = null)
+    /// <summary>The one primary action of a group ("Check now"): Fluent AccentButtonStyle, small, in the theme accent (white on Color
+    /// blocks) with readable text. <paramref name="text"/> is already translated.</summary>
+    public static Button Primary(string text, Action click)
     {
-        color ??= OnRow();
-        var label = new TextBlock { Text = text, Foreground = color, FontSize = T.Size(11), FontWeight = FontWeights.SemiBold, TextWrapping = TextWrapping.NoWrap };
+        var bg = Blocks ? OnRow() : B("FuseboxAccent");
+        var c = ColorOf(bg);
+        Brush fg = new SolidColorBrush(0.299 * c.R + 0.587 * c.G + 0.114 * c.B > 150 ? Windows.UI.Color.FromArgb(255, 26, 26, 26) : Microsoft.UI.Colors.White);
         var b = new Button
         {
-            Content = label, Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent),
-            BorderBrush = new SolidColorBrush(ColorOf(color)) { Opacity = 0.6 }, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(999),
-            Padding = new Thickness(9, 3, 9, 3), MinHeight = 0, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center,
+            Content = text, Style = (Style)Application.Current.Resources["AccentButtonStyle"], Background = bg, Foreground = fg,
+            Padding = new Thickness(12, 4, 12, 5), MinHeight = 0, MinWidth = 0, FontSize = T.Size(12), VerticalAlignment = VerticalAlignment.Center,
         };
+        // The template's hover/pressed states read these keys from the button's own resources (lightweight styling, as on the Network page).
+        b.Resources["AccentButtonBackground"] = bg;
+        b.Resources["AccentButtonBackgroundPointerOver"] = new SolidColorBrush(c) { Opacity = 0.9 };
+        b.Resources["AccentButtonBackgroundPressed"] = new SolidColorBrush(c) { Opacity = 0.8 };
+        foreach (var s in new[] { "", "PointerOver", "Pressed" }) b.Resources["AccentButtonForeground" + s] = fg;
         b.Click += (_, _) => click();
-        if (tooltip != null) ToolTipService.SetToolTip(b, tooltip);
         return b;
     }
 
-    /// <summary>Plain text button (accent, semibold 11): "Show all (N)".</summary>
-    public static Button TextButton(string text, Action click)
+    /// <summary>Secondary action as a text link (HyperlinkButton) in the theme accent; <paramref name="danger"/> = a destructive action
+    /// (Stop) in the danger colour. Texts are already translated (call sites write L("…") so the translation check sees them).</summary>
+    public static HyperlinkButton Link(string text, Action click, string? tooltip = null, bool danger = false)
     {
-        var b = new Button
+        var fg = Tone(danger ? 2 : 0);
+        var b = new HyperlinkButton
         {
-            Content = new TextBlock { Text = text, Foreground = Tone(0), FontSize = T.Size(11), FontWeight = FontWeights.SemiBold },
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), BorderThickness = new Thickness(0), Padding = new Thickness(0, 1, 0, 0), MinHeight = 0, MinWidth = 0,
+            Content = text, Foreground = fg, FontSize = T.Size(12), FontFamily = ThemeService.Family(T.Face), Padding = new Thickness(0, 2, 0, 2),
+            MinHeight = 0, MinWidth = 0, VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left,
         };
+        foreach (var s in new[] { "", "PointerOver", "Pressed" }) b.Resources["HyperlinkButtonForeground" + s] = fg;
         b.Click += (_, _) => click();
+        if (tooltip != null) ToolTipService.SetToolTip(b, tooltip);
         return b;
     }
 
@@ -180,12 +217,11 @@ internal static class Ui
     public static ProgressBar Progress(double value, double max = 1) =>
         new() { Minimum = 0, Maximum = max, Value = value, Height = 4, Foreground = Blocks ? OnRow() : B("FuseboxAccent") };
 
-    /// <summary>"can go" / "check first" / "keep" / "?" tag (9 pt semibold, capsule stroke).</summary>
+    /// <summary>"can go" / "check first" / "keep" / "?" badge: semibold 10 text in its colour on a 15 % tint of it, radius 4, no stroke.</summary>
     public static Border Tag(string text, Brush color) => new()
     {
-        Child = new TextBlock { Text = text, Foreground = color, FontSize = T.Size(9), FontWeight = FontWeights.SemiBold },
-        BorderBrush = new SolidColorBrush(ColorOf(color)) { Opacity = 0.6 }, BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(999),
-        Padding = new Thickness(5, 1, 5, 1), VerticalAlignment = VerticalAlignment.Center,
+        Child = new TextBlock { Text = text, Foreground = color, FontSize = T.Size(10), FontWeight = FontWeights.SemiBold },
+        Background = Tint(color, 0.15), CornerRadius = new CornerRadius(4), Padding = new Thickness(6, 1, 6, 2), VerticalAlignment = VerticalAlignment.Center,
     };
 
     /// <summary>A bar of <paramref name="width"/> × 4 whose fill is <paramref name="v"/> (0–1) of it.</summary>
@@ -196,13 +232,6 @@ internal static class Ui
         g.Children.Add(new Border { Background = accent, Opacity = 0.18, CornerRadius = new CornerRadius(2) });
         g.Children.Add(new Border { Background = accent, Opacity = 0.7, CornerRadius = new CornerRadius(2), Width = width * Math.Clamp(v, min, 1), HorizontalAlignment = HorizontalAlignment.Left });
         return g;
-    }
-
-    public static Ellipse Dot(bool on)
-    {
-        var d = new Ellipse { Width = 6, Height = 6, VerticalAlignment = VerticalAlignment.Center };
-        if (on) d.Fill = Tone(3); else { d.Fill = OnRow(true); d.Opacity = 0.35; }
-        return d;
     }
 
     /// <summary>First <paramref name="limit"/> rows, then "Show all (N)" / "Show less" (only when more than limit + 1).</summary>
@@ -218,11 +247,11 @@ internal static class Ui
         foreach (var r in rows) s.Children.Add(r);
         if (capped)
         {
-            Button? btn = null;
-            btn = TextButton(L("Show all (%lld)", rows.Count), () =>
+            HyperlinkButton? btn = null;
+            btn = Link(L("Show all (%lld)", rows.Count), () =>
             {
                 all = !all;
-                btn!.Content = new TextBlock { Text = all ? L("Show less") : L("Show all (%lld)", rows.Count), Foreground = Tone(0), FontSize = T.Size(11), FontWeight = FontWeights.SemiBold };
+                btn!.Content = all ? L("Show less") : L("Show all (%lld)", rows.Count);
                 Apply();
             });
             s.Children.Add(btn);
@@ -234,18 +263,18 @@ internal static class Ui
     public static void Tip(FrameworkElement e, string text) => ToolTipService.SetToolTip(e, text);
 }
 
-/// <summary>Two cards side by side when the host is at least <c>min</c> wide, else stacked (left first). Re-arranges only when that flips.</summary>
+/// <summary>Two columns of sections (top-aligned) when the host is at least <c>min</c> wide, else stacked (left first). Re-arranges only when that flips.</summary>
 internal sealed partial class TwoUp : Grid
 {
-    public readonly StackPanel Left = new() { Spacing = 10 }, Right = new() { Spacing = 10 };
+    public readonly StackPanel Left = new() { Spacing = 20 }, Right = new() { Spacing = 20 };
     readonly double min;
     bool? wide;
     bool lastWide;
 
-    public TwoUp(double minWidth, double width, double spacing = 12)
+    public TwoUp(double minWidth, double width, double spacing = 32)
     {
         min = minWidth;
-        ColumnSpacing = spacing; RowSpacing = 10;
+        ColumnSpacing = spacing; RowSpacing = 20;
         ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         ColumnDefinitions.Add(new() { Width = new GridLength(1, GridUnitType.Star) });
         RowDefinitions.Add(new() { Height = GridLength.Auto });
