@@ -116,10 +116,10 @@ public static class CsvLog
         return n;
     }
 
-    /// <summary>"Delete all logs": every CSV in the folder.</summary>
+    /// <summary>"Delete all logs": every Fusebox day file (as the Mac: other files in the folder and battery-health.csv stay).</summary>
     public static void DeleteAll(string? dir = null)
     {
-        try { foreach (var f in Directory.EnumerateFiles(dir ?? Dir, "*.csv")) File.Delete(f); } catch { }
+        try { foreach (var f in Directory.EnumerateFiles(dir ?? Dir, "*.csv")) if (DayOf(Path.GetFileName(f)) != null) File.Delete(f); } catch { }
     }
 
     /// <summary>Date of a day file ("apps-2026-11-21.csv"), null for other files.</summary>
