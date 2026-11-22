@@ -1,3 +1,5 @@
-- Fixed: Fusebox didn't open anymore after its first start (it crashed while restoring the window position)
-- Network: "Save report…" also right under a speed test result
-- Windows on Arm is no longer built (x64 only)
+- Reports: Checkup and Network now save a light PDF with graphs, statistics, the typical values at a glance and what stands out
+- Checkup: calm new look (cards, no lines), correct folder sizes, startup apps neatly aligned
+- Settings: redone like Windows 11 Settings (bigger window, clean rows, no more chips)
+- Fusebox now appears in Windows Settings › Apps, with its version, and can be uninstalled there (your history in Documents is kept)
+- Speed test: a clear message when Cloudflare limits tests from your connection
