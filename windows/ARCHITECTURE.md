@@ -103,10 +103,23 @@ live and how a page uses them. Section numbers like §3.2 refer to FEATURES.md.
 - `SettingsWindow.Open(tabId?)`: one fixed 740×560 window, placed right/left/centered of the main window (§9.1), system look (Mica),
   remembers `settingsTab`. Sidebar = `SettingsWindow.Tabs` (Mac ids profile, look, live, processes, checkup, network, docked, menubar =
   "Tray icon", alerts, battery (only with a battery), data, about; no fans).
-- One Page per tab (`ProfileSettingsPage` … `AboutSettingsPage`), each with a title and an `x:Name="Body"` StackPanel. Moved from v1:
-  Profile (Low impact, setup again), Appearance (style/mode/font pickers, language + restart, always on top, open at login, shortcut on/off),
-  Live (measurement list), Tray (icon on/off), Notifications (switch, test), Privacy (keep logs, folder, ping), About (version, updates,
-  changelog). Each page's summary lists what is still to build.
+- One Page per tab (`ProfileSettingsPage` … `AboutSettingsPage`, all built), each with a title and an `x:Name="Body"` StackPanel.
+  Shared pieces: `Parts` (theme/text-size/font/graph/tray-style tiles, accent picker, alert rows, taskbar card, share/import settings),
+  `Previews` (live-looking samples of rows, tables, tray styles, the number-change demo; timers only while loaded), `Kit` (segmented,
+  stepper, chips, `WhilePrefs(el, h)` / `WhileTheme(el, h)` = subscribe on Loaded, unsubscribe on Unloaded, already on the UI thread).
+- **Shortcut**: `HotkeyRecorder.Create(card, conflictBar)` (Appearance) records Ctrl/Alt (+Shift) + key via `HotkeyLogic.Record` into
+  `hotkeyCode`/`hotkeyMods`/`hotkeyLabel`; Esc cancels, Delete = off. `Hotkey.Suspend(true)` while it listens; `Hotkey.Conflict` = another
+  app owns the combination.
+- **Notifications** (`App/Notify.cs`): `Notify.Send(title, body, Act? click = null, params Act[] buttons)` with
+  `Act(Label, Verb, params (Key, Value)[] Args)`; respects pref `notify`. Clicks come back as verb + args through
+  `Notify.On(verb, handler)` (UI thread, last registration wins). Built in: `open` (tab, param) and `settings` (tab).
+  `AlertRunner` (§11.2) evaluates the pure `Core/Alerts/AlertEngine` on `App.Live.MinuteTick` (kinds `AlertKinds.Ids`, prefs
+  `alert.<id>.on/limit/min`, `alertCooldown`); a click opens the tab that explains it (`AlertRunner.TabFor`). `PeakAlert` = sustained-peak
+  notification with Stop app / Show buttons.
+- **Own use** (`App/SelfUsage.cs`, §11.5): one line per minute in `self-YYYY-MM-DD.csv` (`Core/SelfLog`, pruned with the other day files);
+  `SelfUsage.ShareReport()` (Settings › About) writes the 7-day performance report to Downloads + clipboard, home folder as "~".
+- **Checkup in the tray**: `CheckupData.GistAsync()` (today's report, cached ≤ 10 min, else loaded off the UI thread) and `GistNow()`
+  (memory only, may be null); App sets `TrayFlyout.GistProvider` to return `GistNow()` and start one `GistAsync()` at a time.
 - Building blocks: `<s:SettingsCard Glyph="&#xE713;" Header="…" Description="…"><ToggleSwitch/></s:SettingsCard>` (header/description
   are English keys, translated by the card; `SetDescriptionText` for built text), section header
   `<TextBlock Style="{StaticResource SettingsSectionHeader}" Text="…"/>`, title style `SettingsPageTitle`. In code: `SettingsUi.Card`,
