@@ -169,7 +169,13 @@ public sealed partial class NetworkPage
             Prefs.Set("speedHistory", SpeedHistory.ToJson(history));
         }
         catch (OperationCanceledException) { }
-        catch (Exception ex) { if (!cts.IsCancellationRequested) speedError = L("Speed test failed: %@", ex.Message); }
+        catch (Exception ex) when (!cts.IsCancellationRequested)
+        {
+            // Our own messages (Check) are already plain words; anything else is a connection problem, not raw .NET text.
+            speedError = ex is HttpRequestException { StatusCode: not null } ? ex.Message
+                : L("No connection to Cloudflare's speed test. Check your internet connection and try again.");
+        }
+        catch { }
         finally
         {
             if (speedCts == cts) { speedCts = null; speedRunning = false; speedPhase = null; speedLive = null; if (visible) RenderSpeed(); }

@@ -33,6 +33,19 @@ public static class SpeedTest
     static HttpClient NewClient(int timeoutSec) =>
         new(new SocketsHttpHandler { MaxConnectionsPerServer = 1, UseCookies = false, AutomaticDecompression = DecompressionMethods.None }) { Timeout = TimeSpan.FromSeconds(timeoutSec) };
 
+    /// <summary>A refused request in plain words (shown as is): 429 = Cloudflare's own per-connection limit, not something Fusebox can avoid.</summary>
+    static void Check(HttpResponseMessage r)
+    {
+        if (r.IsSuccessStatusCode) return;
+        if ((int)r.StatusCode == 429)
+        {
+            var wait = r.Headers.RetryAfter?.Delta ?? (r.Headers.RetryAfter?.Date - DateTimeOffset.UtcNow);
+            int min = wait is { } w && w > TimeSpan.Zero ? Math.Max(1, (int)Math.Ceiling(w.TotalMinutes)) : 5;
+            throw new HttpRequestException(L("Cloudflare is limiting speed tests from your connection right now. Try again in %lld min.", min), null, r.StatusCode);
+        }
+        throw new HttpRequestException(L("Cloudflare's speed test didn't accept the test (error %lld). Try again later.", (int)r.StatusCode), null, r.StatusCode);
+    }
+
     /// <summary>One empty request in ms.</summary>
     static async Task<double> Ping(HttpClient c, CancellationToken ct)
     {
@@ -85,12 +98,12 @@ public static class SpeedTest
                     {
                         using var content = new CountingContent(UpChunk, n => Add(n));
                         using var r = await c.PostAsync($"{Host}/__up", content, stop.Token);
-                        r.EnsureSuccessStatusCode();
+                        Check(r);
                     }
                     else
                     {
                         using var r = await c.GetAsync($"{Host}/__down?bytes={DownChunk}", HttpCompletionOption.ResponseHeadersRead, stop.Token);
-                        r.EnsureSuccessStatusCode();
+                        Check(r);
                         await using var s = await r.Content.ReadAsStreamAsync(stop.Token);
                         int n;
                         while ((n = await s.ReadAsync(buf, stop.Token)) > 0) Add(n);

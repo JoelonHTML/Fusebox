@@ -10,3 +10,6 @@
 "Network report" = "Informe de red";
 "Contains no Wi-Fi name, network addresses, computer name or user name." = "No contiene el nombre de la wifi, direcciones de red, nombre del equipo ni nombre de usuario.";
 "A text file with signal, ping and speed numbers to send to your provider or helpdesk. No Wi-Fi name or addresses." = "Un archivo de texto con valores de señal, ping y velocidad para enviar a tu proveedor o al soporte. Sin nombre de wifi ni direcciones.";
+"Cloudflare is limiting speed tests from your connection right now. Try again in %lld min." = "Cloudflare está limitando ahora las pruebas de velocidad desde tu conexión. Vuelve a intentarlo en %lld min.";
+"Cloudflare's speed test didn't accept the test (error %lld). Try again later." = "La prueba de velocidad de Cloudflare rechazó la prueba (error %lld). Vuelve a intentarlo más tarde.";
+"No connection to Cloudflare's speed test. Check your internet connection and try again." = "No hay conexión con la prueba de velocidad de Cloudflare. Comprueba tu conexión a internet y vuelve a intentarlo.";
