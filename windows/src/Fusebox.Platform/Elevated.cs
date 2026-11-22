@@ -34,7 +34,8 @@ public static class Elevated
             var text = await File.ReadAllTextAsync(outFile);
             return text.Length > 0 ? text.Trim('﻿', '\r', '\n', ' ') : null;
         }
-        catch (System.ComponentModel.Win32Exception) { return null; }   // UAC declined
+        // UAC declined (Win32Exception), or the temp folder/result file failed: callers are async void UI handlers, so never throw.
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or IOException or UnauthorizedAccessException or InvalidOperationException) { return null; }
         finally { try { Directory.Delete(dir, true); } catch { } }
     }
 }
