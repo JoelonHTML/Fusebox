@@ -53,7 +53,7 @@ public partial class App : Application
     {
         // Pass 1: default size, system (light) appearance. Pass 2: wide window, dark appearance, plus Settings › Appearance.
         var tabs = MainWindow.Tabs.Select(t => t.Tag).ToList();
-        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").Append("tray").ToList();
+        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").Append("tray").Append("close-settings").ToList();
         var report = new System.Text.StringBuilder();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         long lastBeat = 0, worst = 0;
@@ -75,7 +75,8 @@ public partial class App : Application
                 Main.Activate();
             }
             else if (tag.StartsWith("Settings:")) SettingsWindow.Open(tag[9..]);
-            else if (tag == "tray") { SettingsWindow.Current?.Close(); Tray?.ToggleFlyout(); }
+            else if (tag == "tray") Tray?.ToggleFlyout();
+            else if (tag == "close-settings") SettingsWindow.Current?.Close();
             else Main.Open(tag);
         }
         var t = Main.DispatcherQueue.CreateTimer();
@@ -88,7 +89,8 @@ public partial class App : Application
             if (++i < items.Count)
             {
                 long t0 = clock.ElapsedMilliseconds;
-                Go(items[i]);
+                try { Go(items[i]); }
+                catch (Exception e) { Program.CrashLog(e); report.Append($"{items[i]}: FAILED {e.GetType().Name}; "); }
                 report.Append($"{items[i]}: opened at {t0 / 1000.0:0.0} s, open {clock.ElapsedMilliseconds - t0} ms; ");
                 lastBeat = clock.ElapsedMilliseconds;
                 return;
