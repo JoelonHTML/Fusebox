@@ -146,6 +146,7 @@ jobs:
           Get-Content out/Fusebox/smoke-ok.txt | Tee-Object -Append smoke.txt
           Remove-Item out/Fusebox/smoke-ok.txt
           "Visited all pages, quit cleanly." | Tee-Object -Append smoke.txt
+          if (Test-Path "$env:LOCALAPPDATA/Fusebox/crash.log") { "--- handled exceptions (crash.log) ---"; Get-Content "$env:LOCALAPPDATA/Fusebox/crash.log" | Tee-Object -Append smoke.txt }
 
       - name: Zip
         run: Compress-Archive -Path out/Fusebox -DestinationPath Fusebox-Windows-${{ matrix.arch }}.zip
