@@ -45,5 +45,6 @@ Address: nl "je", de "du", fr "vous", es "tú". Path separator: ` › `.
 | Talks (USB-PD partner) | Protocol | Protokoll | Protocole | Protocolo | It shows the negotiated protocol |
 | Average (card label) | Gem. | Mittel | Moy. | Media | "Ø" reads badly with VoiceOver |
 | Graph | grafiek | Diagramm | graphique | gráfica | de "Grafik" reads as GPU/graphics |
+| Efficiency mode (per app) | Efficiëntiemodus | Effizienzmodus | Mode efficacité | Modo de eficiencia | Windows term; must not clash with Apple's Low Power Mode. Cores: Apple "efficiency cores" = efficiëntiekernen / Effizienz-Kerne / cœurs d'efficacité / núcleos de eficiencia |
 
 Never translated: theme names (Glass, Minimal light, Color blocks, Instrument, Terminal), Fusebox, Live, Checkup, Docked, CPU, GPU, RAM, SSD, NET, BAT, I/O. Xcode menu paths stay English (Xcode has no localized UI).

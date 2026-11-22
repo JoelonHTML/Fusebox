@@ -1565,3 +1565,11 @@
 "The share of messages that never came back. 0% is normal. Even 1 or 2% makes calls break up and pages load slowly." = "Het deel van de berichtjes dat nooit terugkwam. 0% is normaal. Zelfs 1 of 2% laat gesprekken haperen en pagina's traag laden.";
 "What the numbers mean" = "Wat de cijfers betekenen";
 "Wi-Fi signal strength in dBm: −50 is excellent, −60 good, below −70 weak. Noise is background radio interference. SNR is the gap between the two: above 25 dB is good, below 20 dB causes errors and slowdowns." = "Sterkte van het wifisignaal in dBm: −50 is uitstekend, −60 goed, onder −70 zwak. Ruis is radiostoring op de achtergrond. SNR is het verschil tussen de twee: boven 25 dB is goed, onder 20 dB geeft fouten en vertraging.";
+/* feat-effvpn */
+"Click to give %@ full speed again." = "Klik om %@ weer op volle snelheid te laten werken.";
+"Efficiency mode" = "Efficiëntiemodus";
+"Efficiency mode is on" = "Efficiëntiemodus staat aan";
+"Efficiency mode on" = "Efficiëntiemodus aan";
+"Keeps %@ open but lets it use less power: macOS runs it on the efficiency cores, with slower disk and network access. Turns off when the app restarts." = "Houdt %@ open, maar laat het minder stroom gebruiken: macOS laat het op de efficiëntiekernen draaien, met tragere toegang tot schijf en netwerk. Gaat uit als de app opnieuw start.";
+"Only for your own apps. macOS itself, Fusebox and other users' processes keep their normal speed." = "Alleen voor je eigen apps. macOS zelf, Fusebox en processen van andere gebruikers houden hun normale snelheid.";
+"VPN on" = "VPN aan";
