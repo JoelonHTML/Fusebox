@@ -53,7 +53,7 @@ public partial class App : Application
     {
         // Pass 1: default size, system (light) appearance. Pass 2: wide window, dark appearance, plus Settings › Appearance.
         var tabs = MainWindow.Tabs.Select(t => t.Tag).ToList();
-        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").ToList();
+        var items = tabs.Append("Settings").Append("wide-dark").Concat(tabs).Append("Settings:look").Append("tray").ToList();
         var report = new System.Text.StringBuilder();
         var clock = System.Diagnostics.Stopwatch.StartNew();
         long lastBeat = 0, worst = 0;
@@ -63,7 +63,7 @@ public partial class App : Application
         lastBeat = clock.ElapsedMilliseconds;
         beat.Start();
         int i = 0;
-        string Shows(string tag) => tag.StartsWith("Settings") ? SettingsWindow.Current?.CurrentPage ?? "no Settings window" : tag == "wide-dark" ? "-" : Main.CurrentPage;
+        string Shows(string tag) => tag.StartsWith("Settings") ? SettingsWindow.Current?.CurrentPage ?? "no Settings window" : tag is "wide-dark" or "tray" ? (Tray?.FlyoutOpen == true ? "flyout open" : "-") : Main.CurrentPage;
         void Go(string tag)
         {
             if (tag == "wide-dark")
@@ -75,6 +75,7 @@ public partial class App : Application
                 Main.Activate();
             }
             else if (tag.StartsWith("Settings:")) SettingsWindow.Open(tag[9..]);
+            else if (tag == "tray") { SettingsWindow.Current?.Close(); Tray?.ToggleFlyout(); }
             else Main.Open(tag);
         }
         var t = Main.DispatcherQueue.CreateTimer();

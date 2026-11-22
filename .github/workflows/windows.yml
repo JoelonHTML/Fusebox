@@ -134,7 +134,7 @@ jobs:
           $p.Refresh()
           "Working set: {0:N0} MB, idle CPU on Live: {1:N2}% of one core" -f ($p.WorkingSet64 / 1MB), (($p.TotalProcessorTime.TotalSeconds - $c1) / 8 * 100) | Tee-Object smoke.txt
           Shot "0-live"
-          $pages = "1-processes", "2-checkup", "3-network", "4-docked", "5-settings", "6-wide-dark", "7-live-wide-dark", "8-processes-wide-dark", "9-checkup-wide-dark", "10-network-wide-dark", "11-docked-wide-dark", "12-settings-look-dark"
+          $pages = "1-processes", "2-checkup", "3-network", "4-docked", "5-settings", "6-wide-dark", "7-live-wide-dark", "8-processes-wide-dark", "9-checkup-wide-dark", "10-network-wide-dark", "11-docked-wide-dark", "12-settings-look-dark", "13-tray-flyout-dark"
           Start-Sleep -Seconds 5
           foreach ($pg in $pages) {
             if ($p.HasExited) { Fail "Fusebox exited before $pg with code $($p.ExitCode)" }

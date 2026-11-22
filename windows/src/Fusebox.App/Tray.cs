@@ -152,7 +152,7 @@ public sealed unsafe partial class Tray : IDisposable
         return hicon;
     }
 
-    void ToggleFlyout()
+    public void ToggleFlyout()
     {
         flyout ??= new TrayFlyout();
         flyout.Toggle();
