@@ -225,6 +225,7 @@ struct AppPage: View {
                     Button { confirm = true } label: { Label("Force quit", systemImage: "bolt.horizontal.circle") }
                         .foregroundStyle(theme.danger)
                 }
+                if let app { EfficiencyButton(app: app) }
                 if let p = path {
                     Button { NSWorkspace.shared.activateFileViewerSelecting([URL(fileURLWithPath: p)]) } label: { Label("Show in Finder", systemImage: "folder") }
                 }

@@ -13,6 +13,7 @@ import os
 struct NetConnection {
     let iface: String, kind: String
     let ipv4: String?, ipv6: [String], router: UInt32?, dns: [String], ipv6Internet: Bool
+    var vpn = false   // VPN aan: als hoofdroute (kind "VPN") of naast Wi-Fi/kabel (alleen sommige verkeer)
 
     static func current() -> NetConnection? {
         let v4 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
@@ -39,10 +40,25 @@ struct NetConnection {
             freeifaddrs(list)
         }
         let wifi = CWWiFiClient.shared().interfaceNames()?.contains(iface) == true
-        return NetConnection(iface: iface, kind: wifi ? "Wi-Fi" : iface.hasPrefix("en") ? "Ethernet" : iface,
+        // Diensten met een adres (VPN-apps melden hun utun hier, ook als Wi-Fi de hoofdroute blijft)
+        let services = (SCDynamicStoreCopyKeyList(nil, "State:/Network/Service/.*/IPv4" as CFString) as? [String] ?? [])
+            .compactMap { (SCDynamicStoreCopyValue(nil, $0 as CFString) as? [String: Any])?["InterfaceName"] as? String }
+        return NetConnection(iface: iface, kind: isVPN(iface) ? "VPN" : wifi ? "Wi-Fi" : iface.hasPrefix("en") ? "Ethernet" : iface,
                              ipv4: ipv4, ipv6: ipv6, router: (v4?["Router"] as? String).flatMap(parseIP),
                              dns: dns?["ServerAddresses"] as? [String] ?? [],
-                             ipv6Internet: !ipv6.isEmpty && v6?["Router"] != nil)
+                             ipv6Internet: !ipv6.isEmpty && v6?["Router"] != nil, vpn: vpnOn(primary: iface, services: services))
+    }
+
+    /// Tunnel-interfaces van VPN's (WireGuard/IKEv2-apps: utun, oude IPsec: ipsec, L2TP/PPTP: ppp). macOS heeft zelf ook
+    /// altijd een paar utun's (iCloud, Continuïteit), maar die hebben geen dienst met een adres: daarom alleen hoofdroute of dienst.
+    static func isVPN(_ iface: String) -> Bool { ["utun", "ipsec", "ppp"].contains { iface.hasPrefix($0) } }
+    static func vpnOn(primary: String, services: [String]) -> Bool { isVPN(primary) || services.contains(where: isVPN) }
+
+    static func selfTest() {
+        precondition(isVPN("utun4") && isVPN("ipsec0") && isVPN("ppp0") && !isVPN("en0") && !isVPN("bridge0"), "vpn-interface")
+        precondition(vpnOn(primary: "utun4", services: []) && vpnOn(primary: "en0", services: ["en0", "utun6"]), "vpn aan")
+        precondition(!vpnOn(primary: "en0", services: ["en0", "en7"]), "geen vpn")
+        print("vpn herkennen: ok")
     }
 }
 
@@ -214,6 +230,7 @@ final class InternetStats: ObservableObject {
     static let graphPoints = 60
     @Published private(set) var conn: NetConnection?
     @Published private(set) var wifi: WifiDetail?
+    @Published private(set) var metered: Bool?   // NWPathMonitor: duur (hotspot/mobiel) of Weinig-data-modus
     @Published private(set) var router: PingStats?
     @Published private(set) var internet: PingStats?
     @Published private(set) var internetViaTCP = false
@@ -239,6 +256,7 @@ final class InternetStats: ObservableObject {
         task?.cancel()
         conn = NetConnection.current()
         wifi = conn.flatMap { $0.kind == "Wi-Fi" ? WifiDetail.current($0.iface) : nil }
+        Task { metered = await Self.isMetered() }
         guard let conn else { return }
         let host = host, routerIP = conn.router
         testing = true
@@ -626,7 +644,7 @@ struct InternetPanel: View {
             HStack(alignment: .top, spacing: 10) {
                 VStack(alignment: .leading, spacing: 5) {
                     if let c = stats.conn {
-                        line(c.kind == "Wi-Fi" ? "wifi" : "cable.connector", L("This Mac \(c.ipv4 ?? "–") on \(c.kind)")
+                        line(c.kind == "Wi-Fi" ? "wifi" : c.kind == "VPN" ? "lock.shield" : "cable.connector", L("This Mac \(c.ipv4 ?? "–") on \(c.kind)")
                              + (stats.wifi.map { L(" · signal \($0.word) (\($0.rssi) dBm)") } ?? ""))
                         HStack(spacing: 16) {
                             stat(L("Router"), stats.router)
@@ -724,7 +742,9 @@ struct InternetPanel: View {
         LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16, alignment: .top)], alignment: .leading, spacing: 12) {
             if let c = stats.conn {
                 section(L("Connection")) {
-                    kv(L("Type"), "\(c.kind) (\(c.iface))")
+                    kv(L("Type"), c.kind == "VPN" ? "VPN" : "\(c.kind) (\(c.iface))")
+                    kv("VPN", c.vpn ? L("VPN on") : L("Off"))
+                    if let m = stats.metered { kv(L("Metered"), m ? L("Yes: macOS and apps may hold back big downloads and backups") : L("No")) }
                     kv("IPv4", c.ipv4 ?? "–")
                     kv("IPv6", c.ipv6.first.map { $0 + (c.ipv6.count > 1 ? " (+\(c.ipv6.count - 1))" : "") } ?? L("none"))
                     kv(L("Router"), c.router.map(ipString) ?? L("unknown"))

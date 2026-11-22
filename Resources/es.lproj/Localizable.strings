@@ -1529,3 +1529,11 @@
 /* feat-menubar */
 "Rich menu bar panel" = "Panel de barra de menús completo";
 "Health score, live values, the most important tip and quick buttons." = "Puntuación de salud, valores en directo, el consejo más importante y botones rápidos.";
+/* feat-effvpn */
+"Click to give %@ full speed again." = "Haz clic para que %@ vuelva a funcionar a toda velocidad.";
+"Efficiency mode" = "Modo de eficiencia";
+"Efficiency mode is on" = "El modo de eficiencia está activado";
+"Efficiency mode on" = "Modo de eficiencia activado";
+"Keeps %@ open but lets it use less power: macOS runs it on the efficiency cores, with slower disk and network access. Turns off when the app restarts." = "Mantiene %@ abierta, pero con menos consumo: macOS la ejecuta en los núcleos de eficiencia, con un acceso más lento al disco y a la red. Se desactiva cuando la app se reinicia.";
+"Only for your own apps. macOS itself, Fusebox and other users' processes keep their normal speed." = "Solo para tus propias apps. macOS, Fusebox y los procesos de otros usuarios mantienen su velocidad normal.";
+"VPN on" = "VPN activada";
