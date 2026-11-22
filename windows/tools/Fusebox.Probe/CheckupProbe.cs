@@ -7,6 +7,7 @@ public static class CheckupProbe
     /// <summary>Fails only when the Event Log queries themselves error (every Windows PC has these channels); everything else is printed.</summary>
     public static void Run(JsonObject o, List<string> failures)
     {
+        if (!Fusebox.Platform.Checkup.DiskScanner.LayoutOk) failures.Add("WIN32_FIND_DATAW layout (disk sizes would be wrong)");
         var c = new JsonObject();
         o["checkup"] = c;
         var now = DateTime.Now;

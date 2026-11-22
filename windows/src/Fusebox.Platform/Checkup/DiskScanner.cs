@@ -13,6 +13,9 @@ namespace Fusebox.Platform.Checkup;
 /// </summary>
 public static unsafe class DiskScanner
 {
+    /// <summary>WIN32_FIND_DATAW must match Windows (592 bytes); the CI probe fails otherwise.</summary>
+    public static bool LayoutOk => sizeof(CheckupNative.WIN32_FIND_DATAW) == 592;
+
     public sealed record Root(string Title, string Path, string Relative);
     public sealed record Result(List<DiskRow> Rows, List<string> NotCounted);
 

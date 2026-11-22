@@ -25,7 +25,10 @@ internal static unsafe partial class CheckupNative
     public static partial bool EvtClose(IntPtr handle);
 
     // ---- Directory walking ----
-    [StructLayout(LayoutKind.Sequential)]
+    // Pack = 4: FILETIME is two DWORDs in Windows (4-byte aligned). As `long` without Pack, .NET padded 4 bytes after
+    // dwFileAttributes, so every field after it was read 4 bytes off: sizes came out ~2^32 times too big (seen on a real PC).
+    // Windows layout: 592 bytes, nFileSizeHigh at 28, nFileSizeLow at 32, cFileName at 44 (checked by the probe and a test).
+    [StructLayout(LayoutKind.Sequential, Pack = 4)]
     public struct WIN32_FIND_DATAW
     {
         public uint dwFileAttributes;
