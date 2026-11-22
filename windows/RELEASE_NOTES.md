@@ -1,5 +1,3 @@
-- Reports: Checkup and Network now save a light PDF with graphs, statistics, the typical values at a glance and what stands out
-- Checkup: calm new look (cards, no lines), correct folder sizes, startup apps neatly aligned
-- Settings: redone like Windows 11 Settings (bigger window, clean rows, no more chips)
-- Fusebox now appears in Windows Settings › Apps, with its version, and can be uninstalled there (your history in Documents is kept)
-- Speed test: a clear message when Cloudflare limits tests from your connection
+- Network report: "At a glance" now shows the latest measurement, with the fastest and the average under it (no more "middle of" values)
+- Network report: new last page "What the numbers mean" that explains ping, jitter, lost, 95%, bufferbloat, download/upload and more
+- Speed test: "Clear history…" deletes the saved tests, for example after your connection got faster, so fastest and average start fresh

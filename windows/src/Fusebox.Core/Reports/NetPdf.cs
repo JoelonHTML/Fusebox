@@ -34,16 +34,23 @@ public static class NetPdf
 
         // ---- typical values ----
         var tiles = new List<Tile>();
-        string Range(Summary s) => L("range %@–%@ ms", F(s.Min), F(s.Max));
-        if (router != null) tiles.Add(new(L("Router ping"), F(router.Median), "ms", Range(router)));
-        if (inet != null) tiles.Add(new(L("Internet ping"), F(inet.Median), "ms", Range(inet)));
+        // Big number = the latest value; under it the best (fastest) and the average. No median: people asked for latest, fastest, average.
+        string Best(double best, Summary s) => s.Count > 1 ? L("fastest %@ · average %@", F(best), F(s.Avg)) : "";
+        static double? Latest(IReadOnlyList<double>? live, PingStats? test) =>
+            live?.LastOrDefault(v => double.IsFinite(v)) is > 0 and var v ? v : test?.Avg;
+        if (router != null && Latest(i.LiveRouter, i.Router) is { } lr0) tiles.Add(new(L("Router ping"), F(lr0), "ms", Best(router.Min, router)));
+        if (inet != null && Latest(i.LiveInternet, i.Internet) is { } li0) tiles.Add(new(L("Internet ping"), F(li0), "ms", Best(inet.Min, inet)));
         if (i.DnsMs is { } dns) tiles.Add(new(L("DNS lookup"), F(dns), "ms", dns < 100 ? L("quick") : L("slow")));
         if (i.Rssi is { } rssi) tiles.Add(new(L("Wi-Fi signal"), rssi.ToString(C), "dBm", WifiMath.Word(rssi)));
-        string Tests(int n) => n == 1 ? L("1 speed test") : L("middle of %lld speed tests", n);
-        if (down != null) tiles.Add(new(L("Download"), F(down.Median), "Mbit/s", Tests(down.Count)));
-        if (up != null) tiles.Add(new(L("Upload"), F(up.Median), "Mbit/s", Tests(up.Count)));
+        var last = speeds.FirstOrDefault();
+        if (last != null)
+        {
+            var when = last.Date.ToLocalTime().ToString("d MMM HH:mm", Culture);
+            tiles.Add(new(L("Download, %@", when), F(last.Down), "Mbit/s", Best(down!.Max, down)));
+            tiles.Add(new(L("Upload, %@", when), F(last.Up), "Mbit/s", Best(up!.Max, up)));
+        }
         if (tiles.Count < 6 && i.LinkMbps is { } link) tiles.Add(new(L("Link speed"), link.ToString(C), "Mbit/s"));
-        doc.Glance(L("At a glance"), L("Typical values: the middle of what was measured"), tiles);
+        doc.Glance(L("At a glance"), L("Latest measurement, with the fastest and the average"), tiles);
 
         // ---- what stands out ----
         var marks = new List<Mark>();
@@ -54,15 +61,14 @@ public static class NetPdf
         if (i.Rssi is { } r && r < -70) marks.Add(new(r < -75 ? 2 : 1, L("Weak Wi-Fi signal (%lld dBm)", r), L("Closer to the router, or fewer walls in between, usually helps.")));
         if (i.DnsMs is { } d && d >= 100) marks.Add(new(d >= 300 ? 2 : 1, L("Slow DNS lookups (%@ ms)", F(d)), L("Websites take longer to start loading.")));
         foreach (var (name, s) in new[] { (L("Router"), router), (L("Internet"), inet) })
-            if (s is { Count: >= 5 } && s.Max >= Math.Max(3 * s.Median, s.Median + 40))
-                marks.Add(new(1, L("%@: reply times jump to %@ ms (typical %@ ms)", name, F(s.Max), F(s.Median))));
+            if (s is { Count: >= 5 } && s.Max >= Math.Max(3 * s.Avg, s.Avg + 40))
+                marks.Add(new(1, L("%@: reply times jump to %@ ms (average %@ ms)", name, F(s.Max), F(s.Avg))));
         if (i.Internet?.Jitter is { } j && j >= 30) marks.Add(new(1, L("Uneven reply times (jitter %@ ms): calls and games can stutter", F(j))));
-        var last = speeds.FirstOrDefault();
         if (last is { Ping: { } idle, LoadedPing: { } busy } && busy - idle >= 30)
             marks.Add(new(busy - idle >= 100 ? 2 : 1, L("Delay rises to %@ ms while the line is busy (bufferbloat)", F(busy)), L("Normally %@ ms.", F(idle))));
         if (last?.Variation is >= 0.25) marks.Add(new(1, L("The speed was unsteady during the last test")));
-        if (last != null && down is { Count: >= 3 } && last.Down < 0.6 * down.Median)
-            marks.Add(new(1, L("The last speed test (%@ Mbit/s) is well below the usual %@ Mbit/s", F(last.Down), F(down.Median))));
+        if (last != null && down is { Count: >= 3 } && last.Down < 0.6 * down.Avg)
+            marks.Add(new(1, L("The last speed test (%@ Mbit/s) is well below the average %@ Mbit/s", F(last.Down), F(down.Avg))));
         if (i.Vpn == true) marks.Add(new(0, L("A VPN is on: all numbers go through it")));
         if (tiles.Count + marks.Count > 0)   // nothing measured: nothing to call unusual either
             doc.StandsOut(L("Stands out"), L("Unusual values, most important first"), marks, L("Nothing unusual: no lost replies, slow lookups or weak signal."));
@@ -97,13 +103,13 @@ public static class NetPdf
         foreach (var (name, s, test) in new[] { (L("Router"), router, i.Router), (L("Internet"), inet, i.Internet) })
         {
             if (s == null) { if (test != null) rows.Add([name, "–", "–", "–", "–", "–", "–", L("no answer")]); continue; }
-            rows.Add([name, F(s.Min), F(s.Median), F(s.Avg), F(s.P95), F(s.Max), test?.Jitter is { } jt ? F(jt) : "–",
+            rows.Add([name, F(s.Min), F(s.Avg), F(s.P95), F(s.Max), test?.Jitter is { } jt ? F(jt) : "–",
                 test is { Sent: > 0 } ? $"{(int)Math.Round(test.Loss * 100)}%" : "–"]);
         }
-        if (i.DnsMs is { } dn) rows.Add([L("DNS lookup"), "", F(dn), "", "", "", "", ""]);
+        if (i.DnsMs is { } dn) rows.Add([L("DNS lookup"), "", F(dn), "", "", "", ""]);
         if (rows.Count > 0 || i.LiveRouter is { Count: >= 2 } || i.LiveInternet is { Count: >= 2 }) doc.Section(L("Quality"));
-        doc.Table([L("Reply time (ms)"), L("Lowest"), L("Median"), L("Average"), "95%", L("Highest"), L("Jitter"), L("Lost")], rows,
-            [0.24, 0.1, 0.1, 0.1, 0.1, 0.1, 0.13, 0.13]);
+        doc.Table([L("Reply time (ms)"), L("Fastest"), L("Average"), "95%", L("Slowest"), L("Jitter"), L("Lost")], rows,
+            [0.26, 0.12, 0.12, 0.12, 0.12, 0.13, 0.13]);
         var series = new List<Series>();
         if (i.LiveInternet is { Count: >= 2 } li) series.Add(new(L("Internet"), ReportPdf.Accent, Seconds(li), MarkMax: true));
         if (i.LiveRouter is { Count: >= 2 } lr) series.Add(new(L("Router"), Rgb.Gray(0.45), Seconds(lr), Fill: series.Count == 0, Dashed: series.Count > 0, MarkMax: series.Count == 0));
@@ -134,8 +140,8 @@ public static class NetPdf
                     [(L("Download"), ReportPdf.Accent, old.Select(s => s.Down).ToArray()), (L("Upload"), ReportPdf.Accent.Tint(0.4), old.Select(s => s.Up).ToArray())],
                     F, valueOnTop: true);
             if (down is { Count: > 1 } && up != null)
-                doc.Table([L("Speed (Mbit/s)"), L("Lowest"), L("Median"), L("Average"), L("Highest")],
-                    [[L("Download"), F(down.Min), F(down.Median), F(down.Avg), F(down.Max)], [L("Upload"), F(up.Min), F(up.Median), F(up.Avg), F(up.Max)]],
+                doc.Table([L("Speed (Mbit/s)"), L("Last"), L("Fastest"), L("Average"), L("Slowest")],
+                    [[L("Download"), F(speeds[0].Down), F(down.Max), F(down.Avg), F(down.Min)], [L("Upload"), F(speeds[0].Up), F(up.Max), F(up.Avg), F(up.Min)]],
                     [0.36, 0.16, 0.16, 0.16, 0.16]);
             var s = speeds[0];
             var lf = new List<(string, string)>
@@ -153,6 +159,24 @@ public static class NetPdf
             if (s.Variation is { } v) lf.Add((L("Stability"), v < 0.1 ? L("steady") : v < 0.25 ? L("varies a little") : L("unsteady")));
             doc.Facts(lf);
         }
+
+        // ---- what the numbers mean ----
+        doc.Section(L("What the numbers mean"));
+        void Term(string t, string d) => doc.Bullet(t, Rgb.Gray(0.6), d);
+        Term(L("Latest, fastest, average"), L("Latest is the most recent measurement. Fastest is the best one measured. Average is all measurements added up and divided by how many there are."));
+        Term(L("Ping (reply time)"), L("How long a small message takes to go there and back, in milliseconds (ms). Lower is better: under 20 ms is quick, above 100 ms you notice it in calls and games."));
+        Term(L("Router ping"), L("Reply time of your own router. A few ms is normal; much more points to your home network or Wi-Fi."));
+        Term(L("Internet ping"), L("Reply time of a server on the internet (Cloudflare). This includes your provider's line."));
+        Term(L("Download and upload"), L("How fast data comes in (websites, streaming) and goes out (video calls, sending files), in megabits per second. 8 Mbit/s is about 1 megabyte per second."));
+        Term(L("Jitter"), L("How much the reply times vary. Under 30 ms keeps calls and games smooth."));
+        Term(L("Lost"), L("Share of messages that got no answer. Anything above 0% can cause hiccups."));
+        Term("95%", L("95 of every 100 replies were this fast or faster: the slow moments, without the single worst one."));
+        Term(L("Bufferbloat"), L("Extra delay while the line is busy, for example during a download. Little extra delay means the router handles busy moments well."));
+        Term(L("DNS lookup"), L("Time to turn a website name into an address. Under 100 ms is quick."));
+        if (i.Rssi != null)
+            Term(L("Wi-Fi signal (dBm)"), L("Strength of the Wi-Fi signal. Closer to 0 is stronger: -50 is excellent, -70 is fair, below -75 is weak."));
+        if (i.LinkMbps != null)
+            Term(L("Link speed"), L("The speed the PC and the router agreed on over Wi-Fi or cable. The real internet speed is always lower."));
 
         return doc.Save(L("Fusebox · Network report · %@", i.Now.ToString("d MMM yyyy", Culture)), L("Contains no Wi-Fi name, network addresses, computer name or user name."),
             L("Network report"));

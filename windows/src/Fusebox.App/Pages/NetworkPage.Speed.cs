@@ -13,6 +13,7 @@ public sealed partial class NetworkPage
     TextBlock? spPhase, spNow;
     ProgressBar? spBar;
     SpeedKind? speedConfirm;
+    bool clearAsk;   // "Clear history…" asks once, inline (no dialog)
     bool speedChecking, speedRunning;
     string? speedPhase, speedError;
     double speedProgress;
@@ -27,7 +28,7 @@ public sealed partial class NetworkPage
     void StopSpeed()
     {
         speedCts?.Cancel(); speedCts = null;
-        speedChecking = speedRunning = false; speedPhase = null; speedLive = null; speedConfirm = null;
+        speedChecking = speedRunning = false; speedPhase = null; speedLive = null; speedConfirm = null; clearAsk = false;
     }
 
     void RenderSpeed()
@@ -86,7 +87,22 @@ public sealed partial class NetworkPage
                 speedBox.Children.Add(Line(OkGlyph(lv.Ok), lv.Text, OkBrush(lv.Ok)));
             }
             if (history.Count > 1) speedBox.Children.Add(HistoryBars());
-            if (!speedRunning) { var save = SaveReportPill(); save.HorizontalAlignment = HorizontalAlignment.Left; speedBox.Children.Add(save); }
+            if (!speedRunning && clearAsk)
+            {
+                speedBox.Children.Add(Lbl(L("Delete all %lld saved speed tests? Fastest and average then start fresh.", history.Count), 11, "FuseboxOnRow"));
+                var ask = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
+                ask.Children.Add(Pill("\uE74D", L("Delete"), null, (_, _) => ClearHistory()));
+                ask.Children.Add(Pill("", L("Not now"), null, (_, _) => { clearAsk = false; RenderSpeed(); }));
+                speedBox.Children.Add(ask);
+            }
+            else if (!speedRunning)
+            {
+                var pills = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Left };
+                pills.Children.Add(SaveReportPill());
+                pills.Children.Add(Pill("\uE74D", L("Clear history…"), L("Deletes the saved speed tests, for example after your connection got faster, so fastest and average start fresh."),
+                    (_, _) => { clearAsk = true; RenderSpeed(); }));
+                speedBox.Children.Add(pills);
+            }
         }
 
         // public IP: only on click, never stored
@@ -180,6 +196,14 @@ public sealed partial class NetworkPage
         {
             if (speedCts == cts) { speedCts = null; speedRunning = false; speedPhase = null; speedLive = null; if (visible) RenderSpeed(); }
         }
+    }
+
+    void ClearHistory()
+    {
+        clearAsk = false;
+        history = [];
+        Prefs.Set("speedHistory", SpeedHistory.ToJson(history));
+        RenderSpeed();
     }
 
     void CancelSpeed()

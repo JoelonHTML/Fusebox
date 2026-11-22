@@ -206,8 +206,17 @@ public class PdfTests
     {
         var s = Encoding.Latin1.GetString(NetPdf.Build(NetSample(), Id, compress: false));
         foreach (var t in new[] { "Network report", "Router ping", "Internet ping", "Slow DNS lookups \\(140 ms\\)", "Weak Wi-Fi signal \\(-72 dBm\\)",
-                     "bufferbloat", "Reply times, last 60 seconds", "Last 8 speed tests", "Find the problem", "Devices found" })
+                     "bufferbloat", "Reply times, last 60 seconds", "Last 8 speed tests", "Find the problem", "Devices found",
+                     "Latest measurement, with the fastest and the average", "What the numbers mean", "Jitter" })
             Assert.Contains(t, s);
+        Assert.DoesNotContain("Median", s);   // latest, fastest and average only
+        Assert.DoesNotContain("middle of", s);
+        // the big Download number is the latest test (41), not the middle of the history (~90)
+        var glance = NetSample();
+        var tiles = Encoding.Latin1.GetString(NetPdf.Build(glance with { Speeds = [glance.Speeds![0], glance.Speeds[1] with { Down = 400 }] }, Id, compress: false));
+        Assert.Matches(@"/F2 17 Tf [^\n]*\(41\) Tj", tiles);   // big bold tile number
+        Assert.DoesNotMatch(@"/F2 17 Tf [^\n]*\(400\) Tj", tiles);
+        Assert.Contains("fastest 400", tiles);
         var hostile = NetSample("10.0.0.7 CONTOSO") with { Finding = new Finding(FindCode.AllGood, "ok on JANES-LAPTOP via 192.168.1.1 aa:bb:cc:dd:ee:ff", true, "user jdoe1"), Pc = "C:\\Users\\jdoe1 Jane Doe" };
         var h = Encoding.Latin1.GetString(NetPdf.Build(hostile, Id, compress: false));
         foreach (var bad in new[] { "192.168", "10.0.0.7", "aa:bb", "JANES", "jdoe1", "CONTOSO", "Jane" }) Assert.DoesNotContain(bad, h);
