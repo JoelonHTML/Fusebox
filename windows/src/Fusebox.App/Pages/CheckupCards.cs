@@ -30,6 +30,13 @@ internal static class Shell
 {
     public static void Launch(string uri) { try { _ = Windows.System.Launcher.LaunchUriAsync(new Uri(uri)); } catch (Exception e) when (e is UriFormatException or InvalidOperationException) { } }
 
+    /// <summary>Opens a file with its default app (a saved PDF report).</summary>
+    public static void Open(string path)
+    {
+        try { Process.Start(new ProcessStartInfo(path) { UseShellExecute = true }); }
+        catch (Exception e) when (e is System.ComponentModel.Win32Exception or InvalidOperationException) { }
+    }
+
     /// <summary>Opens Explorer with the file selected ("Show in Explorer").</summary>
     public static void Reveal(string path)
     {

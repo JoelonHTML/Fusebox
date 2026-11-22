@@ -2,6 +2,7 @@ using System.Globalization;
 using System.Net;
 using Fusebox.App.Controls;
 using Fusebox.Core.Network;
+using Fusebox.Core.Reports;
 using Fusebox.Platform.Network;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
@@ -259,9 +260,9 @@ public sealed partial class NetworkPage
     }
 
     /// <summary>Shown after every measurement (Find the problem, speed test), so the result can be kept or sent at once.</summary>
-    Button SaveReportPill() => Pill("", L("Save report…"), L("A text file with signal, ping and speed numbers to send to your provider or helpdesk. No Wi-Fi name or addresses."), (_, _) => ShareReport());
+    Button SaveReportPill() => Pill("", L("Save report…"), L("A PDF with signal, ping and speed numbers and graphs to send to your provider or helpdesk. No Wi-Fi name or addresses."), (_, _) => ShareReport());
 
-    /// <summary>"Save report…": builds the text from what is already measured (nothing new runs), scrubs it, shows the share sheet.</summary>
+    /// <summary>"Save report…": builds the text from what is already measured (nothing new runs), scrubs it, shows the share sheet (Copy, Save as PDF…).</summary>
     async void ShareReport()
     {
         var n = net; var w = wifi is { Connected: true, Rssi: not null } ? wifi : null; var x = extras;
@@ -270,10 +271,14 @@ public sealed partial class NetworkPage
         var v6 = n == null ? (bool?)null : n.Ipv6Global.Length > 0 && n.Ipv6Router;
         var input = new NetReportInput(DateTime.Now, n == null ? null : Kind(n), x?.Vpn, x?.ProfileCategory, x?.EncryptedDns, x?.Metered,
             wide?.Rssi, (wide?.TxMbps ?? wide?.RxMbps) is > 0 and var rate ? rate : null, wide?.Channel, wide?.Band, wide?.WidthMhz, wide?.Phy,
-            router, inet, dnsMs, v6, finding, history.FirstOrDefault(), all.Count > 0 ? all.Count : null);
+            router, inet, dnsMs, v6, finding, history.FirstOrDefault(), all.Count > 0 ? all.Count : null,
+            history.ToArray(), liveRouter.Values.ToArray(), inet != null ? liveInternet.Values.ToArray() : null);   // copies: the rings keep moving
+        var pc = CheckupShare.PcLine();
         var text = await Task.Run(() => NetReport.Build(input, Fusebox.Platform.Checkup.CheckupReader.Identity()));
         if (!visible) return;
-        await CheckupShare.ShowSheetAsync(XamlRoot, L("Network report"), L("Contains no Wi-Fi name, network addresses, computer name or user name."), text, "Fusebox-network-" + DateTime.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        await CheckupShare.ShowSheetAsync(XamlRoot, L("Network report"), L("Contains no Wi-Fi name, network addresses, computer name or user name."), text,
+            "Fusebox-network-" + input.Now.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture),
+            () => NetPdf.Build(input with { Pc = pc() }, Fusebox.Platform.Checkup.CheckupReader.Identity()));
     }
 
     static string OkGlyph(bool? ok) => ok == false ? "" : ok == true ? "" : "";

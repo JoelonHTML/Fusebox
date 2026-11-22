@@ -380,6 +380,7 @@ public sealed partial class CheckupPage : Page
         var bar = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 20, HorizontalAlignment = HorizontalAlignment.Right };
         bar.Children.Add(Ui.Link(L("Share report…"), () => { if (bundle != null && XamlRoot != null) _ = CheckupShare.ShareAsync(XamlRoot, bundle); }));
         bar.Children.Add(Ui.Link(L("Export CSV"), () => { if (XamlRoot != null) _ = CheckupShare.ExportCsvAsync(XamlRoot, period); }));
+        bar.Children.Add(Ui.Link(L("Export PDF"), () => { if (bundle != null && XamlRoot != null) _ = CheckupShare.ExportPdfAsync(XamlRoot, bundle); }));
         return bar;
     }
 }
