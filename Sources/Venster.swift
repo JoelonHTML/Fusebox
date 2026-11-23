@@ -37,6 +37,18 @@ enum Page: String, CaseIterable, Identifiable {
     }
 }
 
+/// Eén uitgestelde opslag van de vensterplek: elke nieuwe beweging schuift hem op, en zolang de muis nog
+/// ingedrukt is (slepen) wacht hij verder.
+@MainActor enum MoveSave {
+    private static var pending: DispatchWorkItem?
+    static func later(_ save: @escaping @MainActor () -> Void) {
+        pending?.cancel()
+        let item = DispatchWorkItem { MainActor.assumeIsolated { NSEvent.pressedMouseButtons == 0 ? save() : later(save) } }
+        pending = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
+    }
+}
+
 /// Geeft het NSWindow waar deze view in staat (voor het vergroten/verkleinen per tabblad).
 struct WindowGrabber: NSViewRepresentable {
     let onWindow: (NSWindow) -> Void
@@ -153,7 +165,9 @@ struct RootView: View {
         // voor de volgende start; tijdens slepen niet elke pixel opslaan, pas bij loslaten.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)) { n in
             guard let w = window, n.object as? NSWindow === w, !w.inLiveResize else { return }
-            saveTopLeft(w)
+            // Tijdens het slepen komt dit bij elke pixel; elke opslag laat alle @AppStorage-weergaven en de meter
+            // opnieuw rekenen en dan loopt het venster achter je muis aan. Pas na loslaten opslaan.
+            MoveSave.later { saveTopLeft(w) }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEndLiveResizeNotification)) { n in
             guard let w = window, n.object as? NSWindow === w, !fullScreen(w) else { return }
