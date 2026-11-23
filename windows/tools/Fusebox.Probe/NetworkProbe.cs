@@ -35,6 +35,9 @@ public static class NetworkProbe
         };
         // neighbour table (GetIpNetTable2): printed only, a VM may have nothing but its gateway
         var arp = ArpTable.Read(net.IfIndex);
+        var best = NetProbe.BestInterface();
+        n["bestIfIndex"] = best;   // GetBestInterface: the adapter Windows routes the internet through must come first
+        if (best != 0 && conns.Any(c => c.IfIndex == best) && net.IfIndex != best) failures.Add("network: routed adapter not first");
         n["ifIndex"] = net.IfIndex; n["id"] = net.Id; n["ipv6"] = string.Join(",", net.Ipv6Global); n["ipv6Router"] = net.Ipv6Router;
         n["arpEntries"] = arp.Count;
         n["arpHasGateway"] = net.Gateway is { } g2 && arp.Any(e => e.Ip == g2);

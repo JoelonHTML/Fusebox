@@ -49,10 +49,15 @@ public static class NetProbe
             }
         }
         catch { }
-        return list.OrderBy(x => x.Virtual).ThenBy(x => x.Net.Gateway == null).Select(x => x.Net).ToList();
+        // Cable and Wi-Fi both up: the one Windows actually routes the internet through comes first (like the Mac 0.12 fix), not the first adapter in the list.
+        uint best = BestInterface();
+        return list.OrderBy(x => x.Virtual).ThenBy(x => x.Net.Gateway == null).ThenBy(x => best == 0 || x.Net.IfIndex != best).Select(x => x.Net).ToList();
     }
 
     public static LocalNet? Current() => Connections().FirstOrDefault();
+
+    /// <summary>Interface index Windows routes the internet through; 0 = unknown/offline.</summary>
+    public static uint BestInterface() => ArpNative.BestInterface();
 
     /// <summary>MAC of an address on our own subnet via ARP (no admin needed); null = nobody answered.</summary>
     public static byte[]? Arp(uint ip) => ArpNative.Query(ip);
@@ -157,6 +162,12 @@ internal static unsafe partial class ArpNative
 {
     [LibraryImport("iphlpapi.dll")]
     private static partial uint SendARP(uint destIp, uint srcIp, byte* mac, ref uint macLen);
+
+    [LibraryImport("iphlpapi.dll")]
+    private static partial uint GetBestInterface(uint destAddr, out uint bestIfIndex);
+
+    /// <summary>Interface index Windows uses to reach the internet (route to 1.1.1.1, lowest metric wins); 0 = unknown/offline.</summary>
+    public static uint BestInterface() { try { return GetBestInterface(0x01010101, out var i) == 0 ? i : 0; } catch { return 0; } }
 
     public static byte[]? Query(uint ip)
     {

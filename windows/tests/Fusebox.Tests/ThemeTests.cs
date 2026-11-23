@@ -57,10 +57,10 @@ public class ThemeTests
     }
 
     [Fact]
-    public void LightAccentDarkensExceptBlocks()
+    public void LightAccentDarkensAlsoOnBlocks()
     {
         Assert.Equal("#008C8C", R("minimal", Scheme.Light, "#00FFFF").Accent.Hex);
-        Assert.Equal("#00FFFF", R("blokken", Scheme.Light, "00ffff").Accent.Hex);
+        Assert.Equal("#008C8C", R("blokken", Scheme.Light, "00ffff").Accent.Hex);   // Mac 0.13: readable on Color blocks too
         Assert.Equal("#F5B83D", R("instrument", Scheme.Dark, "#12345G").Accent.Hex);   // bad hex = theme accent
     }
 

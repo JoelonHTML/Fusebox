@@ -220,14 +220,14 @@ public static class Themes
         return c;
     }
 
-    /// <summary>§10.4: dark accent on dark → brighter; light accent on light → darker (not for Color blocks).</summary>
+    /// <summary>§10.4: dark accent on dark → brighter; light accent on light → darker (Color blocks too, like the Mac 0.13: else light accents are unreadable on those pages).</summary>
     public static Theme Adapt(Theme t, Scheme s)
     {
         var c = t.Accent;
         double l = c.Luminance;
         var (h, sat, _) = c.Hsb;
         if (s == Scheme.Dark && l < 0.3) return t with { Accent = Argb.FromHsb(h, sat * 0.6, 1, c.A) };
-        if (s == Scheme.Light && l > 0.6 && t.RowStyle != RowStyle.Blocks) return t with { Accent = Argb.FromHsb(h, Math.Min(sat * 1.3 + 0.2, 1), 0.55, c.A) };
+        if (s == Scheme.Light && l > 0.6) return t with { Accent = Argb.FromHsb(h, Math.Min(sat * 1.3 + 0.2, 1), 0.55, c.A) };
         return t;
     }
 
