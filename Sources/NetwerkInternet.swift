@@ -15,20 +15,24 @@ struct NetConnection {
     let iface: String, kind: String
     let ipv4: String?, ipv6: [String], router: UInt32?, dns: [String], ipv6Internet: Bool
     var vpn = false   // VPN aan: als hoofdroute (kind "VPN") of naast Wi-Fi/kabel (alleen sommige verkeer)
+    var name: String? = nil       // naam van macOS, bv. "USB 10/100/1000 LAN" of "Thunderbolt Ethernet"
+    var linkMbit: Double? = nil   // kabelsnelheid naar switch/router (if_data), nil = onbekend
 
     static func current() -> NetConnection? {
         let v4 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
         let v6 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv6" as CFString) as? [String: Any]
         let dns = SCDynamicStoreCopyValue(nil, "State:/Network/Global/DNS" as CFString) as? [String: Any]
         guard let iface = v4?["PrimaryInterface"] as? String ?? v6?["PrimaryInterface"] as? String else { return nil }
-        var ipv4: String?, ipv6: [String] = []
+        var ipv4: String?, ipv6: [String] = [], baud: UInt32 = 0
         var list: UnsafeMutablePointer<ifaddrs>?
         if getifaddrs(&list) == 0 {
             var p = list
             while let a = p?.pointee {
                 defer { p = a.ifa_next }
                 guard String(cString: a.ifa_name) == iface, let sa = a.ifa_addr else { continue }
-                if sa.pointee.sa_family == UInt8(AF_INET) {
+                if sa.pointee.sa_family == UInt8(AF_LINK), let d = a.ifa_data {
+                    baud = d.assumingMemoryBound(to: if_data.self).pointee.ifi_baudrate
+                } else if sa.pointee.sa_family == UInt8(AF_INET) {
                     ipv4 = sa.withMemoryRebound(to: sockaddr_in.self, capacity: 1) { ipString(UInt32(bigEndian: $0.pointee.sin_addr.s_addr)) }
                 } else if sa.pointee.sa_family == UInt8(AF_INET6) {
                     var addr = sa.withMemoryRebound(to: sockaddr_in6.self, capacity: 1) { $0.pointee.sin6_addr }
@@ -44,10 +48,13 @@ struct NetConnection {
         // Diensten met een adres (VPN-apps melden hun utun hier, ook als Wi-Fi de hoofdroute blijft)
         let services = (SCDynamicStoreCopyKeyList(nil, "State:/Network/Service/.*/IPv4" as CFString) as? [String] ?? [])
             .compactMap { (SCDynamicStoreCopyValue(nil, $0 as CFString) as? [String: Any])?["InterfaceName"] as? String }
+        let name = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface])?
+            .first { SCNetworkInterfaceGetBSDName($0) as String? == iface }.flatMap { SCNetworkInterfaceGetLocalizedDisplayName($0) as String? }
         return NetConnection(iface: iface, kind: isVPN(iface) ? "VPN" : wifi ? "Wi-Fi" : iface.hasPrefix("en") ? "Ethernet" : iface,
                              ipv4: ipv4, ipv6: ipv6, router: (v4?["Router"] as? String).flatMap(parseIP),
                              dns: dns?["ServerAddresses"] as? [String] ?? [],
-                             ipv6Internet: !ipv6.isEmpty && v6?["Router"] != nil, vpn: vpnOn(primary: iface, services: services))
+                             ipv6Internet: !ipv6.isEmpty && v6?["Router"] != nil, vpn: vpnOn(primary: iface, services: services),
+                             name: name, linkMbit: !wifi && baud > 0 ? Double(baud) / 1e6 : nil)
     }
 
     /// Tunnel-interfaces van VPN's (WireGuard/IKEv2-apps: utun, oude IPsec: ipsec, L2TP/PPTP: ppp). macOS heeft zelf ook
@@ -647,288 +654,6 @@ final class InternetStats: ObservableObject {
     }
 }
 
-// MARK: - Weergave
-
-struct InternetPanel: View {
-    let wide: Bool
-    @StateObject private var stats = InternetStats()
-    @Environment(\.theme) private var theme
-    @AppStorage("pingHost") private var pingHost = "1.1.1.1"
-    @AppStorage("netPanelOpen") private var open = false
-    @AppStorage("netFindNow") private var findNow = false   // gezet door "Network" in het menubalkpaneel
-    @State private var confirmClear = false
-    @State private var reportNote: String?
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
-            HStack(alignment: .top, spacing: 10) {
-                VStack(alignment: .leading, spacing: 5) {
-                    if let c = stats.conn {
-                        line(c.kind == "Wi-Fi" ? "wifi" : c.kind == "VPN" ? "lock.shield" : "cable.connector", L("This Mac \(c.ipv4 ?? "–") on \(c.kind)")
-                             + (stats.wifi.map { L(" · signal \($0.word) (\($0.rssi) dBm)") } ?? ""))
-                        HStack(spacing: 16) {
-                            stat(L("Router"), stats.router)
-                            if !pingHost.isEmpty { stat("Internet", stats.internet) }
-                        }
-                        verdictLine
-                        findLine
-                    } else {
-                        line("wifi.slash", L("Not connected to a network"))
-                    }
-                }
-                Spacer(minLength: 0)
-                if wide, stats.conn != nil { graph.frame(width: 170, height: 46) }
-                Button {
-                    withAnimation(.snappy(duration: 0.25)) { open.toggle() }
-                } label: {
-                    Image(systemName: "chevron.down").rotationEffect(.degrees(open ? 180 : 0))
-                        .font(.system(size: 11, weight: .semibold)).frame(width: 20, height: 20).contentShape(.rect)
-                }
-                .buttonStyle(.plain).foregroundStyle(theme.onRow()).help(open ? "Fewer details" : "More details: connection, Wi-Fi, quality, speed test")
-            }
-            if open { details.transition(.opacity.combined(with: .move(edge: .top))) }
-        }
-        .font(theme.label(11)).foregroundStyle(theme.onRow(true))
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .themedRow(theme, index: 0)
-        .clipped()
-        .onAppear { stats.start(); findIfAsked() }
-        .onDisappear { stats.stop() }
-        .onChange(of: pingHost) { stats.start() }
-        .onChange(of: findNow) { findIfAsked() }
-    }
-
-    private func findIfAsked() {
-        guard findNow else { return }
-        findNow = false
-        stats.findProblem()
-    }
-
-    private var verdictLine: some View {
-        Group {
-            if stats.testing {
-                line("hourglass", L("Testing the connection…"))
-            } else if stats.finding != nil || stats.findBusy {
-                EmptyView()   // de grondige controle (hieronder) vervangt het snelle oordeel: geen twee tegenstrijdige regels
-            } else if stats.router != nil || stats.internet != nil {
-                let v = InternetStats.verdict(wired: stats.conn?.kind != "Wi-Fi", rssi: stats.wifi?.rssi, snr: stats.wifi?.snr,
-                                              router: stats.router, internet: stats.internet, dnsMs: stats.dnsMs, internetCheck: !pingHost.isEmpty)
-                line(v.ok == false ? "exclamationmark.triangle" : v.ok == true ? "checkmark.circle" : "info.circle", v.text)
-                    .foregroundStyle(theme.rowStyle == .blocks ? .white : v.ok == false ? theme.warn : v.ok == true ? theme.good : theme.onRow(true))
-            }
-        }
-    }
-
-    /// "Is het mijn Wi-Fi of het internet?": knop, daarna één oordeel met de getallen eronder.
-    @ViewBuilder private var findLine: some View {
-        if stats.findBusy {
-            HStack(spacing: 6) { ProgressView().controlSize(.small); Text("Checking Wi-Fi, router, DNS and internet… (about 6 s)") }
-        } else {
-            if let f = stats.finding {
-                line(f.ok == false ? "exclamationmark.triangle" : f.ok == true ? "checkmark.circle" : "info.circle", f.text)
-                    .foregroundStyle(theme.rowStyle == .blocks ? .white : f.ok == false ? theme.warn : f.ok == true ? theme.good : theme.onRow(true))
-                if !f.numbers.isEmpty { Text(f.numbers).font(theme.label(10)).foregroundStyle(theme.onRow(true)).padding(.leading, 22).fixedSize(horizontal: false, vertical: true) }
-            }
-            Button { stats.findProblem() } label: { NetPill(title: stats.finding == nil ? L("Find the problem") : L("Check again"), icon: "stethoscope") }
-                .buttonStyle(.plain).help("Is it your Wi-Fi or the internet? About 6 s: pings your router and 1.1.1.1, times fresh DNS lookups and reads the Wi-Fi signal")
-        }
-    }
-
-    private func stat(_ title: String, _ s: PingStats?) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 5) {
-            Text(title).foregroundStyle(theme.onRow())
-            Text(s == nil ? "…" : msText(s?.avg)).font(theme.number(15)).foregroundStyle(theme.onRow())
-            Text("ms").foregroundStyle(theme.onRow(true))
-            if let s, s.loss > 0 { Text("\(Int((s.loss * 100).rounded()))% lost").foregroundStyle(theme.rowStyle == .blocks ? .white : theme.warn) }
-        }
-    }
-
-    /// Live: internet (lijn) en router (dunne lijn), laatste ~2 minuten.
-    private var graph: some View {
-        let inet = stats.liveInternet, router = stats.liveRouter
-        let main = pingHost.isEmpty || inet.isEmpty ? router : inet
-        let n = max(main.count, 2)
-        return VStack(alignment: .trailing, spacing: 2) {
-            SparkView(values: main, second: main == router ? [] : router, top: max((main + router).max() ?? 1, 5) * 1.2,
-                      fill: Double(n - 1) / Double(InternetStats.graphPoints - 1), glides: false)
-            Text(main == router ? "router · live" : "internet — router ┄ · live").font(theme.label(9)).foregroundStyle(theme.onRow(true))
-        }
-        .help("Reply times over the last two minutes (max \(msText((main + router).max())) ms)")
-    }
-
-    // MARK: Details (uitgeklapt)
-
-    private var details: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 230), spacing: 16, alignment: .top)], alignment: .leading, spacing: 12) {
-            if let c = stats.conn {
-                section(L("Connection")) {
-                    kv(L("Type"), c.kind == "VPN" ? "VPN" : "\(c.kind) (\(c.iface))")
-                    kv("VPN", c.vpn ? L("VPN on") : L("Off"))
-                    if let m = stats.metered { kv(L("Metered"), m ? L("Yes: macOS and apps may hold back big downloads and backups") : L("No")) }
-                    kv("IPv4", c.ipv4 ?? "–")
-                    kv("IPv6", c.ipv6.first.map { $0 + (c.ipv6.count > 1 ? " (+\(c.ipv6.count - 1))" : "") } ?? L("none"))
-                    kv(L("Router"), c.router.map(ipString) ?? L("unknown"))
-                    kv("DNS", c.dns.isEmpty ? L("unknown") : c.dns.prefix(3).joined(separator: ", "))
-                    kv(L("IPv6 internet"), c.ipv6Internet ? L("Yes") : L("No"))
-                }
-            }
-            if let w = stats.wifi {
-                section("Wi-Fi") {
-                    kv(L("Signal"), "\(w.rssi) dBm (\(w.word))")
-                    if let snr = w.snr { kv(L("Noise"), "\(w.noise) dBm · SNR \(snr) dB") }
-                    if w.rate > 0 { kv(L("Link speed"), "\(Int(w.rate)) Mbit/s") }
-                    if let ch = w.channel { kv(L("Channel"), ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · ")) }
-                    if let phy = w.phy { kv(L("Standard"), phy) }
-                }
-            }
-            section(L("Quality (10 pings)")) {
-                kv(L("Router"), statsText(stats.router))
-                if !pingHost.isEmpty {
-                    kv("Internet", statsText(stats.internet) + (stats.internetViaTCP ? " (TCP)" : ""))
-                    kv(L("DNS lookup"), stats.dnsMs.map { "\(msText($0)) ms" } ?? "–")
-                } else {
-                    kv("Internet", L("off (Settings)"))
-                }
-                HStack(spacing: 6) {
-                    Button { stats.start() } label: { NetPill(title: stats.testing ? L("Testing…") : L("Test again"), icon: "arrow.clockwise") }
-                        .buttonStyle(.plain).disabled(stats.testing)
-                    reportButton
-                }
-                .padding(.top, 2)
-                if let reportNote { Text(reportNote).foregroundStyle(theme.rowStyle == .blocks ? .white : theme.warn) }
-            }
-            section(L("Speed test")) { speedTest }
-        }
-        .padding(.top, 2)
-    }
-
-    @ViewBuilder private var speedTest: some View {
-        let warn = theme.rowStyle == .blocks ? Color.white : theme.warn
-        if let phase = stats.speedPhase {
-            HStack(spacing: 6) {
-                ProgressView().controlSize(.small)
-                Text(phase).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
-                Button { stats.cancelSpeedTest() } label: { NetPill(title: L("Cancel"), icon: "xmark") }.buttonStyle(.plain)
-            }
-            ProgressView(value: stats.speedProgress).controlSize(.small)
-            if let live = stats.speedLive { kv(L("Now"), mbitText(live)) }
-        } else if let kind = stats.speedConfirm {
-            Text("This connection is metered (mobile data, iPhone hotspot or Low Data Mode). The \(kind.title.lowercased()) test uses \(usage(kind)) of data.")
-                .foregroundStyle(warn).fixedSize(horizontal: false, vertical: true)
-            HStack(spacing: 6) {
-                Button { stats.runSpeedTest(kind) } label: { NetPill(title: L("Run anyway"), icon: "speedometer") }.buttonStyle(.plain)
-                Button { stats.dismissSpeedConfirm() } label: { NetPill(title: L("Not now"), icon: "xmark") }.buttonStyle(.plain)
-            }
-        } else {
-            HStack(spacing: 6) {
-                Button { stats.requestSpeedTest(.quick) } label: { NetPill(title: L("Quick"), icon: "hare") }
-                    .buttonStyle(.plain).help("About 10 s, 4 connections at once. The first 2 s, while the line speeds up, don't count.")
-                Button { stats.requestSpeedTest(.full) } label: { NetPill(title: L("Full"), icon: "gauge.with.dots.needle.67percent") }
-                    .buttonStyle(.plain).help("About 30 s, 6 connections: typical and top speed, delay while the line is busy (bufferbloat) and how steady it is.")
-            }
-            Text("Quick uses \(usage(.quick)), Full \(usage(.full)) (via Cloudflare)").font(theme.label(10)).fixedSize(horizontal: false, vertical: true)
-        }
-        if let e = stats.speedError { Text(e).foregroundStyle(warn).fixedSize(horizontal: false, vertical: true) }
-        if let last = stats.history.first {
-            kv(L("Download"), mbitText(last.down) + (last.downPeak.map { L(" · top \(mbitText($0))") } ?? ""))
-            kv(L("Upload"), mbitText(last.up) + (last.upPeak.map { L(" · top \(mbitText($0))") } ?? ""))
-            kv(L("Delay"), last.ping.map { "\(msText($0)) ms" + (last.loadedPing.map { L(" · busy \(msText($0)) ms") } ?? "") } ?? "–")
-            if let v = last.variation { kv(L("Stability"), SpeedMath.stabilityText(v)) }
-            kv(L("Tested"), last.date.formatted(date: .abbreviated, time: .shortened) + " · " + kindName(last.kind))
-            if let idle = last.ping, let busy = last.loadedPing {
-                let v = SpeedMath.loadVerdict(idle: idle, loaded: busy)
-                line(v.ok == false ? "exclamationmark.triangle" : v.ok == true ? "checkmark.circle" : "info.circle", v.text)
-                    .foregroundStyle(theme.rowStyle == .blocks ? .white : v.ok == false ? theme.warn : v.ok == true ? theme.good : theme.onRow(true))
-            }
-            if stats.history.count > 1 { historyBars }
-            HStack(spacing: 6) {
-                reportButton
-                Button { confirmClear = true } label: { NetPill(title: L("Clear history…"), icon: "trash") }
-                    .buttonStyle(.plain).help("Deletes the saved speed tests, so fastest and average start fresh")
-            }
-            .confirmationDialog("Clear speed test history?", isPresented: $confirmClear) {
-                Button("Clear history", role: .destructive) { stats.clearHistory() }
-            } message: {
-                Text("All \(stats.history.count) saved speed tests are deleted. Fastest and average start fresh with your next test.")
-            }
-        }
-        Divider().opacity(0.4).padding(.vertical, 2)
-        if let ip = stats.publicIP {
-            kv(L("Public IP"), ip.ip)
-            if let isp = ip.isp { kv(L("Provider"), isp) }
-            if let place = ip.place { kv(L("Location"), place) }
-        } else {
-            Button { stats.loadPublicIP() } label: { NetPill(title: stats.publicIPState ?? L("Show public IP"), icon: "globe") }
-                .buttonStyle(.plain).help("Asks speed.cloudflare.com which address and provider you appear as")
-        }
-    }
-
-    private var reportButton: some View {
-        Button { saveReport() } label: { NetPill(title: L("Save report…"), icon: "doc.text") }
-            .buttonStyle(.plain).disabled(stats.testing)
-            .help("Saves a PDF with your connection, quality and speed tests, to send to a helpdesk or your provider. No network name, addresses or device names.")
-    }
-
-    private func saveReport() {
-        reportNote = nil
-        let p = NSSavePanel()
-        p.nameFieldStringValue = "fusebox-network-report.pdf"
-        p.allowedContentTypes = [.pdf]
-        guard p.runModal() == .OK, let url = p.url else { return }
-        if !stats.report(internetCheck: !pingHost.isEmpty).writePDF(to: url) { reportNote = L("Creating the PDF failed") }
-    }
-
-    /// Geschat verbruik: op basis van de vorige uitslag, anders het plafond (beide richtingen).
-    private func usage(_ kind: SpeedKind) -> String {
-        SpeedMath.estimate(kind, last: stats.history.first).map { L("about \(bytes(Double($0)))") } ?? L("at most \(bytes(Double(kind.cap * 2)))")
-    }
-
-    private func kindName(_ k: SpeedKind?) -> String { k.map { L("\($0.title) test") } ?? L("single connection") }
-
-    /// Laatste 10 metingen als staafjes (download), oudste links. Volledig = brede staaf.
-    private var historyBars: some View {
-        let list = Array(stats.history.reversed()), top = max(list.map(\.down).max() ?? 1, 1)
-        let color = theme.rowStyle == .blocks ? Color.white : theme.accent
-        return HStack(alignment: .bottom, spacing: 3) {
-            ForEach(Array(list.enumerated()), id: \.offset) { _, r in
-                Capsule().fill(color.opacity(r == stats.history.first ? 1 : 0.45))
-                    .frame(width: r.kind == .full ? 9 : 5, height: max(3, 24 * r.down / top))
-                    .help("\(r.date.formatted(date: .abbreviated, time: .shortened)) · \(kindName(r.kind)): ↓\(mbitText(r.down)) ↑\(mbitText(r.up))")
-            }
-            Text("last \(list.count) · wide = Full").font(theme.label(9)).padding(.leading, 4)
-        }
-        .frame(height: 26, alignment: .bottom)
-    }
-
-    private func statsText(_ s: PingStats?) -> String {
-        guard let s else { return stats.testing ? "…" : "–" }
-        guard s.got > 0, let avg = s.avg else { return L("no answer") }
-        var t = "\(msText(avg)) ms"
-        if let lo = s.min, let hi = s.max { t += " (\(msText(lo))–\(msText(hi)))" }
-        if let j = s.jitter { t += L(" · jitter \(msText(j))") }
-        return t + L(" · \(Int((s.loss * 100).rounded()))% lost")
-    }
-
-    private func section<C: View>(_ title: String, @ViewBuilder _ content: () -> C) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(theme.label(11)).foregroundStyle(theme.onRow())
-            content()
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private func kv(_ k: String, _ v: String) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 6) {
-            Text(k).frame(width: 78, alignment: .leading)
-            Text(v).foregroundStyle(theme.onRow()).textSelection(.enabled).fixedSize(horizontal: false, vertical: true)
-        }
-    }
-
-    private func line(_ icon: String, _ text: String) -> some View {
-        Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon).frame(width: 14) }
-    }
-}
-
 /// Snelheidstest-uitslag in de gekozen eenheid (Instellingen › Network): "412 Mbit/s" of "51.5 MB/s".
 func mbitText(_ mbit: Double) -> String {
     UserDefaults.standard.bool(forKey: "speedMB") ? "\(one(mbit / 8)) MB/s" : "\(Int(mbit.rounded())) Mbit/s"
@@ -1081,15 +806,7 @@ private struct NetReportPage: View {
 
     private var glossary: some View {
         VStack(alignment: .leading, spacing: 13) {
-            term(L("Ping (delay)"), L("How long a tiny message takes to travel there and back, in milliseconds (ms). Lower is better. To the internet, under 20 ms is very good and under 50 ms is fine; above 100 ms you notice it in calls and games."))
-            term(L("Router and internet"), L("Router is your own network: the Wi-Fi or cable to your router. Internet is the path beyond it, through your provider. If the router is fine but the internet is not, the problem is most likely at your provider."))
-            term(L("Jitter"), L("How much the delay changes from one message to the next. Low jitter means a steady line. Above about 30 ms, calls and video can stutter."))
-            term(L("Lost"), L("The share of messages that never came back. 0% is normal. Even 1 or 2% makes calls break up and pages load slowly."))
-            term("95%", L("95 out of 100 replies were at least this fast. It shows the slow moments that an average hides."))
-            term(L("Busy delay (bufferbloat)"), L("The delay while the line is full with a download or upload. If it rises a lot compared with the normal delay, calls and games suffer whenever someone downloads. A router with smart queueing (SQM) fixes this."))
-            term(L("Download and upload"), L("How much data per second comes in (download: streaming, websites) and goes out (upload: video calls, sending files, backups), in megabits per second (Mbit/s). Compare it with your subscription; over Wi-Fi you often get less than over a cable."))
-            term(L("Stability"), L("How much the speed changed from second to second during the test. ±10% or less is steady; above ±25% the line is unsteady, often from Wi-Fi interference or a busy network."))
-            term(L("Signal, noise and SNR"), L("Wi-Fi signal strength in dBm: −50 is excellent, −60 good, below −70 weak. Noise is background radio interference. SNR is the gap between the two: above 25 dB is good, below 20 dB causes errors and slowdowns."))
+            ForEach(NetTerm.report) { term($0.title, $0.text) }   // dezelfde uitleg als de ⓘ en de labels in de app
         }
     }
 
