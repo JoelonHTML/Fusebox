@@ -143,7 +143,7 @@ extension Theme {
         if let c = NSColor(t.accent).usingColorSpace(.sRGB) {
             let l = Self.luminance(c)
             if s == .dark && l < 0.3 { t.accent = Color(hue: c.hueComponent, saturation: c.saturationComponent * 0.6, brightness: 1) }
-            if s == .light && l > 0.6 && t.rowStyle != .blocks { t.accent = Color(hue: c.hueComponent, saturation: min(c.saturationComponent * 1.3 + 0.2, 1), brightness: 0.55) }
+            if s == .light && l > 0.6 { t.accent = Color(hue: c.hueComponent, saturation: min(c.saturationComponent * 1.3 + 0.2, 1), brightness: 0.55) }
         }
         return t
     }
