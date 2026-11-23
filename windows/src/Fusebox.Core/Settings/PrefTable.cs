@@ -91,6 +91,9 @@ public static class PrefTable
             new("notifyNewDevice", false),
             new("netHide", ""),                    // hidden columns: mac,vendor,kind ("" = MAC visible, PLAN §7.8)
             new("speedMB", false),
+            new("netConnDetails", false),          // per-card "Details" open (Mac keys)
+            new("netLinkDetails", false),
+            new("netSpeedDetails", false),
             // Docked
             new("dockedInternals", false),
             new("dockedEmpty", true),
@@ -134,7 +137,6 @@ public static class PrefTable
             new("speedHistory", "", B),
             new("netFindNow", false, B),
             new("netRecentRanges", "", B),
-            new("netPanelOpen", false, B),
             new("checkupOpen", "", B),
             new("analysisPeriod", "", B),
             new("appPeriod", "", B),

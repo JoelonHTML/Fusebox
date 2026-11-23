@@ -16,9 +16,9 @@ using static Fusebox.Core.Strings;
 namespace Fusebox.App.Pages;
 
 /// <summary>
-/// Network (§6): internet panel (connection, Wi-Fi, quality, live graph, "Find the problem", speed test), toolbar and the device list of a LAN scan.
+/// Network (§6): three cards (Connection, Wi-Fi or cable, Speed test) and below them the Devices section (toolbar, column header pinned while the rows scroll) of a LAN scan.
 /// Nothing runs while the page is hidden: pings, scans and timers start in OnNavigatedTo and stop in OnNavigatedFrom. Cloudflare only after a click.
-/// Parts: NetworkPage.xaml.cs (page, toolbar, header), .Panel.cs (internet panel), .Speed.cs (speed test, public IP), .Devices.cs (scan, rows).
+/// Parts: NetworkPage.xaml.cs (page, toolbar, header, pinned header), .Cards.cs (card frames, ⓘ, hover explanations), .Panel.cs (Connection + Wi-Fi cards), .Speed.cs (Speed test card, public IP), .Devices.cs (scan, rows).
 /// </summary>
 public sealed partial class NetworkPage : Page
 {
@@ -47,6 +47,7 @@ public sealed partial class NetworkPage : Page
     TextBox searchBox = null!;
     Button searchClear = null!;
     TextBlock countText = null!, phaseText = null!;
+    bool pinned;
     ProgressBar scanBar = null!;
     Button rangePill = null!, bell = null!, scanPill = null!;
     Flyout rangeFlyout = null!;
@@ -72,6 +73,7 @@ public sealed partial class NetworkPage : Page
         // nothing but the recent list survives a visit: filter, search, sort, range and the open row start fresh
         filter = NetFilter.All; search = ""; sortCol = NetCol.Ip; ascending = true; openId = null; customRange = null; customHosts = null;
         if (built) searchBox.Text = "";
+        SetPinned(false);
         Prefs.Changed += OnPref;
         ThemeService.ThemeChanged += OnTheme;
         listTimer = DispatcherQueue.CreateTimer();
@@ -111,7 +113,7 @@ public sealed partial class NetworkPage : Page
 
     void UI(Action a) => DispatcherQueue.TryEnqueue(() => { if (visible) a(); });
 
-    void OnTheme() { if (!visible || !built) return; BuildHeader(); RenderSummary(); RenderDetails(); RenderList(force: true); RenderToolbar(); }
+    void OnTheme() { if (!visible || !built) return; BuildHeader(); BuildCards(); RenderCards(); RenderList(force: true); RenderToolbar(); if (pinned) PinnedHost.Background = PinBackdrop(); else UpdatePin(); }
 
     void OnPref(string key) => UI(() =>
     {
@@ -216,9 +218,13 @@ public sealed partial class NetworkPage : Page
     {
         if (built) return;
         built = true;
-        BuildPanel();
+        BuildCards();
         BuildToolbar();
         BuildHint();
+        var title = Lbl(L("Devices"), 13, "FuseboxText", wrap: false); title.VerticalAlignment = VerticalAlignment.Center;
+        countText.VerticalAlignment = VerticalAlignment.Center;
+        TitleRow.Children.Add(title); TitleRow.Children.Add(countText);
+        DevicesHeader.SizeChanged += (_, _) => { if (pinned) HeaderSlot.Height = DevicesHeader.ActualHeight; };
         EmptyText.Foreground = B("FuseboxSecondary");
         Look.Label(EmptyText, 12);
         if (visible) Start();
@@ -280,15 +286,15 @@ public sealed partial class NetworkPage : Page
         bell = Plain(Icon("", 12), null, 22, 20, (_, _) => Prefs.Set("notifyNewDevice", !Prefs.Bool("notifyNewDevice")));
         scanPill = Pill("", L("Scan"), click: (_, _) => { if (scanning) scanCts?.Cancel(); else StartScan(); });
 
-        // columns: filter | search (70…170) | count | spacer | phase | progress | range | bell | scan
-        var cols = new GridLength[] { GridLength.Auto, new(1, GridUnitType.Star), GridLength.Auto, new(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto };
+        // columns: filter | search (70…170) | spacer | phase | progress | range | bell | scan   (the count sits in the Devices title row)
+        var cols = new GridLength[] { GridLength.Auto, new(1, GridUnitType.Star), new(1, GridUnitType.Star), GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto, GridLength.Auto };
         for (int i = 0; i < cols.Length; i++)
         {
             var d = new ColumnDefinition { Width = cols[i] };
             if (i == 1) { d.MinWidth = 70; d.MaxWidth = 170; }
             Toolbar.ColumnDefinitions.Add(d);
         }
-        var parts = new FrameworkElement[] { filterBar, searchGrid, countText, new Border(), phaseText, scanBar, rangePill, bell, scanPill };
+        var parts = new FrameworkElement[] { filterBar, searchGrid, new Border(), phaseText, scanBar, rangePill, bell, scanPill };
         for (int i = 0; i < parts.Length; i++)
         {
             if (parts[i] is FrameworkElement fe && i != 1) fe.VerticalAlignment = VerticalAlignment.Center;
@@ -308,7 +314,6 @@ public sealed partial class NetworkPage : Page
         settingFilter = true;
         filterBar.SelectedItem = filterBar.Items[(int)filter]; filterBox.SelectedIndex = (int)filter;
         settingFilter = false;
-        countText.Visibility = wide ? Visibility.Visible : Visibility.Collapsed;
         countText.Text = NetView.CountText(all);
         searchBox.FontSize = ThemeService.Current.Size(12);
         phaseText.Visibility = wide && scanning ? Visibility.Visible : Visibility.Collapsed;
@@ -429,20 +434,18 @@ public sealed partial class NetworkPage : Page
     void RootSizeChanged(object sender, SizeChangedEventArgs e)
     {
         ApplyBand();
-        if (details != null) details.MaxHeight = DetailsMaxHeight();
+        LayoutCards();
     }
 
     void ApplyBand(bool force = false)
     {
         if (!built) return;
-        var nb = NetView.Band(Root.ActualWidth);
+        var nb = NetView.Band(Root.ActualWidth - 24);   // the page padding (12 + 12) is not list width
         if (nb == band && !force) return;
-        bool wasWide = band >= NetBand.Kind;
         band = nb;
         RenderToolbar();
         BuildHeader();
         foreach (var r in rows.Values) r.Layout(band, hide);
-        if (visible && wasWide != (band >= NetBand.Kind)) { RenderSummary(); RestartLive(); }
     }
 
     // ---- column header + sorting (§6.8) ----
@@ -451,7 +454,7 @@ public sealed partial class NetworkPage : Page
     {
         HeaderRow.Children.Clear(); HeaderRow.ColumnDefinitions.Clear();
         var spec = RowSpec.For(ThemeService.Current.RowStyle);
-        HeaderRow.Margin = new Thickness(spec.PadH, 0, spec.PadH + 14, 0);
+        HeaderRow.Margin = new Thickness(spec.PadH, 0, spec.PadH, 0);
         void Col(NetCol c, string title, string? tip, bool right)
         {
             if (!NetView.Shows(band, hide, c)) return;
@@ -480,5 +483,43 @@ public sealed partial class NetworkPage : Page
         Col(NetCol.Vendor, L("Vendor"), null, false);
         Col(NetCol.Kind, L("Type"), null, false);
         Col(NetCol.Ms, "ms", L("Reply time in milliseconds"), true);
+    }
+
+    // ---- pinned Devices header ----
+    // The real header (title, toolbar, hint, column header) lives in HeaderSlot. Once it has scrolled out of view it moves into PinnedHost at the top of the page
+    // (the slot keeps its height, so nothing jumps); scrolling back moves it home. Only on scroll, never per frame.
+
+    /// <summary>A solid backdrop so rows don't show through (Liquid Glass has no solid bg: its glass fill).</summary>
+    static Brush PinBackdrop() => B(ThemeService.Current.Bg == null ? "FuseboxGlassFill" : "FuseboxBg");
+
+    void PageScrollViewChanged(object sender, ScrollViewerViewChangedEventArgs e) => UpdatePin();
+
+    void UpdatePin()
+    {
+        if (!built) return;
+        double top;
+        try { top = HeaderSlot.TransformToVisual(PageBody).TransformPoint(new Point(0, 0)).Y; } catch { return; }
+        SetPinned(PageScroll.VerticalOffset > top + 0.5);
+    }
+
+    void SetPinned(bool on)
+    {
+        if (on == pinned) return;
+        pinned = on;
+        if (on)
+        {
+            HeaderSlot.Height = DevicesHeader.ActualHeight;
+            HeaderSlot.Children.Remove(DevicesHeader);
+            PinnedHost.Child = DevicesHeader;
+            PinnedHost.Background = PinBackdrop();
+            PinnedHost.Visibility = Visibility.Visible;
+        }
+        else
+        {
+            PinnedHost.Visibility = Visibility.Collapsed;
+            PinnedHost.Child = null;
+            HeaderSlot.Children.Add(DevicesHeader);
+            HeaderSlot.Height = double.NaN;
+        }
     }
 }

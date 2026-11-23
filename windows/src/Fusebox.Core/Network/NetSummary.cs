@@ -54,13 +54,6 @@ public static class InternetVerdict
         if (s.Jitter is { } j) t += L(" · jitter %@", NetView.MsText(j));
         return t + L(" · %lld%% lost", (int)Math.Round(s.Loss * 100));
     }
-
-    /// <summary>Summary line: "This PC 192.168.1.23 on Wi-Fi · signal good (−54 dBm)". Never the Wi-Fi name.</summary>
-    public static string ConnectionLine(string? ipv4, string kind, int? rssi)
-    {
-        var t = L("This PC %@ on %@", ipv4 ?? "–", kind);
-        return rssi is { } r ? t + L(" · signal %@ (%lld dBm)", WifiMath.Word(r), r) : t;
-    }
 }
 
 /// <summary>Last N reply times for the live graph; a missed ping repeats the previous value (loss shows in the numbers), the very first miss = 0.</summary>

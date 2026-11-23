@@ -149,15 +149,12 @@ public class InternetVerdictTests
     }
 
     [Fact]
-    public void StatsAndSummaryLines()
+    public void StatsLines()
     {
         Assert.Equal("…", InternetVerdict.StatsText(null, true));
         Assert.Equal("–", InternetVerdict.StatsText(null, false));
         Assert.Equal("no answer", InternetVerdict.StatsText(P(0, 0), false));
         Assert.Equal("3 ms (3–3) · jitter <1 · 0% lost", InternetVerdict.StatsText(P(3), false));
-        Assert.Equal("This PC 192.168.1.23 on Wi-Fi · signal good (-54 dBm)", InternetVerdict.ConnectionLine("192.168.1.23", "Wi-Fi", -54));
-        Assert.Equal("This PC – on Ethernet", InternetVerdict.ConnectionLine(null, "Ethernet", null));
-        Assert.Contains("fair (-65 dBm)", InternetVerdict.ConnectionLine("1.2.3.4", "Wi-Fi", -65));
     }
 
     [Fact]
@@ -566,5 +563,18 @@ public class NetPacketTests
         Assert.All(p.Take(6), b => Assert.Equal(0xFF, b));
         for (int i = 0; i < 16; i++) Assert.Equal(mac, p.Skip(6 + i * 6).Take(6));
         Assert.Null(NetPackets.MagicPacket([1, 2, 3]));
+    }
+}
+
+public class NetTermsTests
+{
+    [Fact]
+    public void EveryTermHasTitleAndText()
+    {
+        foreach (var t in Enum.GetValues<Fusebox.Core.Network.NetTerm>())
+        {
+            Assert.NotEmpty(Fusebox.Core.Network.NetTerms.Title(t));
+            Assert.NotEmpty(Fusebox.Core.Network.NetTerms.Text(t));
+        }
     }
 }

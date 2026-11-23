@@ -6,27 +6,18 @@ using Fusebox.Core.Reports;
 using Fusebox.Platform.Network;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
-using Microsoft.UI.Xaml.Media;
 using static Fusebox.Core.Strings;
 
 namespace Fusebox.App.Pages;
 
-/// <summary>Internet panel (§6.3): summary lines, live graph, "Find the problem", expandable details (connection, Wi-Fi, quality, speed test).</summary>
+/// <summary>Connection card (verdict, router / internet reply times, live graph, "Find the problem", details) and the Wi-Fi / cable card (§6.3).</summary>
 public sealed partial class NetworkPage
 {
-    StackPanel summary = null!, graphBox = null!;
-    ScrollViewer details = null!;
-
-    /// <summary>Open details get at most 40 % of the page and scroll inside; the device list below always keeps room.
-    /// (A fixed "height − 230" left the list 0 px tall, so nothing could scroll.)</summary>
-    double DetailsMaxHeight() => Math.Max(120, Root.ActualHeight * 0.4);
-    NetColumns detailsGrid = null!;
+    StackPanel graphBox = null!;
     NetGraph graph = null!;
     TextBlock graphCaption = null!;
-    FontIcon chevronIcon = null!;
-    Button chevron = null!;
-    bool panelOpen;
     WifiInfo? wifi;
+    double? linkMbit;
     WinNetExtras? extras;
     PingStats? router, internet;
     bool viaTcp, testing, findBusy;
@@ -37,41 +28,12 @@ public sealed partial class NetworkPage
     readonly RttRing liveRouter = new(), liveInternet = new();
     CancellationTokenSource? qualityCts, liveCts, findCts;
 
-    void BuildPanel()
-    {
-        var root = new StackPanel { Spacing = 8, HorizontalAlignment = HorizontalAlignment.Stretch };
-        var top = new Grid { ColumnSpacing = 10 };
-        top.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        top.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        summary = new StackPanel { Spacing = 5 };
-
-        graph = new NetGraph { Width = 170, Height = 46 };
-        graphCaption = Lbl("", 9, "FuseboxOnRowSecondary", wrap: false);
-        graphCaption.HorizontalAlignment = HorizontalAlignment.Right;
-        graphBox = new StackPanel { Spacing = 2, Visibility = Visibility.Collapsed };
-        graphBox.Children.Add(graph); graphBox.Children.Add(graphCaption);
-        Grid.SetColumn(graphBox, 1);
-
-        chevronIcon = new FontIcon { Glyph = "", FontSize = 11, Foreground = B("FuseboxOnRow"), RenderTransformOrigin = new Windows.Foundation.Point(0.5, 0.5), RenderTransform = new RotateTransform() };
-        chevron = Plain(chevronIcon, null, 20, 20, (_, _) => SetOpen(!panelOpen));
-        chevron.VerticalAlignment = VerticalAlignment.Top;
-        Grid.SetColumn(chevron, 2);
-        top.Children.Add(summary); top.Children.Add(graphBox); top.Children.Add(chevron);
-
-        detailsGrid = new NetColumns { Margin = new Thickness(0, 2, 0, 0) };
-        details = new ScrollViewer { Content = detailsGrid, Visibility = Visibility.Collapsed, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, VerticalScrollMode = ScrollMode.Auto };
-        root.Children.Add(top); root.Children.Add(details);
-        InternetCard.Child = root;
-    }
-
     // ---- lifetime ----
 
     async void StartPanel()
     {
         history = SpeedHistory.Parse(Prefs.Str("speedHistory"));
-        panelOpen = Prefs.Bool("netPanelOpen");
-        ApplyOpen();
+        RenderCards();
         await RefreshConnection(first: true);
     }
 
@@ -81,24 +43,31 @@ public sealed partial class NetworkPage
         findBusy = false; testing = false;
     }
 
+    static double? CableMbit(string id)
+    {
+        try { foreach (var nic in System.Net.NetworkInformation.NetworkInterface.GetAllNetworkInterfaces()) if (nic.Id == id) return nic.Speed > 0 ? nic.Speed / 1e6 : null; }
+        catch { }
+        return null;
+    }
+
     /// <summary>Reads connection + Wi-Fi (cheap, on a worker). A different address or router restarts the quality test.</summary>
     async Task RefreshConnection(bool first = false)
     {
         try
         {
-            var (n, w) = await Task.Run(() => { var c = NetProbe.Current(); return (c, c?.IsWifi == true ? Wifi.Read() : null); });
+            var (n, w, mbit) = await Task.Run(() => { var c = NetProbe.Current(); return (c, c?.IsWifi == true ? Wifi.Read() : null, c is { IsWifi: false } ? CableMbit(c.Id) : null); });
             if (!visible) return;
             bool moved = first || net?.Ip != n?.Ip || net?.Gateway != n?.Gateway || net?.Name != n?.Name;
-            net = n; wifi = w;
-            var sig = $"{n?.Ip}|{n?.Gateway}|{w?.Rssi}|{w?.Channel}|{w?.RxMbps}|{w?.TxMbps}";
+            net = n; wifi = w; linkMbit = mbit;
+            var sig = $"{n?.Ip}|{n?.Gateway}|{w?.Rssi}|{w?.Channel}|{w?.RxMbps}|{w?.TxMbps}|{mbit}";
             if (moved)
             {
                 finding = null; router = internet = null; liveRouter.Clear(); liveInternet.Clear(); extras = null;
-                RenderSummary(); RenderDetails();
+                RenderCards();
                 StartQuality();
-                if (panelOpen) LoadExtras();
+                if (Prefs.Bool("netConnDetails")) LoadExtras();
             }
-            else if (sig != connSig) { RenderSummary(); RenderDetails(); }
+            else if (sig != connSig) RenderCards();
             connSig = sig;
         }
         catch { }
@@ -110,9 +79,9 @@ public sealed partial class NetworkPage
         qualityCts?.Cancel();
         var cts = qualityCts = new CancellationTokenSource();
         var n = net;
-        if (n == null) { testing = false; RenderSummary(); return; }
+        if (n == null) { testing = false; RenderConnection(); return; }
         testing = true; router = internet = null;
-        RenderSummary(); RenderDetails();
+        RenderConnection();
         try
         {
             var host = Prefs.Str("pingHost");
@@ -124,7 +93,7 @@ public sealed partial class NetworkPage
         catch { }
         if (qualityCts != cts) return;
         testing = false;
-        RenderSummary(); RenderDetails();
+        RenderConnection();
         RestartLive();
     }
 
@@ -136,7 +105,7 @@ public sealed partial class NetworkPage
         _ = LiveLoop(cts.Token);
     }
 
-    /// <summary>One sample per second for the graph (only while the graph is shown); the connection is re-read every 5 s. Stops with the page.</summary>
+    /// <summary>One sample per second for the graph (only while the window is on screen); the connection is re-read every 5 s. Stops with the page.</summary>
     async Task LiveLoop(CancellationToken ct)
     {
         int n = 0;
@@ -146,7 +115,7 @@ public sealed partial class NetworkPage
             {
                 // The page stays navigated while the window is hidden in the tray or minimized: then no pings, just a cheap wait.
                 bool shown = App.Main?.IsOnScreen ?? false;
-                bool graphOn = shown && band >= NetBand.Kind && net != null;
+                bool graphOn = shown && net != null;
                 await Task.Delay(graphOn ? 1000 : 5000, ct);
                 if (!visible) return;
                 if (!shown) continue;
@@ -167,9 +136,9 @@ public sealed partial class NetworkPage
 
     void UpdateGraph()
     {
-        bool show = band >= NetBand.Kind && net != null;
-        graphBox.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
-        if (!show) return;
+        if (cards.Length != 3) return;
+        graphBox.Visibility = net != null ? Visibility.Visible : Visibility.Collapsed;
+        if (net == null) return;
         bool inet = Prefs.Str("pingHost").Length > 0 && liveInternet.Values.Count > 0;
         var main = inet ? liveInternet.Values : liveRouter.Values;
         var second = inet ? liveRouter.Values : [];
@@ -178,86 +147,220 @@ public sealed partial class NetworkPage
         ToolTipService.SetToolTip(graph, L("Reply times over the last two minutes (max %@ ms)", NetView.MsText(main.Concat(second).DefaultIfEmpty(0).Max())));
     }
 
-    // ---- expand / collapse (netPanelOpen) ----
-
-    void SetOpen(bool open)
-    {
-        panelOpen = open;
-        Prefs.Set("netPanelOpen", open);
-        ApplyOpen();
-        if (open && extras == null) LoadExtras();
-    }
-
-    void ApplyOpen()
-    {
-        details.Visibility = panelOpen ? Visibility.Visible : Visibility.Collapsed;
-        ((RotateTransform)chevronIcon.RenderTransform).Angle = panelOpen ? 180 : 0;
-        ToolTipService.SetToolTip(chevron, panelOpen ? L("Fewer details") : L("More details: connection, Wi-Fi, quality, speed test"));
-        details.MaxHeight = DetailsMaxHeight();
-        if (panelOpen) RenderDetails();
-    }
-
     async void LoadExtras()
     {
         var n = net;
         var x = await Task.Run(() => WinNet.Read(n));
         if (!visible || net != n) return;
         extras = x;
-        RenderDetails();
+        RenderConnection();
     }
 
-    // ---- summary lines (§6.3.1) ----
+    // ---- Connection card (Mac: verdict, router + internet + graph, find the problem; details: connection, quality, public IP) ----
 
     static string Kind(LocalNet n) => n.IsWifi ? "Wi-Fi" : "Ethernet";
 
-    void RenderSummary()
+    static string OkGlyph(bool? ok) => ok == false ? "" : ok == true ? "" : "";
+
+    UIElement PingStat(NetTerm t, PingStats? s)
     {
-        if (!built) return;
-        summary.Children.Clear();
+        var sp = Stat(t, Big(s == null ? "…" : s.Got == 0 ? "–" : NetView.MsText(s.Avg), "ms"));
+        if (s != null && s.Loss > 0)
+        {
+            var lost = Lbl(L("%lld%% lost", (int)Math.Round(s.Loss * 100)), 10, "FuseboxWarn", wrap: false);
+            lost.Foreground = WarnBrush();
+            sp.Children.Add(lost);
+        }
+        ToolTipService.SetToolTip(sp, InternetVerdict.StatsText(s, testing));
+        return sp;
+    }
+
+    void RenderConnection()
+    {
+        if (!built || cards.Length != 3) return;
+        var c = cards[0];
+        if (graphBox.Parent is Panel old) old.Children.Remove(graphBox);
+        c.Face.Children.Clear(); c.Details.Children.Clear();
+        c.OpenKey = "netConnDetails";
+        miTest.IsEnabled = !testing && net != null;
+        miIp.IsEnabled = publicIp == null && ipCts == null;
         UpdateGraph();
         if (net is not { } n)
         {
-            summary.Children.Add(Line("", L("Not connected to a network")));
+            c.Face.Children.Add(Line("", L("Not connected to a network"), OkBrush(false)));
+            ApplyOpen(c);
             return;
         }
+        bool inetOn = Prefs.Str("pingHost").Length > 0;
         int? rssi = n.IsWifi && wifi is { Connected: true } ? wifi.Rssi : null;
-        summary.Children.Add(Line(n.IsWifi ? "" : "", InternetVerdict.ConnectionLine(NetAddress.IpString(n.Ip), Kind(n), rssi)));
 
-        var stats = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 16 };
-        if (n.Gateway != null) stats.Children.Add(Stat(L("Router"), router));
-        if (Prefs.Str("pingHost").Length > 0) stats.Children.Add(Stat("Internet", internet));
-        if (stats.Children.Count > 0) summary.Children.Add(stats);
-
-        if (testing) summary.Children.Add(Line("", L("Testing the connection…")));
+        if (testing) c.Face.Children.Add(Line("", L("Testing the connection…")));
         else if (finding == null && !findBusy && (router != null || internet != null))
         {
-            var v = InternetVerdict.Verdict(!n.IsWifi, rssi, null, router, internet, dnsMs, Prefs.Str("pingHost").Length > 0);
-            summary.Children.Add(Line(OkGlyph(v.Ok), v.Text, OkBrush(v.Ok)));
+            // the thorough check below replaces the quick verdict: never two contradicting lines
+            var v = InternetVerdict.Verdict(!n.IsWifi, rssi, null, router, internet, dnsMs, inetOn);
+            var line = Line(OkGlyph(v.Ok), v.Ok == true ? L("All good") : v.Text, OkBrush(v.Ok));
+            ToolTipService.SetToolTip(line, v.Text);
+            c.Face.Children.Add(line);
         }
 
-        // "Find the problem" (§6.3.4)
+        var stats = new Grid { ColumnSpacing = 18 };
+        void Add(UIElement e, GridLength w) { stats.ColumnDefinitions.Add(new ColumnDefinition { Width = w }); Grid.SetColumn((FrameworkElement)e, stats.ColumnDefinitions.Count - 1); stats.Children.Add(e); }
+        if (n.Gateway != null) Add(PingStat(NetTerm.Router, router), GridLength.Auto);
+        if (inetOn) Add(PingStat(NetTerm.Internet, internet), GridLength.Auto);
+        Add(graphBox, new GridLength(1, GridUnitType.Star));
+        c.Face.Children.Add(stats);
+
+        // "Is it my Wi-Fi or the internet?": button, then one verdict with the numbers under it. Save report… stays next to it after every measurement.
         if (findBusy)
         {
             var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
             row.Children.Add(new ProgressRing { IsActive = true, Width = 14, Height = 14 });
-            row.Children.Add(Lbl(L("Checking Wi-Fi, router, DNS and internet… (about 6 s)"), 11, "FuseboxOnRowSecondary"));
-            summary.Children.Add(row);
+            row.Children.Add(Lbl(L("Checking Wi-Fi, router, DNS and internet… (about 6 s)"), 10, "FuseboxOnRowSecondary"));
+            c.Face.Children.Add(row);
         }
         else
         {
             if (finding is { } f)
             {
-                summary.Children.Add(Line(OkGlyph(f.Ok), f.Text, OkBrush(f.Ok)));
-                if (f.Numbers.Length > 0) { var nt = Lbl(f.Numbers, 10); nt.Margin = new Thickness(22, 0, 0, 0); summary.Children.Add(nt); }
+                c.Face.Children.Add(Line(OkGlyph(f.Ok), f.Text, OkBrush(f.Ok)));
+                if (f.Numbers.Length > 0) { var nt = Lbl(f.Numbers, 10); nt.Margin = new Thickness(22, 0, 0, 0); nt.IsTextSelectionEnabled = true; c.Face.Children.Add(nt); }
             }
             var pill = Pill("", finding == null ? L("Find the problem") : L("Check again"),
                 L("Is it your Wi-Fi or the internet? About 6 s: pings your router and 1.1.1.1, times fresh DNS lookups and reads the Wi-Fi signal"), (_, _) => FindProblem());
-            var save = SaveReportPill();
             var pills = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, HorizontalAlignment = HorizontalAlignment.Left };
-            pills.Children.Add(pill); pills.Children.Add(save);
-            summary.Children.Add(pills);
+            pills.Children.Add(pill); pills.Children.Add(SaveReportPill());
+            c.Face.Children.Add(pills);
         }
+
+        // details
+        var d = c.Details;
+        d.Children.Add(Kv(NetTerm.Type, $"{Kind(n)} ({n.Name})"));
+        if (extras is { } x)
+        {
+            if (WinExtras.ProfileWord(x.ProfileCategory) is { } pw) d.Children.Add(Kv(NetTerm.Profile, pw));
+            d.Children.Add(Kv(NetTerm.Vpn, x.Vpn ? L("VPN on") : L("Off")));
+            if (x.EncryptedDns is { } doh) d.Children.Add(Kv(NetTerm.EncryptedDns, WinExtras.OnOff(doh)));
+            d.Children.Add(Kv(NetTerm.Metered, WinExtras.Metered(x.Metered)));
+        }
+        d.Children.Add(Kv(NetTerm.Ipv4, NetAddress.IpString(n.Ip)));
+        var v6 = n.Ipv6Global;
+        d.Children.Add(Kv(NetTerm.Ipv6, v6.Length > 0 ? v6[0] + (v6.Length > 1 ? $" (+{v6.Length - 1})" : "") : L("none")));
+        d.Children.Add(Kv(NetTerm.Gateway, n.Gateway is { } g ? NetAddress.IpString(g) : L("unknown"), L("Router")));
+        d.Children.Add(Kv(NetTerm.DnsServers, n.Dns.Length == 0 ? L("unknown") : string.Join(", ", n.Dns.Take(3))));
+        d.Children.Add(Kv(NetTerm.Ipv6Internet, WinExtras.YesNo(v6.Length > 0 && n.Ipv6Router)));
+
+        d.Children.Add(Subhead(L("Quality (10 pings)")));
+        d.Children.Add(Kv(NetTerm.Router, InternetVerdict.StatsText(router, testing)));
+        if (inetOn)
+        {
+            d.Children.Add(Kv(NetTerm.Internet, InternetVerdict.StatsText(internet, testing) + (viaTcp ? " (TCP)" : "")));
+            d.Children.Add(Kv(NetTerm.DnsLookup, dnsMs is { } ms ? NetView.MsText(ms) + " ms" : "–"));
+        }
+        else d.Children.Add(Kv(NetTerm.Internet, L("off (Settings)")));
+
+        // public IP: only on a click, never stored
+        if (publicIp is { } ip)
+        {
+            d.Children.Add(Subhead(L("Public IP")));
+            d.Children.Add(Kv(NetTerm.PublicIp, ip.Ip));
+            if (ip.Isp != null) d.Children.Add(Kv(NetTerm.PublicIp, ip.Isp, L("Provider")));
+            if (ip.Place != null) d.Children.Add(Kv(NetTerm.PublicIp, ip.Place, L("Location")));
+        }
+        else if (publicIpState != null) d.Children.Add(Line("", publicIpState));
+        else
+        {
+            var b = Pill("", L("Show public IP"), L("Asks speed.cloudflare.com which address and provider you appear as"), (_, _) => LoadPublicIp());
+            b.HorizontalAlignment = HorizontalAlignment.Left; b.Margin = new Thickness(0, 4, 0, 0);
+            d.Children.Add(b);
+        }
+        ApplyOpen(c);
     }
+
+    // ---- Wi-Fi card, or the cable / not-connected variant (Mac "link") ----
+
+    void RenderLink()
+    {
+        if (!built || cards.Length != 3) return;
+        var c = cards[1];
+        c.Face.Children.Clear(); c.Details.Children.Clear();
+        c.OpenKey = null;
+        if (net is { IsWifi: true } && wifi is { Connected: true, Rssi: { } rssi } w)
+        {
+            // Never the Wi-Fi name or BSSID. Windows gives no noise value, so no noise / SNR.
+            c.OpenKey = "netLinkDetails"; c.Terms = NetTerms.Wifi; c.Icon.Glyph = ""; c.Title.Text = "Wi-Fi";
+            bool? ok = rssi >= -60 ? true : rssi >= -70 ? null : false;
+            var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18 };
+
+            var sig = new StackPanel { Spacing = 1 };
+            sig.Children.Add(Term(NetTerm.Signal));
+            var big = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 8 };
+            big.Children.Add(Big(rssi.ToString(CultureInfo.InvariantCulture), "dBm"));
+            var bars = SignalBars(rssi, OkBrush(ok)); bars.Margin = new Thickness(0, 0, 0, 5);
+            big.Children.Add(bars);
+            sig.Children.Add(big);
+            var word = Lbl(WifiMath.Word(rssi), 10, "FuseboxOnRowSecondary", wrap: false); word.Foreground = OkBrush(ok);
+            sig.Children.Add(word);
+            Tip(sig, NetTerm.Signal);
+            head.Children.Add(sig);
+
+            var rate = w.TxMbps ?? w.RxMbps;
+            if (rate is > 0) head.Children.Add(Stat(NetTerm.LinkSpeed, Big(rate.Value.ToString(CultureInfo.InvariantCulture), "Mbit/s")));
+            c.Face.Children.Add(head);
+            var facts = new[] { w.Band, w.Phy?.Split(" (")[0] }.OfType<string>().ToList();
+            if (facts.Count > 0) c.Face.Children.Add(Lbl(string.Join(" · ", facts), 11, "FuseboxOnRowSecondary"));
+
+            c.Details.Children.Add(Kv(NetTerm.Signal, $"{rssi} dBm ({WifiMath.Word(rssi)})"));
+            if (rate is > 0) c.Details.Children.Add(Kv(NetTerm.LinkSpeed, $"{rate} Mbit/s"));
+            if (w.Channel is { } ch) c.Details.Children.Add(Kv(NetTerm.Channel, string.Join(" · ", new[] { ch.ToString(CultureInfo.InvariantCulture), w.Band, w.WidthMhz is { } wd ? wd + " MHz" : null }.OfType<string>())));
+            if (w.Phy != null) c.Details.Children.Add(Kv(NetTerm.Standard, w.Phy));
+        }
+        else if (net is { IsWifi: true })
+        {
+            c.Terms = NetTerms.Wifi; c.Icon.Glyph = ""; c.Title.Text = "Wi-Fi";
+            c.Face.Children.Add(Line("", L("No Wi-Fi signal information available")));
+        }
+        else if (net is { } n)
+        {
+            c.Terms = NetTerms.Wired; c.Icon.Glyph = ""; c.Title.Text = L("Cable");
+            c.Face.Children.Add(Line("", L("Connected by cable, not Wi-Fi")));
+            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18 };
+            if (linkMbit is { } mb)
+            {
+                var text = LinkSpeedText(mb); var i = text.IndexOf(' ');
+                row.Children.Add(Stat(NetTerm.LinkSpeed, Big(text[..i], text[(i + 1)..])));
+            }
+            var ad = new StackPanel { Spacing = 1, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent) };
+            ad.Children.Add(Term(NetTerm.Cable, L("Adapter")));
+            var nm = Lbl(n.Description.Length > 0 ? n.Description : n.Name, 13, "FuseboxOnRow"); ad.Children.Add(nm);
+            ad.Children.Add(Lbl(n.Name, 10, "FuseboxOnRowSecondary"));
+            Tip(ad, NetTerm.Cable);
+            row.Children.Add(ad);
+            c.Face.Children.Add(row);
+        }
+        else
+        {
+            c.Terms = NetTerms.Wired; c.Icon.Glyph = ""; c.Title.Text = "Wi-Fi";
+            c.Face.Children.Add(Line("", L("Not connected"), OkBrush(false)));
+        }
+        ApplyOpen(c);
+    }
+
+    /// <summary>Four bars like the tray icon: the stronger the signal, the more are filled.</summary>
+    static FrameworkElement SignalBars(int rssi, Microsoft.UI.Xaml.Media.Brush color)
+    {
+        int level = rssi >= -55 ? 4 : rssi >= -62 ? 3 : rssi >= -70 ? 2 : rssi >= -78 ? 1 : 0;
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Bottom };
+        for (int i = 0; i < 4; i++)
+            row.Children.Add(new Border { Width = 4, Height = 6 + i * 4, CornerRadius = new CornerRadius(1.5), VerticalAlignment = VerticalAlignment.Bottom,
+                Background = i < level ? color : B("FuseboxOnRowSecondary"), Opacity = i < level ? 1 : 0.25 });
+        AutomationHelp(row, $"{level}/4");
+        return row;
+    }
+
+    static void AutomationHelp(FrameworkElement e, string text) => Microsoft.UI.Xaml.Automation.AutomationProperties.SetName(e, text);
+
+    // ---- report and "find the problem" ----
 
     /// <summary>Shown after every measurement (Find the problem, speed test), so the result can be kept or sent at once.</summary>
     Button SaveReportPill() => Pill("", L("Save report…"), L("A PDF with signal, ping and speed numbers and graphs to send to your provider or helpdesk. No Wi-Fi name or addresses."), (_, _) => ShareReport());
@@ -281,32 +384,13 @@ public sealed partial class NetworkPage
             () => NetPdf.Build(input with { Pc = pc() }, Fusebox.Platform.Checkup.CheckupReader.Identity()));
     }
 
-    static string OkGlyph(bool? ok) => ok == false ? "" : ok == true ? "" : "";
-
-    UIElement Stat(string title, PingStats? s)
-    {
-        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
-        var t = Lbl(title, 11, "FuseboxOnRow", wrap: false);
-        var v = Num(s == null ? "…" : NetView.MsText(s.Avg), 15);
-        var ms = Lbl("ms", 11, "FuseboxOnRowSecondary", wrap: false);
-        foreach (var x in new FrameworkElement[] { t, v, ms }) x.VerticalAlignment = VerticalAlignment.Bottom;
-        row.Children.Add(t); row.Children.Add(v); row.Children.Add(ms);
-        if (s != null && s.Loss > 0)
-        {
-            var lost = Lbl(L("%lld%% lost", (int)Math.Round(s.Loss * 100)), 11, "FuseboxWarn", wrap: false);
-            lost.Foreground = WarnBrush(); lost.VerticalAlignment = VerticalAlignment.Bottom;
-            row.Children.Add(lost);
-        }
-        return row;
-    }
-
     async void FindProblem()
     {
         if (findBusy) return;
         findCts?.Cancel();
         var cts = findCts = new CancellationTokenSource();
         finding = null; findBusy = true;
-        RenderSummary();
+        RenderConnection();
         try
         {
             var (f, _, _) = await Task.Run(() => Troubleshooter.RunAsync(cts.Token), cts.Token);
@@ -315,82 +399,6 @@ public sealed partial class NetworkPage
         }
         catch (OperationCanceledException) { return; }
         catch (Exception ex) { finding = new Finding(FindCode.NotConnected, ex.Message, false, ""); }
-        finally { if (findCts == cts) { findBusy = false; if (visible) RenderSummary(); } }
-    }
-
-    // ---- details (§6.3.5) ----
-
-    StackPanel Section(string title)
-    {
-        var s = new StackPanel { Spacing = 3, HorizontalAlignment = HorizontalAlignment.Stretch };
-        s.Children.Add(Lbl(title, 11, "FuseboxOnRow"));
-        return s;
-    }
-
-    static Grid Kv(string key, string value)
-    {
-        var g = new Grid { ColumnSpacing = 6 };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(78) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var k = Lbl(key, 11, "FuseboxOnRowSecondary");
-        var v = Lbl(value, 11, "FuseboxOnRow");
-        v.IsTextSelectionEnabled = true;
-        Grid.SetColumn(v, 1);
-        g.Children.Add(k); g.Children.Add(v);
-        return g;
-    }
-
-    void RenderDetails()
-    {
-        if (!built || !panelOpen) return;
-        detailsGrid.Children.Clear();
-        if (net is { } n)
-        {
-            var c = Section(L("Connection"));
-            c.Children.Add(Kv(L("Type"), $"{Kind(n)} ({n.Name})"));
-            c.Children.Add(Kv("IPv4", NetAddress.IpString(n.Ip)));
-            var v6 = n.Ipv6Global;
-            c.Children.Add(Kv("IPv6", v6.Length > 0 ? v6[0] + (v6.Length > 1 ? $" (+{v6.Length - 1})" : "") : L("none")));
-            c.Children.Add(Kv(L("Router"), n.Gateway is { } g ? NetAddress.IpString(g) : L("unknown")));
-            c.Children.Add(Kv("DNS", n.Dns.Length == 0 ? L("unknown") : string.Join(", ", n.Dns.Take(3))));
-            c.Children.Add(Kv(L("IPv6 internet"), WinExtras.YesNo(v6.Length > 0 && n.Ipv6Router)));
-            if (extras is { } x)
-            {
-                if (WinExtras.ProfileWord(x.ProfileCategory) is { } pw) c.Children.Add(Kv(L("Network"), pw));
-                c.Children.Add(Kv("VPN", WinExtras.YesNo(x.Vpn)));
-                if (x.EncryptedDns is { } doh) c.Children.Add(Kv(L("Encrypted DNS"), WinExtras.OnOff(doh)));
-                c.Children.Add(Kv(L("Metered"), WinExtras.Metered(x.Metered)));
-            }
-            detailsGrid.Children.Add(c);
-        }
-        if (net is { IsWifi: true } && wifi is { Connected: true, Rssi: { } rssi } w)
-        {
-            // Never the Wi-Fi name or BSSID. Windows gives no noise value, so no Noise/SNR row.
-            var s = Section("Wi-Fi");
-            s.Children.Add(Kv(L("Signal"), $"{rssi} dBm ({WifiMath.Word(rssi)})"));
-            if ((w.TxMbps ?? w.RxMbps) is { } rate && rate > 0) s.Children.Add(Kv(L("Link speed"), $"{rate} Mbit/s"));
-            if (w.Channel is { } ch) s.Children.Add(Kv(L("Channel"), string.Join(" · ", new[] { ch.ToString(CultureInfo.InvariantCulture), w.Band, w.WidthMhz is { } wd ? wd + " MHz" : null }.OfType<string>())));
-            if (w.Phy != null) s.Children.Add(Kv(L("Standard"), w.Phy));
-            detailsGrid.Children.Add(s);
-        }
-        var q = Section(L("Quality (10 pings)"));
-        bool inetOn = Prefs.Str("pingHost").Length > 0;
-        q.Children.Add(Kv(L("Router"), InternetVerdict.StatsText(router, testing)));
-        if (inetOn)
-        {
-            q.Children.Add(Kv("Internet", InternetVerdict.StatsText(internet, testing) + (viaTcp ? " (TCP)" : "")));
-            q.Children.Add(Kv(L("DNS lookup"), dnsMs is { } d ? NetView.MsText(d) + " ms" : "–"));
-        }
-        else q.Children.Add(Kv("Internet", L("off (Settings)")));
-        var again = Pill("", testing ? L("Testing…") : L("Test again"), null, (_, _) => StartQuality());
-        again.IsEnabled = !testing; again.HorizontalAlignment = HorizontalAlignment.Left; again.Margin = new Thickness(0, 2, 0, 0);
-        q.Children.Add(again);
-        detailsGrid.Children.Add(q);
-
-        var sp = Section(L("Speed test"));
-        speedBox = new StackPanel { Spacing = 3 };
-        sp.Children.Add(speedBox);
-        detailsGrid.Children.Add(sp);
-        RenderSpeed();
+        finally { if (findCts == cts) { findBusy = false; if (visible) RenderConnection(); } }
     }
 }

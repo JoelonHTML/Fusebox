@@ -73,7 +73,7 @@ public partial class App : Application
             {
                 SettingsWindow.Current?.Close();
                 Prefs.Set("appearanceMode", "dark");
-                Prefs.Set("netPanelOpen", true);   // pass 2 shows Network with the internet details open (list must keep room)
+                foreach (var k in new[] { "netConnDetails", "netLinkDetails", "netSpeedDetails" }) Prefs.Set(k, true);   // pass 2 shows Network with all card details open (the page must still scroll)
                 Main.AppWindow.Resize(new Windows.Graphics.SizeInt32(1000, 680));
                 Main.AppWindow.Move(new Windows.Graphics.PointInt32(10, 10));
                 Main.Activate();

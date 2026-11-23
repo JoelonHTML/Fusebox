@@ -92,3 +92,14 @@
 "Delete" = "Wissen";
 "Clear history…" = "Geschiedenis wissen…";
 "Deletes the saved speed tests, for example after your connection got faster, so fastest and average start fresh." = "Wist de bewaarde snelheidstests, bijvoorbeeld nadat je verbinding sneller is geworden, zodat snelste en gemiddelde opnieuw beginnen.";
+/* Network cards (Windows-only wording) — nl */
+"How Windows treats this network. Private: other devices can find this PC. Public: it hides, which is safer in cafés and hotels." = "Hoe Windows dit netwerk behandelt. Privé: andere apparaten kunnen deze pc vinden. Openbaar: de pc verbergt zich, veiliger in cafés en hotels.";
+"How this PC is connected: Wi-Fi, a cable (Ethernet) or a VPN. A cable is usually faster and steadier than Wi-Fi." = "Hoe deze pc verbonden is: wifi, een kabel (ethernet) of een VPN. Een kabel is meestal sneller en stabieler dan wifi.";
+"No Wi-Fi signal information available" = "Geen wifi-signaalgegevens beschikbaar";
+"The servers that turn names like apple.com into addresses. Usually your router or provider; you can change them in Settings › Network & internet." = "De servers die namen als apple.com omzetten in adressen. Meestal je router of provider; je kunt ze wijzigen in Instellingen › Netwerk en internet.";
+"The speed between this PC and the router (or switch), not your internet speed. It's usually higher than a speed test shows; on Wi-Fi it drops when the signal is weak." = "De snelheid tussen deze pc en de router (of switch), niet je internetsnelheid. Meestal hoger dan een snelheidstest laat zien; op wifi zakt hij als het signaal zwak is.";
+"This PC's address on your own network, handed out by the router. The internet doesn't see it." = "Het adres van deze pc op je eigen netwerk, uitgedeeld door de router. Het internet ziet het niet.";
+"This PC's newer, longer address, if your network supports IPv6. \"none\" is common and not a problem." = "Het nieuwere, langere adres van deze pc, als je netwerk IPv6 ondersteunt. \"none\" komt vaak voor en is geen probleem.";
+"Whether name lookups are sent encrypted, so others on the network can't see which sites you look up. Windows 11 can turn this on by itself." = "Of naamopzoekingen versleuteld worden verstuurd, zodat anderen op het netwerk niet zien welke sites je opzoekt. Windows 11 kan dit zelf aanzetten.";
+"Yes on mobile data, a phone hotspot or with a data limit set. Windows and apps then hold back big downloads and backups." = "Ja bij mobiele data, een hotspot van je telefoon of met een datalimiet. Windows en apps houden dan grote downloads en back-ups tegen.";
+"How much the speed changed from second to second during the test. ±10% or less is steady; above ±25% the line is unsteady, often from Wi-Fi interference or a busy network." = "Hoeveel de snelheid tijdens de test van seconde tot seconde veranderde. ±10% of minder is stabiel; boven ±25% geldt de lijn als onrustig, vaak door storing op de wifi of een druk netwerk.";

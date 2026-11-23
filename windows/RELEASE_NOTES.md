@@ -1,3 +1,4 @@
-- Network report: "At a glance" now shows the latest measurement, with the fastest and the average under it (no more "middle of" values)
-- Network report: new last page "What the numbers mean" that explains ping, jitter, lost, 95%, bufferbloat, download/upload and more
-- Speed test: "Clear history…" deletes the saved tests, for example after your connection got faster, so fastest and average start fresh
+- Network: redone like the Mac — Connection, Wi-Fi and Speed test as three cards, each with its own details, an ⓘ explanation and an explanation on every value when you point at it
+- Network: the Devices list sits below the cards in one scroll area, and its toolbar stays at the top while you scroll
+- Cable and Wi-Fi both on: Fusebox now shows the connection Windows actually uses
+- Light accent colours stay readable on Color blocks pages too

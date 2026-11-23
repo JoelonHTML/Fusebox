@@ -38,45 +38,6 @@ public sealed partial class NetWrap : Panel
     }
 }
 
-/// <summary>Adaptive columns for the internet panel details (Mac LazyVGrid minimum 230, spacing 16 / 12): one column below ~476 DIPs, two wider, more on very wide windows. Rows are top-aligned.</summary>
-public sealed partial class NetColumns : Panel
-{
-    const double Min = 230, ColGap = 16, RowGap = 12;
-
-    static int Cols(double w, int n) => Math.Max(1, Math.Min(n, (int)Math.Floor((w + ColGap) / (Min + ColGap))));
-
-    protected override Size MeasureOverride(Size available)
-    {
-        double w = double.IsInfinity(available.Width) ? Min : available.Width;
-        int n = Children.Count, cols = Cols(w, n);
-        double cw = (w - (cols - 1) * ColGap) / cols, h = 0;
-        for (int i = 0; i < n; i += cols)
-        {
-            double rowH = 0;
-            for (int j = i; j < Math.Min(n, i + cols); j++) { Children[j].Measure(new Size(cw, double.PositiveInfinity)); rowH = Math.Max(rowH, Children[j].DesiredSize.Height); }
-            h += rowH + (i > 0 ? RowGap : 0);
-        }
-        return new Size(w, h);
-    }
-
-    protected override Size ArrangeOverride(Size final)
-    {
-        int n = Children.Count, cols = Cols(final.Width, n);
-        double cw = (final.Width - (cols - 1) * ColGap) / cols, y = 0;
-        for (int i = 0; i < n; i += cols)
-        {
-            double rowH = 0;
-            for (int j = i; j < Math.Min(n, i + cols); j++)
-            {
-                Children[j].Arrange(new Rect((j - i) * (cw + ColGap), y, cw, Children[j].DesiredSize.Height));
-                rowH = Math.Max(rowH, Children[j].DesiredSize.Height);
-            }
-            y += rowH + RowGap;
-        }
-        return final;
-    }
-}
-
 /// <summary>Live reply-time graph: main line 1.5 DIPs with 15 % fill, second line 1 DIP at 50 %. Right-aligned, grows from the right until 60 points exist. Redraws only when set.</summary>
 public sealed partial class NetGraph : Grid
 {

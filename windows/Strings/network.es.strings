@@ -92,3 +92,14 @@
 "Delete" = "Borrar";
 "Clear history…" = "Borrar historial…";
 "Deletes the saved speed tests, for example after your connection got faster, so fastest and average start fresh." = "Borra las pruebas de velocidad guardadas, por ejemplo después de que tu conexión sea más rápida, para que la más rápida y la media empiecen de nuevo.";
+/* Network cards (Windows-only wording) — es */
+"How Windows treats this network. Private: other devices can find this PC. Public: it hides, which is safer in cafés and hotels." = "Cómo trata Windows esta red. Privada: otros dispositivos pueden encontrar este PC. Pública: se oculta, más seguro en cafés y hoteles.";
+"How this PC is connected: Wi-Fi, a cable (Ethernet) or a VPN. A cable is usually faster and steadier than Wi-Fi." = "Cómo está conectado este PC: Wi-Fi, un cable (Ethernet) o una VPN. Un cable suele ser más rápido y estable que el Wi-Fi.";
+"No Wi-Fi signal information available" = "No hay información de la señal Wi-Fi disponible";
+"The servers that turn names like apple.com into addresses. Usually your router or provider; you can change them in Settings › Network & internet." = "Los servidores que convierten nombres como apple.com en direcciones. Normalmente tu router o tu proveedor; puedes cambiarlos en Configuración › Red e Internet.";
+"The speed between this PC and the router (or switch), not your internet speed. It's usually higher than a speed test shows; on Wi-Fi it drops when the signal is weak." = "La velocidad entre este PC y el router (o switch), no tu velocidad de Internet. Suele ser mayor de lo que muestra una prueba de velocidad; en Wi-Fi baja cuando la señal es débil.";
+"This PC's address on your own network, handed out by the router. The internet doesn't see it." = "La dirección de este PC en tu propia red, asignada por el router. Internet no la ve.";
+"This PC's newer, longer address, if your network supports IPv6. \"none\" is common and not a problem." = "La dirección más nueva y larga de este PC, si tu red admite IPv6. \"none\" es habitual y no es un problema.";
+"Whether name lookups are sent encrypted, so others on the network can't see which sites you look up. Windows 11 can turn this on by itself." = "Si las búsquedas de nombres se envían cifradas, para que otros en la red no vean qué sitios consultas. Windows 11 puede activarlo por sí solo.";
+"Yes on mobile data, a phone hotspot or with a data limit set. Windows and apps then hold back big downloads and backups." = "Sí con datos móviles, un punto de acceso de tu teléfono o con un límite de datos. Windows y las apps retienen entonces las descargas y copias de seguridad grandes.";
+"The share of messages that never came back. 0% is normal. Even 1 or 2% makes calls break up and pages load slowly." = "La parte de los mensajes que nunca volvieron. Un 0% indica normalidad. Incluso un 1 o 2 % hace que las llamadas se corten y las páginas carguen despacio.";
