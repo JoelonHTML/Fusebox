@@ -37,6 +37,63 @@ enum Page: String, CaseIterable, Identifiable {
     }
 }
 
+/// Slepen naar een ander scherm. Met een doorzichtige titelbalk (`toolbarBackgroundVisibility(.hidden)`) plus de
+/// compacte werkbalk "corrigeert" AppKit de vensterplek zodra het venster tijdens het slepen van scherm wisselt
+/// (`_setFrame:fromAdjustmentToScreen:…`): het zet het venster op de overeenkomstige plek bovenaan het nieuwe scherm,
+/// honderden punten naast je muis. Nagebootst en gemeten met een kaal SwiftUI-venster: mét die twee opties springt
+/// het, zonder niet, en met deze ingreep ook niet meer. Tijdens het slepen (linkermuisknop ingedrukt) slaan we die
+/// correctie dus over; los van slepen (scherm losgekoppeld, resolutie gewijzigd) blijft hij gewoon werken.
+/// ponytail: privé-methode van AppKit. Alleen vervangen als hij bestaat met precies deze vorm; verandert Apple hem,
+/// dan doet dit niets en is het oude gedrag terug. Weghalen zodra AppKit dit zelf goed doet.
+@MainActor enum FreeMove {
+    private static var done = false
+    static func apply() {
+        guard !done else { return }
+        done = true
+        let sel = NSSelectorFromString("_setFrame:fromAdjustmentToScreen:anchorIfNeeded:animate:")
+        guard let m = class_getInstanceMethod(NSWindow.self, sel), let enc = method_getTypeEncoding(m),
+              String(cString: enc) == "v68@0:8{CGRect={CGPoint=dd}{CGSize=dd}}16@48^{CGPoint=dd}56B64" else { return }
+        typealias Fn = @convention(c) (AnyObject, Selector, NSRect, AnyObject?, UnsafeMutableRawPointer?, Bool) -> Void
+        let original = unsafeBitCast(method_getImplementation(m), to: Fn.self)
+        let block: @convention(block) (AnyObject, NSRect, AnyObject?, UnsafeMutableRawPointer?, Bool) -> Void = { obj, r, screen, anchor, animate in
+            if NSEvent.pressedMouseButtons & 1 != 0 { return }
+            original(obj, sel, r, screen, anchor, animate)
+        }
+        method_setImplementation(m, imp_implementationWithBlock(block))
+    }
+
+    /// Tweede, kleinere terugveer (~65 pt bij de schermgrens): SwiftUI's venster overschrijft `constrainFrameRect`,
+    /// en dan past AppKit die na elke sleepbeweging toe. Tijdens het slepen het frame laten zoals het is.
+    /// Op de echte klasse onder de KVO-laag; geen eigen subklasse (dan crasht `window.animator()`).
+    private static var constrained = false
+    static func apply(_ w: NSWindow) {
+        apply()
+        guard !constrained, var cls: AnyClass = object_getClass(w) else { return }
+        while NSStringFromClass(cls).hasPrefix("NSKVONotifying_"), let up = class_getSuperclass(cls) { cls = up }
+        let sel = #selector(NSWindow.constrainFrameRect(_:to:))
+        guard let m = class_getInstanceMethod(cls, sel), let types = method_getTypeEncoding(m) else { return }
+        constrained = true
+        typealias Fn = @convention(c) (AnyObject, Selector, NSRect, NSScreen?) -> NSRect
+        let original = unsafeBitCast(method_getImplementation(m), to: Fn.self)
+        let block: @convention(block) (AnyObject, NSRect, NSScreen?) -> NSRect = { obj, r, screen in
+            NSEvent.pressedMouseButtons & 1 != 0 ? r : original(obj, sel, r, screen)
+        }
+        class_replaceMethod(cls, sel, imp_implementationWithBlock(block), types)
+    }
+}
+
+/// Eén uitgestelde opslag van de vensterplek: elke nieuwe beweging schuift hem op, en zolang de muis nog
+/// ingedrukt is (slepen) wacht hij verder.
+@MainActor enum MoveSave {
+    private static var pending: DispatchWorkItem?
+    static func later(_ save: @escaping @MainActor () -> Void) {
+        pending?.cancel()
+        let item = DispatchWorkItem { MainActor.assumeIsolated { NSEvent.pressedMouseButtons == 0 ? save() : later(save) } }
+        pending = item
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.4, execute: item)
+    }
+}
+
 /// Geeft het NSWindow waar deze view in staat (voor het vergroten/verkleinen per tabblad).
 struct WindowGrabber: NSViewRepresentable {
     let onWindow: (NSWindow) -> Void
@@ -123,6 +180,7 @@ struct RootView: View {
         .containerBackground(theme.bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.thinMaterial), for: .window)
         .background(WindowGrabber { w in
             window = w
+            FreeMove.apply(w)
             applyOnTop(w)
             // Bij het opstarten altijd zo openen: Live, in de onthouden venstergrootte (linksboven blijft staan)
             if !LaunchOnce.sized {
@@ -153,7 +211,9 @@ struct RootView: View {
         // voor de volgende start; tijdens slepen niet elke pixel opslaan, pas bij loslaten.
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didMoveNotification)) { n in
             guard let w = window, n.object as? NSWindow === w, !w.inLiveResize else { return }
-            saveTopLeft(w)
+            // Tijdens het slepen komt dit bij elke pixel; elke opslag laat alle @AppStorage-weergaven en de meter
+            // opnieuw rekenen en dan loopt het venster achter je muis aan. Pas na loslaten opslaan.
+            MoveSave.later { saveTopLeft(w) }
         }
         .onReceive(NotificationCenter.default.publisher(for: NSWindow.didEndLiveResizeNotification)) { n in
             guard let w = window, n.object as? NSWindow === w, !fullScreen(w) else { return }
@@ -281,7 +341,9 @@ struct RootView: View {
     private func place(_ w: NSWindow, size: NSSize, animate: Bool, topLeft: NSPoint? = nil) {
         var size = size
         var top = topLeft?.y ?? w.frame.maxY, left = topLeft?.x ?? w.frame.minX
-        if let vf = (w.screen ?? NSScreen.main)?.visibleFrame {
+        // Bij een opgegeven plek (opstarten): het scherm waar die plek op ligt, niet het scherm waar het venster toevallig opent
+        let target = topLeft.flatMap { p in NSScreen.screens.first { $0.frame.insetBy(dx: -1, dy: -1).contains(NSPoint(x: p.x + 20, y: p.y - 20)) } }
+        if let vf = (target ?? w.screen ?? NSScreen.main)?.visibleFrame {
             (left, top, size) = Self.fit(left: left, top: top, size: size, in: vf)
         }
         let f = NSRect(x: left, y: top - size.height, width: size.width, height: size.height)

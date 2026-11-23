@@ -295,7 +295,13 @@ private struct ProgramRow: View {
             }
             .frame(width: 18, height: 18)
             VStack(alignment: .leading, spacing: 1) {
-                Text(app.name).font(theme.label(12)).foregroundStyle(theme.onRow())
+                HStack(spacing: 4) {
+                    Text(app.name).font(theme.label(12)).foregroundStyle(theme.onRow())
+                    if app.efficient {
+                        Image(systemName: "leaf.fill").font(.system(size: 9)).foregroundStyle(theme.rowStyle == .blocks ? .white : theme.good)
+                            .help("Efficiency mode is on").accessibilityLabel("Efficiency mode is on")
+                    }
+                }
                 if !app.explanation.isEmpty {
                     Text(app.explanation).font(theme.label(10)).foregroundStyle(theme.onRow(true))
                 }
@@ -368,6 +374,22 @@ private struct InstalledRow: View {
     }
 }
 
+/// Efficiëntiemodus aan/uit (Processes en de app-pagina). Rustig, zoals de Stop-knop; uitgeschakeld met uitleg waar het niet mag.
+struct EfficiencyButton: View {
+    let app: AppUsage
+    @EnvironmentObject private var meter: Meter
+
+    var body: some View {
+        let ok = Efficiency.allowed(app)
+        Button { meter.ui.setEfficient(app, !app.efficient) } label: {
+            Label(app.efficient ? "Efficiency mode on" : "Efficiency mode", systemImage: app.efficient ? "leaf.fill" : "leaf")
+        }
+        .disabled(!ok)
+        .help(ok ? (app.efficient ? L("Click to give \(app.name) full speed again.") : L("Keeps \(app.name) open but lets it use less power: macOS runs it on the efficiency cores, with slower disk and network access. Turns off when the app restarts."))
+                 : L("Only for your own apps. macOS itself, Fusebox and other users' processes keep their normal speed."))
+    }
+}
+
 func mem(_ gb: Double) -> String { gb >= 1 ? "\(one(gb)) GB" : "\(Int((gb * 1024).rounded())) MB" }
 
 /// Uitgeklapte uitleg in gewone taal. Alleen opgebouwd voor de ene open regel, dus proc_name hier is goedkoop.
@@ -388,6 +410,7 @@ private struct ProgramDetails: View {
                         Label("Show in Finder", systemImage: "folder")
                     }
                 }
+                EfficiencyButton(app: app)
                 if app.canStop {
                     Button(action: onStop) { Label("Stop \(app.name)", systemImage: "xmark.circle") }
                         .foregroundStyle(theme.rowStyle == .blocks ? .white : theme.danger)

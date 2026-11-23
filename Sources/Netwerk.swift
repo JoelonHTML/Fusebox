@@ -18,6 +18,7 @@ struct NetworkView: View {
     @State private var sort = NetColumn.ip
     @State private var ascending = true
     @State private var width = NetWidth.kind
+    @State private var stacked = false   // smal venster: kaarten onder elkaar
     @State private var open: String?
     @State private var filter = NetFilter.all
     @State private var renaming: NetDevice?
@@ -34,34 +35,46 @@ struct NetworkView: View {
         let all = scanner.devices
         let rows = sorted(all.filter { filter.matches($0) && $0.matches(search) })
         let tight = theme.rowStyle == .lines || theme.rowStyle == .plain
-        VStack(spacing: 8) {
-            InternetPanel(wide: width >= .kind)
-            toolbar(all)
-            if scanner.localBlocked { blockedHint }
-            // Rechts 14 pt extra (ook in de kop, zodat de kolommen gelijk blijven): ruimte voor de scrollbalk
-            columnHeader.padding(.horizontal, tight ? 0 : 10).padding(.trailing, 14)
-            ScrollView {
-                LazyVStack(spacing: tight ? 0 : 6) {
-                    ForEach(Array(rows.enumerated()), id: \.element.id) { i, d in
-                        NetRow(device: d, width: width, index: i + 1, isOpen: open == d.id, scanner: scanner) {
-                            withAnimation(.snappy(duration: 0.25)) { open = open == d.id ? nil : d.id }
-                        } onRename: {
-                            newName = d.custom ?? d.name
-                            renaming = d
+        // Eén scrollvlak: kaarten bovenaan, daaronder de apparaten; hun kop (werkbalk, kolommen) blijft bovenaan staan
+        ScrollView {
+            VStack(spacing: 14) {
+                InternetCards(stacked: stacked)
+                LazyVStack(spacing: tight ? 0 : 6, pinnedViews: [.sectionHeaders]) {
+                    Section {
+                        ForEach(Array(rows.enumerated()), id: \.element.id) { i, d in
+                            NetRow(device: d, width: width, index: i + 1, isOpen: open == d.id, scanner: scanner) {
+                                withAnimation(.snappy(duration: 0.25)) { open = open == d.id ? nil : d.id }
+                            } onRename: {
+                                newName = d.custom ?? d.name
+                                renaming = d
+                            }
                         }
-                    }
-                    if rows.isEmpty {
-                        Text(scanner.info == nil ? (autoScan ? "Not connected to a network" : "Press Scan to look for devices") : !search.trimmingCharacters(in: .whitespaces).isEmpty ? "Nothing matches “\(search)”"
-                             : scanner.scanStart != nil ? "Looking for devices…"
-                             : filter != .all ? "No \(filter.title.lowercased()) devices" : rangeText.map { "Nothing answered in \($0)" } ?? "No devices found")
-                            .font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
+                        if rows.isEmpty {
+                            Text(scanner.info == nil ? (autoScan ? "Not connected to a network" : "Press Scan to look for devices") : !search.trimmingCharacters(in: .whitespaces).isEmpty ? "Nothing matches “\(search)”"
+                                 : scanner.scanStart != nil ? "Looking for devices…"
+                                 : filter != .all ? "No \(filter.title.lowercased()) devices" : rangeText.map { "Nothing answered in \($0)" } ?? "No devices found")
+                                .font(theme.label(12)).foregroundStyle(theme.secondary).padding(.vertical, 20)
+                        }
+                    } header: {
+                        VStack(alignment: .leading, spacing: 8) {
+                            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                                Text("Devices").font(theme.label(13)).foregroundStyle(theme.text)
+                                Text(countText(all)).font(theme.label(11)).foregroundStyle(theme.secondary).lineLimit(1)
+                            }
+                            toolbar
+                            if scanner.localBlocked { blockedHint }
+                            columnHeader.padding(.horizontal, tight ? 0 : 10)
+                        }
+                        .padding(.top, 4).padding(.bottom, 6)
+                        // Vaste kop boven de rijen: effen achtergrond, tot aan de vensterranden
+                        .background { Rectangle().fill(theme.bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.thinMaterial)).padding(.horizontal, -14) }
                     }
                 }
-                .padding(.trailing, 14)
             }
+            .padding(.leading, 12).padding(.trailing, 14).padding(.bottom, 10)
         }
-        .padding(.horizontal, 12).padding(.bottom, 10)
-        .onGeometryChange(for: NetWidth.self) { NetWidth($0.size.width) } action: { width = $0 }
+        .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stacked = $0 < 700 }
+        .onGeometryChange(for: NetWidth.self) { NetWidth($0.size.width - 24) } action: { width = $0 }
         .onAppear { if autoScan { scanner.scan() } }
         .onDisappear { scanner.stop() }
         .alert("Rename device", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
@@ -73,7 +86,7 @@ struct NetworkView: View {
         }
     }
 
-    private func toolbar(_ all: [NetDevice]) -> some View {
+    private var toolbar: some View {
         HStack(spacing: 8) {
             // Smal venster (13-inch, kleine helft): filter als compact menu, anders past de werkbalk niet (scanknop viel weg)
             if width >= .kind {
@@ -84,7 +97,6 @@ struct NetworkView: View {
                     .pickerStyle(.menu).labelsHidden().fixedSize()
             }
             searchField.frame(minWidth: 70, maxWidth: 170)
-            if width >= .kind { Text(countText(all)).font(theme.label(11)).foregroundStyle(theme.secondary).lineLimit(1) }
             Spacer(minLength: 4)
             if let start = scanner.scanStart {
                 if width >= .kind { Text(scanner.phase).font(theme.label(10)).foregroundStyle(theme.secondary).lineLimit(1) }
@@ -93,8 +105,8 @@ struct NetworkView: View {
                     .progressViewStyle(.linear).frame(width: width >= .kind ? 70 : 36)
             }
             Button { draft = rangeText ?? ""; rangeOpen.toggle() } label: {
-                if width >= .kind { NetPill(title: rangeText ?? L("This network"), icon: "scope") }
-                else { NetPill(title: L("Range"), icon: "scope").labelStyle(.iconOnly) }
+                if width >= .kind { NetPill(title: rangeText ?? L("This network"), icon: "scope", onPage: true) }
+                else { NetPill(title: L("Range"), icon: "scope", onPage: true).labelStyle(.iconOnly) }
             }
             .buttonStyle(.plain)
             .help("Scan range: \(rangeText ?? "this network (found automatically)"). Click to type a range.")
@@ -110,7 +122,7 @@ struct NetworkView: View {
             .help(notifyNew ? "Notifying you when a new device shows up (while Fusebox scans). Click to turn off."
                   : "Get a notification when a new device shows up on your network (while this page scans)")
             Button { if scanner.scanStart == nil { scanner.scan() } else { scanner.stop() } } label: {
-                NetPill(title: scanner.scanStart == nil ? L("Scan") : L("Stop"), icon: scanner.scanStart == nil ? "arrow.clockwise" : "stop.fill")
+                NetPill(title: scanner.scanStart == nil ? L("Scan") : L("Stop"), icon: scanner.scanStart == nil ? "arrow.clockwise" : "stop.fill", onPage: true)
             }
             .buttonStyle(.plain).help(scanner.scanStart == nil ? "Look for devices in the scan range" : "Stop scanning (keeps what was found so far)")
         }
@@ -298,9 +310,10 @@ func agoText(_ d: Date) -> String {
 /// Knop-label in de stijl van de pagina (accentkleur, licht vlak).
 struct NetPill: View {
     let title: String, icon: String
+    var onPage = false   // op de pagina zelf (niet op een kleurblok): ook bij kleurblokken de accentkleur
     @Environment(\.theme) private var theme
     var body: some View {
-        let c = theme.rowStyle == .blocks ? Color.white : theme.accent
+        let c = theme.rowStyle == .blocks && !onPage ? Color.white : theme.accent
         Label(title, systemImage: icon)
             .font(theme.label(11)).foregroundStyle(c).lineLimit(1)
             .padding(.horizontal, 7).padding(.vertical, 3)

@@ -21,12 +21,53 @@ struct AppUsage: Identifiable {
     var gpu = 0.0                         // % GPU-tijd (tellers van de GPU-driver per proces)
     var threads = 0
     var started: Date?                    // vroegste start van de processen in deze groep
+    var efficient = false                 // efficiëntiemodus: alle processen in de achtergrondstand
     var canStop: Bool { kind != .macos && pids.first.map { $0 > 0 } == true && id != AppUsage.selfID }
     var runningApp: NSRunningApplication? { pids.lazy.compactMap { NSRunningApplication(processIdentifier: $0) }.first { $0.activationPolicy == .regular } }
 
     static let selfID = Bundle.main.bundlePath
     /// gpu_pct en mac_energie_w (som van alle processen die minuut) sinds de app-pagina; oudere logs missen ze.
     static let csvHeader = "tijd,app,soort,cpu_pct,geheugen_gb,energie_w,gpu_pct,mac_energie_w\n"
+}
+
+/// Efficiëntiemodus (zoals in Windows): de app blijft open, maar macOS zet zijn processen in de achtergrondstand
+/// (PRIO_DARWIN_BG): alleen de zuinige kernen, schijf en netwerk op een laag pitje. Alleen processen van de gebruiker zelf.
+/// macOS onthoudt het niet: start de app opnieuw, dan is het weer uit.
+enum Efficiency {
+    /// Nooit afremmen: wat het scherm, inloggen en het bureaublad draaiend houdt (Fusebox zelf valt al af via canStop).
+    static let protected: Set<String> = ["WindowServer", "kernel_task", "loginwindow", "Finder", "Dock"]
+    /// PROC_FLAG_EXT_DARWINBG: door een ander proces in de achtergrondstand gezet. getpriority(PRIO_DARWIN_PROCESS, pid)
+    /// geeft voor andere processen altijd 0 (gemeten op macOS 26), en de prioriteit zelf (4) haalt App Nap ook: dus deze vlag.
+    private static let extBG: UInt32 = 0x10000
+
+    private static func info(_ pid: pid_t) -> proc_bsdinfo? {
+        var bi = proc_bsdinfo()
+        return proc_pidinfo(pid, PROC_PIDTBSDINFO, 0, &bi, Int32(MemoryLayout<proc_bsdinfo>.size)) > 0 ? bi : nil
+    }
+
+    static func isOn(_ pid: pid_t) -> Bool { info(pid).map { $0.pbi_flags & extBG != 0 } ?? false }
+
+    static func allowed(_ app: AppUsage) -> Bool { allowed(id: app.id, name: app.name, canStop: app.canStop) }
+
+    static func allowed(id: String, name: String, canStop: Bool) -> Bool {
+        let base = ((id as NSString).lastPathComponent as NSString).deletingPathExtension
+        return canStop && !protected.contains(base) && !protected.contains(name)
+    }
+
+    /// Zet of wist de achtergrondstand voor de processen van deze gebruiker (andere slaat het over). true = allemaal gelukt.
+    static func set(_ pids: [pid_t], on: Bool) -> Bool {
+        let own = pids.filter { info($0)?.pbi_uid == getuid() }
+        return !own.isEmpty && own.allSatisfy { setpriority(PRIO_DARWIN_PROCESS, id_t($0), on ? PRIO_DARWIN_BG : 0) == 0 }
+    }
+
+    static func selfTest() {
+        precondition(allowed(id: "/Applications/Safari.app", name: "Safari", canStop: true), "gewone app")
+        precondition(!allowed(id: "/System/Library/CoreServices/Finder.app", name: "Finder", canStop: true), "Finder")
+        precondition(!allowed(id: "/System/Library/PrivateFrameworks/SkyLight.framework/Resources/WindowServer", name: "WindowServer", canStop: true), "WindowServer")
+        precondition(!allowed(id: "/Applications/Safari.app", name: "Safari", canStop: false), "niet stopbaar = niet afremmen")
+        precondition(!set([], on: true) && !set([1], on: true), "launchd (root) wordt overgeslagen")
+        print("efficiëntiemodus: ok")
+    }
 }
 
 /// Meet alle processen via proc_pid_rusage en groepeert ze per verantwoordelijke app.
@@ -91,15 +132,16 @@ final class AppMonitor: ObservableObject {
             let start = nowDate.addingTimeInterval(-Double(nowAbs &- ri.ri_proc_start_abstime) * tick / 1e9)
             let mem = Double(ri.ri_phys_footprint) / 1_073_741_824
             let net = netRate[pid] ?? (0, 0)
+            let bg = Efficiency.isOn(pid)
             if var g = groups[key] {
-                g.pids.append(pid); g.cpu += cpu; g.memGB += mem; g.energyW += watt
+                g.pids.append(pid); g.efficient = g.efficient && bg; g.cpu += cpu; g.memGB += mem; g.energyW += watt
                 g.diskRead += rd; g.diskWrite += wr; g.netIn += net.0; g.netOut += net.1; g.gpu += gpu
                 g.threads += threads; g.started = min(g.started ?? start, start)
                 groups[key] = g
             } else {
                 groups[key] = AppUsage(id: key, name: meta.name, explanation: meta.explanation, kind: meta.kind,
                                        pids: [pid], cpu: cpu, memGB: mem, energyW: watt, icon: meta.icon,
-                                       diskRead: rd, diskWrite: wr, netIn: net.0, netOut: net.1, gpu: gpu, threads: threads, started: start)
+                                       diskRead: rd, diskWrite: wr, netIn: net.0, netOut: net.1, gpu: gpu, threads: threads, started: start, efficient: bg)
             }
         }
         last = seen
@@ -203,6 +245,12 @@ final class AppMonitor: ObservableObject {
         guard app.canStop else { return false }
         if let r = app.runningApp { return r.forceTerminate() }
         return app.pids.allSatisfy { kill($0, SIGKILL) == 0 }
+    }
+
+    /// Efficiëntiemodus aan/uit voor alle eigen processen van de app; de lijst toont het meteen (niet pas bij de volgende meting).
+    func setEfficient(_ app: AppUsage, _ on: Bool) {
+        guard Efficiency.allowed(app), Efficiency.set(app.pids, on: on), let i = apps.firstIndex(where: { $0.id == app.id }) else { return }
+        apps[i].efficient = on
     }
 
     // Groepeer op de app die verantwoordelijk is (WebContent → Safari, Chrome Helper → Chrome)
