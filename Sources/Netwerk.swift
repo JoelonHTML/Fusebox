@@ -73,6 +73,7 @@ struct NetworkView: View {
             }
             .padding(.leading, 12).padding(.trailing, 14).padding(.bottom, 10)
         }
+        .clipped()   // niet onder de doorzichtige werkbalk doorschuiven (anders staan de rijen achter de tabknoppen)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stacked = $0 < 700 }
         .onGeometryChange(for: NetWidth.self) { NetWidth($0.size.width - 24) } action: { width = $0 }
         .onAppear { if autoScan { scanner.scan() } }
