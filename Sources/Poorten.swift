@@ -283,10 +283,13 @@ enum PortTree {
         // USB 3-apparaat dat op USB 2-snelheid hangt: betrouwbaar teken van een rem (kabel, hub of poort)
         let slow = (d.bcd ?? 0) >= 0x300 && (d.bps ?? 0) > 0 && (d.bps ?? 0) <= 480e6
         let power = Ports.powerNote(d)   // vroeg meer stroom dan de poort geeft, of krijgt duidelijk minder dan het kan
+        let net = d.ether?.note()        // netwerkadapter: kabel loopt onder wat de adapter kan
+        let infos = [power?.serious == false ? power?.text : nil, net?.serious == false ? net?.text : nil].compactMap { $0 }
         return TNode(id: "usb:\(d.id)", kind: .device, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil, slow: slow),
                      facts: [d.maker, d.bps.map(shortSpeed)].compactMap { $0 },
-                     warn: slow ? L("Runs at USB 2 speed, but it can do USB 3. Try another cable or port.") : power?.serious == true ? power?.text : nil,
-                     info: power?.serious == false ? power?.text : nil, usb: d)
+                     warn: slow ? L("Runs at USB 2 speed, but it can do USB 3. Try another cable or port.")
+                         : net?.serious == true ? L("Network cable: ") + (net?.text ?? "") : power?.serious == true ? power?.text : nil,
+                     info: infos.isEmpty ? nil : infos.joined(separator: "\n\n"), usb: d)
     }
 
     /// Met "internals": de echte USB-boom. Hubs zonder iets erachter vallen weg; een hub met alleen één hub eronder wordt één regel.
@@ -670,7 +673,15 @@ private struct DeviceCard: View {
                     .compactMap { $0 }.joined(separator: " · "))
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             if let n = Ports.powerNote(dev) { NoteBox(note: n) }
+            if let n = dev.ether?.note() { NoteBox(note: PortNote(text: n.text, level: n.serious ? .warn : .info)) }
             USBPowerFacts(dev: dev)
+            if let e = dev.ether, e.linked || e.maxMbit != nil {
+                PortGroup(L("Network cable"), icon: "network") {
+                    PortFact(NetTerm.linkSpeed.title, e.linked ? e.activeMbit.map(EtherMedia.speed) ?? "–" : L("no cable connected"), help: NetTerm.linkSpeed.text)
+                    if let top = e.maxMbit { PortFact(L("Maximum"), EtherMedia.speed(top), help: NetTerm.adapterMax.text) }
+                    if e.linked, let d = e.duplex { PortFact(NetTerm.duplex.title, d, help: NetTerm.duplex.text) }
+                }
+            }
             Disclosure(title: L("All values")) { RawList(lines: dev.raw) }
         }
     }

@@ -1626,3 +1626,15 @@
 "What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share." = "Was dieser Hub den angeschlossenen Geräten zugeteilt hat und (falls der Hub es meldet) wie viel er zu verteilen hat.";
 "What's plugged into this port asks for %lld mA together, but the port supplies up to %lld mA. Move a device to another port, or use a hub with its own power adapter." = "Was an diesem Anschluss steckt, fordert zusammen %1$lld mA an, der Anschluss liefert aber höchstens %2$lld mA. Steck ein Gerät an einen anderen Anschluss oder nimm einen Hub mit eigenem Netzteil.";
 "up to %@" = "bis zu %@";
+"Adapter can do" = "Adapter schafft";
+"Duplex" = "Duplex";
+"Full duplex" = "Vollduplex";
+"Half duplex" = "Halbduplex";
+"Full duplex means both sides can send at the same time, which is normal. Half duplex is slow and points to a bad cable or a very old hub." = "Vollduplex heißt, dass beide Seiten gleichzeitig senden können; das ist normal. Halbduplex ist langsam und deutet auf ein schlechtes Kabel oder einen sehr alten Hub hin.";
+"Half duplex: your Mac and the router or switch can't send at the same time, so the link is slow. Usually a bad cable or a very old hub. Try another cable or port." = "Halbduplex: Dein Mac und der Router oder Switch können nicht gleichzeitig senden, die Verbindung ist deshalb langsam. Meist ein schlechtes Kabel oder ein sehr alter Hub. Versuch ein anderes Kabel oder einen anderen Anschluss.";
+"Network cable" = "Netzwerkkabel";
+"Network cable: " = "Netzwerkkabel: ";
+"Runs at %@, but this adapter can do %@. Usually a damaged cable, a cable with only four wires, or a slower port on the router or switch. Try another cable first." = "Läuft mit %1$@, dieser Adapter schafft aber %2$@. Meist ein beschädigtes Kabel, ein Kabel mit nur vier Adern oder ein langsamerer Anschluss am Router oder Switch. Versuch zuerst ein anderes Kabel.";
+"Runs at %@; this adapter can do %@. The port on the router or switch is probably slower, which is normal." = "Läuft mit %1$@; dieser Adapter schafft %2$@. Der Anschluss am Router oder Switch ist vermutlich langsamer, das ist normal.";
+"The fastest speed this network adapter supports. If the link speed is lower, the cable or the port on the router or switch is holding it back. 100 Mbit/s on a 1 Gbit/s adapter usually means a damaged cable." = "Die höchste Geschwindigkeit, die dieser Netzwerkadapter unterstützt. Ist die Verbindungsgeschwindigkeit niedriger, bremst das Kabel oder der Anschluss am Router oder Switch. 100 Mbit/s an einem 1-Gbit/s-Adapter bedeutet meist ein beschädigtes Kabel.";
+"no cable connected" = "kein Kabel angeschlossen";

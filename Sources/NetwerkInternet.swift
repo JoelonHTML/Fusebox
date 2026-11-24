@@ -18,9 +18,10 @@ struct NetConnection {
     let ipv4: String?, ipv6: [String], router: UInt32?, dns: [String], ipv6Internet: Bool
     var vpn = false   // VPN aan: als hoofdroute (kind "VPN") of naast Wi-Fi/kabel (alleen sommige verkeer)
     var name: String? = nil       // naam van macOS, bv. "USB 10/100/1000 LAN" of "Thunderbolt Ethernet"
-    var linkMbit: Double? = nil   // kabelsnelheid naar switch/router (if_data), nil = onbekend
+    var linkMbit: Double? = nil   // kabelsnelheid naar switch/router (mediawoord, anders if_data), nil = onbekend
 
     #if os(macOS)   // iPhone-versie: ios/Fusebox/Platform.swift
+    var media: EtherMedia? = nil  // kabel: wat de adapter kan en wat er is afgesproken (nil op Wi-Fi/VPN)
     static func current() -> NetConnection? {
         let v4 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
         let v6 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv6" as CFString) as? [String: Any]
@@ -53,11 +54,14 @@ struct NetConnection {
             .compactMap { (SCDynamicStoreCopyValue(nil, $0 as CFString) as? [String: Any])?["InterfaceName"] as? String }
         let name = (SCNetworkInterfaceCopyAll() as? [SCNetworkInterface])?
             .first { SCNetworkInterfaceGetBSDName($0) as String? == iface }.flatMap { SCNetworkInterfaceGetLocalizedDisplayName($0) as String? }
+        let media = !wifi && iface.hasPrefix("en") ? EtherMedia.read(iface) : nil
+        // if_data.ifi_baudrate is 32 bits (loopt over boven 4 Gbit/s): de afgesproken snelheid uit het mediawoord gaat voor
+        let link = media?.activeMbit.map(Double.init) ?? (baud > 0 ? Double(baud) / 1e6 : nil)
         return NetConnection(iface: iface, kind: isVPN(iface) ? "VPN" : wifi ? "Wi-Fi" : iface.hasPrefix("en") ? "Ethernet" : iface,
                              ipv4: ipv4, ipv6: ipv6, router: (v4?["Router"] as? String).flatMap(parseIP),
                              dns: dns?["ServerAddresses"] as? [String] ?? [],
                              ipv6Internet: !ipv6.isEmpty && v6?["Router"] != nil, vpn: vpnOn(primary: iface, services: services),
-                             name: name, linkMbit: !wifi && baud > 0 ? Double(baud) / 1e6 : nil)
+                             name: name, linkMbit: wifi ? nil : link, media: media)
     }
     #endif
 
@@ -73,6 +77,98 @@ struct NetConnection {
         print("vpn herkennen: ok")
     }
 }
+
+#if os(macOS)
+/// Wat een netwerkadapter met kabel kan en wat er nu is afgesproken: dezelfde gegevens als `ifconfig -m <interface>`
+/// (ioctl SIOCGIFMEDIA, gewone gebruiker, geen subprocess). Velden die de adapter niet meldt blijven nil.
+struct EtherMedia: Hashable {
+    var activeMbit: Int?          // afgesproken snelheid
+    var maxMbit: Int?             // hoogste snelheid in de lijst "supported media"
+    var halfDuplex = false, fullDuplex = false
+    var linked = false            // kabel erin en verbinding actief
+
+    /// Mediawoord (net/if_media.h) → Mbit/s. Alleen ethernet (bits 5–7 = IFM_ETHER) met een vaste snelheid;
+    /// "autoselect", "none" en de uitgebreide (glasvezel/backplane-)soorten geven nil.
+    static func mbit(_ word: Int32) -> Int? {
+        guard word & 0xE0 == 0x20, word & 0x000F_0000 == 0 else { return nil }
+        return [3: 10, 12: 10, 13: 10, 6: 100, 7: 100, 8: 100, 10: 100, 11: 1000, 14: 1000, 15: 1000, 16: 1000,
+                18: 10_000, 19: 10_000, 20: 10_000, 21: 10_000, 22: 2500, 23: 5000][Int(word & 0x1F)]
+    }
+
+    /// `active` = ifm_active, `status` = ifm_status (IFM_AVALID | IFM_ACTIVE), `supported` = ifm_ulist.
+    static func parse(active: Int32, status: Int32, supported: [Int32]) -> EtherMedia {
+        EtherMedia(activeMbit: mbit(active), maxMbit: supported.compactMap(mbit).max(),
+                   halfDuplex: active & 0x0020_0000 != 0, fullDuplex: active & 0x0010_0000 != 0, linked: status & 3 == 3)
+    }
+
+    static func read(_ iface: String) -> EtherMedia? {
+        let fd = socket(AF_INET, SOCK_DGRAM, 0)
+        guard fd >= 0 else { return nil }
+        defer { close(fd) }
+        var req = ifmediareq()
+        withUnsafeMutableBytes(of: &req.ifm_name) { buf in
+            for (i, b) in iface.utf8.prefix(buf.count - 1).enumerated() { buf[i] = b }
+        }
+        let cmd: UInt = 0xC02C_6938   // SIOCGIFMEDIA = _IOWR('i', 56, struct ifmediareq): 44 bytes (#pragma pack(4))
+        guard ioctl(fd, cmd, &req) == 0 else { return nil }
+        var list = [Int32](repeating: 0, count: Int(min(max(req.ifm_count, 0), 256)))
+        if !list.isEmpty {
+            req.ifm_count = Int32(list.count)
+            let ok = list.withUnsafeMutableBufferPointer { p -> Bool in req.ifm_ulist = p.baseAddress; return ioctl(fd, cmd, &req) == 0 }
+            list = ok ? Array(list.prefix(Int(max(req.ifm_count, 0)))) : []
+        }
+        return parse(active: req.ifm_active, status: req.ifm_status, supported: list)
+    }
+
+    /// "100 Mbit/s", "1 Gbit/s", "2.5 Gbit/s"
+    static func speed(_ mbit: Int) -> String {
+        mbit < 1000 ? "\(mbit) Mbit/s" : (mbit % 1000 == 0 ? "\(mbit / 1000)" : String(format: "%.1f", Double(mbit) / 1000)) + " Gbit/s"
+    }
+
+    /// Alleen als de adapter het meldt.
+    var duplex: String? { halfDuplex ? L("Half duplex") : fullDuplex ? L("Full duplex") : nil }
+
+    /// Loopt de kabel duidelijk onder wat de adapter kan? `serious` = waarschuwing (onder 1 Gbit/s of half duplex);
+    /// 1 Gbit/s op een snellere adapter is gewoon (de meeste routers hebben 1 Gbit/s-poorten): alleen een weetje.
+    func note(linkMbit: Double? = nil) -> (text: String, serious: Bool)? {
+        guard linked else { return nil }
+        if halfDuplex {
+            return (L("Half duplex: your Mac and the router or switch can't send at the same time, so the link is slow. Usually a bad cable or a very old hub. Try another cable or port."), true)
+        }
+        guard let now = activeMbit ?? linkMbit.map({ Int($0) }), let top = maxMbit, now < top else { return nil }
+        if now < 1000 {
+            return (L("Runs at \(Self.speed(now)), but this adapter can do \(Self.speed(top)). Usually a damaged cable, a cable with only four wires, or a slower port on the router or switch. Try another cable first."), true)
+        }
+        return (L("Runs at \(Self.speed(now)); this adapter can do \(Self.speed(top)). The port on the router or switch is probably slower, which is normal."), false)
+    }
+
+    static func selfTest() {
+        precondition(MemoryLayout<ifmediareq>.size == 44, "ifmediareq \(MemoryLayout<ifmediareq>.size)")
+        let fdx: Int32 = 0x0010_0000, hdx: Int32 = 0x0020_0000, eth: Int32 = 0x20
+        precondition(mbit(eth | 16) == 1000 && mbit(eth | 6) == 100 && mbit(eth | 3 | hdx) == 10 && mbit(eth | 22 | fdx) == 2500 && mbit(eth | 21) == 10_000, "snelheden")
+        precondition(mbit(eth) == nil && mbit(eth | 2) == nil && mbit(0x80 | 6) == nil && mbit(eth | 6 | 0x10000) == nil, "autoselect, none, wifi, uitgebreid")
+        // Gigabit-adapter (zoals `ifconfig -m` van een USB 10/100/1000-adapter), link op 100 Mbit/s full duplex
+        let gig: [Int32] = [eth, eth | 3 | hdx, eth | 3 | fdx, eth | 6 | hdx, eth | 6 | fdx, eth | 16 | fdx, eth | 2]
+        let slow = parse(active: eth | 6 | fdx, status: 3, supported: gig)
+        precondition(slow.activeMbit == 100 && slow.maxMbit == 1000 && slow.linked && slow.duplex == "Full duplex", "100 op gigabit")
+        precondition(slow.note()?.serious == true && slow.note()?.text.hasPrefix("Runs at 100 Mbit/s, but this adapter can do 1 Gbit/s.") == true, "kabelwaarschuwing")
+        precondition(parse(active: eth | 16 | fdx, status: 3, supported: gig).note() == nil, "gigabit op gigabit: goed")
+        let half = parse(active: eth | 16 | hdx, status: 3, supported: gig)
+        precondition(half.duplex == "Half duplex" && half.note()?.serious == true && half.note()?.text.hasPrefix("Half duplex") == true, "half duplex")
+        // 2,5 Gbit/s-adapter aan een gigabit-switch: gewoon, alleen een weetje
+        let multi = parse(active: eth | 16 | fdx, status: 3, supported: gig + [eth | 22 | fdx])
+        precondition(multi.note()?.serious == false && multi.note()?.text.hasPrefix("Runs at 1 Gbit/s; this adapter can do 2.5 Gbit/s.") == true, "2,5G aan 1G")
+        // Geen link, of een adapter die niets meldt: geen oordeel, niets tonen
+        precondition(parse(active: eth | 6 | fdx, status: 1, supported: gig).note() == nil && parse(active: eth, status: 3, supported: [eth]).note() == nil, "geen link / autoselect")
+        precondition(parse(active: eth, status: 3, supported: gig).note(linkMbit: 100)?.serious == true, "snelheid uit if_data als het mediawoord niets zegt")
+        precondition(speed(100) == "100 Mbit/s" && speed(1000) == "1 Gbit/s" && speed(2500) == "2.5 Gbit/s" && speed(10_000) == "10 Gbit/s", "snelheidstekst")
+        // Echte interfaces op deze Mac: de ioctl moet werken zonder rechten, een onbekende naam geeft nil
+        precondition(read("fusebox-nope0") == nil, "onbekende interface")
+        if let lo = read("en0") { precondition(lo.note() == nil || lo.maxMbit != nil, "en0") }
+        print("netwerkkabel: ok")
+    }
+}
+#endif
 
 struct WifiDetail {
     let rssi: Int, noise: Int, rate: Double

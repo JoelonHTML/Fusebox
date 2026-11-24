@@ -88,6 +88,8 @@ struct USBDev: Identifiable, Hashable {
     var portMA: Int?                 // wat de poort waar het in zit hoogstens levert
     var poolMA: Int?                 // hub: wat hij in totaal te verdelen heeft
     var viaHub = false
+    var ether: EtherMedia?           // USB-netwerkadapter: afgesproken snelheid en wat hij kan
+    var bsd: String?                 // netwerkinterface erachter ("en7"), alleen om `ether` te lezen
     var bcd: Int?                    // USB-versie van het apparaat (0x0200 = 2.0, 0x0310 = 3.1)
     var children: [USBDev] = []
     var raw: [RawLine] = []
@@ -291,6 +293,7 @@ enum Ports {
         d.canSinkMA = int(p["UsbPowerSinkCapability"]).flatMap { $0 > 0 ? $0 : nil }
         d.failedMA = int(p["kUSBFailedRequestedPower"]).flatMap { $0 > 0 ? $0 : nil }
         d.portMA = int(p["port.kUSBWakePortCurrentLimit"]) ?? portMA; d.poolMA = int(p["kUSBWakePowerSupply"]); d.viaHub = viaHub
+        d.bsd = str(p["BSD Name"]).flatMap { $0.hasPrefix("en") ? $0 : nil }
         d.raw = rawLines(p)
         let down = int(p["kUSBWakePortCurrentLimit"])
         d.children = n.children.filter { $0.props["idVendor"] != nil }.map { usb($0, portMA: down, viaHub: d.hub) }
@@ -547,14 +550,15 @@ enum Ports {
         // Hub zonder eigen voeding (500 mA te verdelen) in een Mac-poort (3 A): schijf 500, toetsenbord 100, iPad kan 2400 maar krijgt 500
         let hubNode = RegNode(name: "Hub@1", id: 70, props: ["USB Product Name": "Travel Hub", "idVendor": 1, "bDeviceClass": 9, "kUSBBusCurrentAllocation": 100,
                                                               "kUSBWakePortCurrentLimit": 500, "kUSBWakePowerSupply": 500],
-                              children: [RegNode(name: "Disk@1", id: 71, props: ["USB Product Name": "Disk", "idVendor": 2, "UsbPowerSinkAllocation": 500]),
+                              children: [RegNode(name: "Disk@1", id: 71, props: ["USB Product Name": "Disk", "idVendor": 2, "UsbPowerSinkAllocation": 500, "BSD Name": "disk4"]),
                                          RegNode(name: "Keys@2", id: 72, props: ["USB Product Name": "Keys", "idVendor": 3, "port.kUSBBusCurrentAllocation": 100, "port.kUSBWakePortCurrentLimit": 500]),
                                          RegNode(name: "iPad@3", id: 73, props: ["USB Product Name": "iPad", "idVendor": 0x5AC, "UsbPowerSinkAllocation": 500, "UsbPowerSinkCapability": 2400]),
-                                         RegNode(name: "LAN@4", id: 74, props: ["USB Product Name": "USB LAN", "idVendor": 4])])
+                                         RegNode(name: "LAN@4", id: 74, props: ["USB Product Name": "USB LAN", "idVendor": 4, "BSD Name": "en7"])])
         let hub = usb(hubNode, portMA: 3000)
         precondition(hub.powerMA == 100 && hub.portMA == 3000 && hub.poolMA == 500 && !hub.viaHub, "hub stroom")
         precondition(hub.children.map(\.powerMA) == [500, 100, 500, nil] && hub.children.allSatisfy { $0.portMA == 500 && $0.viaHub }, "apparaten stroom")
         precondition(usb(RegNode(name: "X@1", id: 77, props: ["idVendor": 7, "port.kUSBWakePortCurrentLimit": 3000]), portMA: 900).portMA == 3000, "poort zelf gaat voor")
+        precondition(hub.children[0].bsd == nil && hub.children[3].bsd == "en7", "bsd alleen netwerk")
         let b = budget(hub.children, supplyMA: hub.poolMA)
         precondition(b?.usedMA == 1100 && b?.devices == 3 && b?.over == true && b?.text == "1100 mA · 5.5 W to 3 devices of 500 mA", "hub-budget \(b?.text ?? "")")
         precondition(portBudget([hub])?.over == false && portBudget([hub])?.text == "100 mA · 0.5 W to 1 device of 3000 mA", "poort-budget")
@@ -653,7 +657,7 @@ enum Ports {
 
         let hubNode = RegNode(name: "Hub@1", id: 42, props: ["USB Product Name": "Test Hub", "idVendor": 1, "bDeviceClass": 9, "UsbLinkSpeed": 480_000_000],
                               children: [RegNode(name: "Key@2", id: 43, props: ["kUSBProductString": "Test Keys", "idVendor": 2, "UsbLinkSpeed": 1_500_000]),
-                                         RegNode(name: "Disk@3", id: 44, props: ["idVendor": 0xABCD, "UsbLinkSpeed": 480_000_000, "UsbPowerSinkAllocation": 500]),
+                                         RegNode(name: "Disk@3", id: 44, props: ["idVendor": 0xABCD, "UsbLinkSpeed": 480_000_000, "UsbPowerSinkAllocation": 500, "BSD Name": "disk4"]),
                                          RegNode(name: "NotADevice", id: 45)])
         let hub = usb(hubNode)
         precondition(usbMax(0x0310) == nil && usbMax(0x0300) == 5e9 && usbMax(0x0210) == 480e6 && usbMax(0x0110) == 12e6, "usb max")
@@ -824,7 +828,7 @@ enum PortReader {
         s.usb = children(root, "IOUSB").flatMap { ctrl -> [USBDev] in
             defer { IOObjectRelease(ctrl) }
             let limit = Ports.int(prop(ctrl, "kUSBWakePortCurrentLimit"))   // wat een poort van de Mac hoogstens levert
-            return children(ctrl, "IOUSB").map { e in defer { IOObjectRelease(e) }; return Ports.usb(node(e, "IOUSB", depth: 8), portMA: limit) }
+            return children(ctrl, "IOUSB").map { e in defer { IOObjectRelease(e) }; return ether(Ports.usb(node(e, "IOUSB", depth: 8), portMA: limit)) }
         }
         s.tb = services("IOThunderboltSwitch").compactMap(tbDevice)
         s.tbLinks = services("IOThunderboltPort").compactMap { e in
@@ -837,6 +841,14 @@ enum PortReader {
         Sampler.battery(into: &b)   // zelfde bron als Live
         s.power?.percent = b.battery; s.power?.minutes = b.batteryMinutes
         return s
+    }
+
+    /// USB-netwerkadapters: afgesproken snelheid en wat de adapter kan (zelfde ioctl als `ifconfig -m`).
+    private static func ether(_ d: USBDev) -> USBDev {
+        var d = d
+        if let b = d.bsd { d.ether = EtherMedia.read(b) }
+        d.children = d.children.map(ether)
+        return d
     }
 
     private static func tbDevice(_ e: io_registry_entry_t) -> TBDev? {
@@ -896,6 +908,8 @@ enum PortReader {
                     for k in Ports.supplyKeys where n.props[k] == nil { if let v = prop(c, k) { n.props[k] = v } }
                     IOObjectRelease(c)
                 }
+            } else if let b = IORegistryEntrySearchCFProperty(e, kIOServicePlane, "BSD Name" as CFString, kCFAllocatorDefault, IOOptionBits(kIORegistryIterateRecursively)) as? String {
+                n.props["BSD Name"] = b   // netwerkadapter ("en7") of schijf ("disk4"); Ports.usb gebruikt alleen "en…"
             }
         }
         if depth > 0 { n.children = children(e, plane).map { c in defer { IOObjectRelease(c) }; return node(c, plane, depth: depth - 1) } }
@@ -936,7 +950,9 @@ extension PortReader {
             if let f = d.failedMA { parts.append("asked in vain for \(f) mA") }
             if let p = d.portMA { parts.append("port gives up to \(Ports.powerText(p))") }
             if d.hub, let b = Ports.budget(d.children, supplyMA: d.poolMA) { parts.append("shares \(b.text)" + (b.over ? " (OVER)" : "")) }
+            if let e = d.ether { parts.append("network adapter \(d.bsd ?? "") now \(e.activeMbit.map(EtherMedia.speed) ?? "–") of \(e.maxMbit.map(EtherMedia.speed) ?? "–")") }
             print("\(pad)- \(d.name) [\(parts.joined(separator: "; "))]")
+            if let n = d.ether?.note() { print("\(pad)  \(n.serious ? "!" : "i") \(n.text)") }
             if let n = Ports.powerNote(d) { print("\(pad)  \(n.serious ? "!" : "i") \(n.text)") }
             d.children.forEach { tree($0, pad + "  ") }
         }
@@ -950,6 +966,12 @@ extension PortReader {
         let claimed = Set(s.ports.flatMap(\.usbRoots)), other = s.usb.filter { !claimed.contains($0.id) }
         if !other.isEmpty { print("Other USB devices (not linked to a port):"); other.forEach { tree($0, "  ") } }
         if s.usb.isEmpty { print("No USB devices connected.") }
+        print("== Network adapters (cable check) ==")
+        for i in 0..<16 {
+            guard let m = EtherMedia.read("en\(i)"), m.maxMbit != nil || m.activeMbit != nil else { continue }   // Wi-Fi en Thunderbolt-bruggen melden geen snelheid
+            print("en\(i): \(m.linked ? "linked" : "no link") · now \(m.activeMbit.map(EtherMedia.speed) ?? "–") · adapter can do \(m.maxMbit.map(EtherMedia.speed) ?? "–") · duplex \(m.duplex ?? "–")")
+            if let n = m.note() { print("  \(n.serious ? "!" : "i") \(n.text)") }
+        }
     }
 }
 

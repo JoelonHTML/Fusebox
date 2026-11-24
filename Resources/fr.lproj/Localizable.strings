@@ -1626,3 +1626,15 @@
 "What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share." = "Ce que ce hub a alloué aux appareils qui y sont branchés et, s’il l’indique, ce qu’il a à répartir.";
 "What's plugged into this port asks for %lld mA together, but the port supplies up to %lld mA. Move a device to another port, or use a hub with its own power adapter." = "Ce qui est branché sur ce port demande %1$lld mA au total, mais le port fournit au plus %2$lld mA. Branchez un appareil sur un autre port ou utilisez un hub avec son propre adaptateur secteur.";
 "up to %@" = "jusqu’à %@";
+"Adapter can do" = "L’adaptateur permet";
+"Duplex" = "Duplex";
+"Full duplex" = "Duplex intégral";
+"Half duplex" = "Semi-duplex";
+"Full duplex means both sides can send at the same time, which is normal. Half duplex is slow and points to a bad cable or a very old hub." = "En duplex intégral, les deux côtés peuvent émettre en même temps : c’est la norme. Le semi-duplex est lent et révèle un mauvais câble ou un très vieux hub.";
+"Half duplex: your Mac and the router or switch can't send at the same time, so the link is slow. Usually a bad cable or a very old hub. Try another cable or port." = "Semi-duplex : votre Mac et le routeur ou le switch ne peuvent pas émettre en même temps, la liaison est donc lente. Le plus souvent un mauvais câble ou un très vieux hub. Essayez un autre câble ou un autre port.";
+"Network cable" = "Câble réseau";
+"Network cable: " = "Câble réseau : ";
+"Runs at %@, but this adapter can do %@. Usually a damaged cable, a cable with only four wires, or a slower port on the router or switch. Try another cable first." = "Tourne à %1$@, alors que cet adaptateur permet %2$@. Le plus souvent un câble abîmé, un câble à quatre fils seulement ou un port plus lent sur le routeur ou le switch. Essayez d’abord un autre câble.";
+"Runs at %@; this adapter can do %@. The port on the router or switch is probably slower, which is normal." = "Tourne à %1$@ ; cet adaptateur permet %2$@. Le port du routeur ou du switch est sans doute plus lent, ce qui est normal.";
+"The fastest speed this network adapter supports. If the link speed is lower, the cable or the port on the router or switch is holding it back. 100 Mbit/s on a 1 Gbit/s adapter usually means a damaged cable." = "La vitesse maximale que permet cet adaptateur réseau. Si la vitesse de liaison est plus basse, c’est le câble ou le port du routeur ou du switch qui la limite. 100 Mbit/s sur un adaptateur 1 Gbit/s indique le plus souvent un câble abîmé.";
+"no cable connected" = "aucun câble branché";
