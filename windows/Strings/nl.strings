@@ -1,0 +1,205 @@
+/* Fusebox for Windows — nl. Windows-only text; wins over the Mac strings with the same key. */
+
+
+/* Windows terms (override the Mac wording for the same key) */
+"Settings" = "Instellingen";
+"Open Settings" = "Open Instellingen";
+"Open Settings › About to install it." = "Open Instellingen › Info om het te installeren.";
+"See what's new in Settings › About." = "Bekijk wat er nieuw is in Instellingen › Info.";
+"DNS is slow (%@): try 1.1.1.1 as DNS server in Network settings" = "DNS is traag (%@): probeer 1.1.1.1 als DNS-server in de netwerkinstellingen";
+"Name lookups (DNS) fail: try 1.1.1.1 as DNS server in Network settings" = "Naamopzoekingen (DNS) mislukken: probeer 1.1.1.1 als DNS-server in de netwerkinstellingen";
+"Notifications" = "Meldingen";
+"Show notifications" = "Toon meldingen";
+"Send test notification" = "Stuur testmelding";
+"Location" = "Locatie";
+"Startup & storage" = "Opstart en opslag";
+
+/* Setup */
+"Setup" = "Instelhulp";
+"Done" = "Klaar";
+"Fusebox shows how busy your PC is: processor, memory, storage, internet and battery." = "Fusebox laat zien hoe druk je pc het heeft: processor, geheugen, opslag, internet en batterij.";
+"Turn measurements on or off." = "Zet metingen aan of uit.";
+"Show Fusebox in the system tray?" = "Fusebox in het systeemvak tonen?";
+"A small icon next to the clock, so you can check at a glance." = "Een klein pictogram naast de klok, zodat je in één oogopslag kunt kijken.";
+"Show the icon in the system tray" = "Toon het pictogram in het systeemvak";
+"A notification when something needs attention, like your PC getting too hot." = "Een melding als er iets aandacht nodig heeft, zoals een pc die te heet wordt.";
+"You can change all of this later in Settings." = "Je kunt dit alles later wijzigen in Instellingen.";
+
+/* Settings */
+"A lightweight system monitor for your PC: live measurements, apps and advice." = "Een lichte systeemmonitor voor je pc: live metingen, apps en advies.";
+"Another app already uses this shortcut." = "Een andere app gebruikt deze sneltoets al.";
+"Keyboard shortcut Ctrl+Alt+Win+F shows and hides Fusebox" = "Met de sneltoets Ctrl+Alt+Win+F toon of verberg je Fusebox";
+"Fusebox always saves a small file per day on your PC, so Checkup can look back." = "Fusebox bewaart altijd een klein bestand per dag op je pc, zodat Checkup kan terugkijken.";
+"Fusebox measures every 5 seconds instead of 2, without glass effects, and Windows runs it in Efficiency mode. Automatic: on in Energy saver, or on battery below 20%." = "Fusebox meet elke 5 seconden in plaats van 2, zonder glaseffecten, en Windows voert het uit in Efficiëntiemodus. Automatisch: aan bij Energiebesparing, of op batterij onder 20%.";
+"If Focus assist is on, Windows keeps these notifications quiet too." = "Als Focusassistent aan staat, houdt Windows deze meldingen ook stil.";
+"Turn measurements on or off. Use the arrows to change the order." = "Zet metingen aan of uit. Wijzig de volgorde met de pijlen.";
+"Drag the window larger for more columns" = "Maak het venster groter voor meer kolommen";
+
+/* Processes */
+"%@ crashed" = "%@ is gecrasht";
+"%@ stopped responding" = "%@ reageert niet meer";
+"Fusebox itself: CPU %@ · RAM %@" = "Fusebox zelf: CPU %@ · RAM %@";
+"Network per app isn't shown: Windows only allows it with administrator rights." = "Netwerk per app wordt niet getoond: Windows staat dat alleen toe met beheerdersrechten.";
+"Select an app to see what it does." = "Selecteer een app om te zien wat die doet.";
+"Windows doesn't allow it, or the app isn't responding." = "Windows staat het niet toe, of de app reageert niet.";
+"Windows protects these parts, so they can't be stopped here." = "Windows beveiligt deze onderdelen, dus ze kunnen hier niet worden gestopt.";
+"✕ Stop" = "✕ Stop";
+"Average %@ · peak %@" = "Gemiddeld %@ · piek %@";
+"Average and peak count from when Fusebox started watching this app (the last hour is graphed). Fusebox keeps this in memory only." = "Gemiddelde en piek tellen vanaf het moment dat Fusebox deze app ging volgen (het laatste uur staat in de grafiek). Fusebox bewaart dit alleen in het geheugen.";
+"Publisher" = "Uitgever";
+"Started" = "Gestart";
+"Commit" = "Vastgelegd";
+
+/* Checkup */
+"%@ reports its health as %@" = "%@ meldt zijn conditie als %@";
+"%@ crashed %lld times in the last 30 days. Update or reinstall it." = "%@ is de afgelopen 30 dagen %lld keer gecrasht. Werk de app bij of installeer hem opnieuw.";
+"%lld apps start with Windows" = "%lld apps starten met Windows";
+"%lld charge cycles" = "%lld laadcycli";
+"%lld problems logged in the last 30 days" = "%lld problemen gelogd in de afgelopen 30 dagen";
+"Apps crashed or hung %lld times in the last 30 days" = "Apps zijn de afgelopen 30 dagen %lld keer gecrasht of vastgelopen";
+"Blue screen (Windows restarted after a serious error)" = "Blauw scherm (Windows is opnieuw gestart na een ernstige fout)";
+"Blue screen: %lld times in the last 30 days" = "Blauw scherm: %lld keer in de afgelopen 30 dagen";
+"Blue screens are usually caused by a driver or failing hardware. Install Windows updates and update your drivers." = "Een blauw scherm komt meestal door een stuurprogramma of defecte hardware. Installeer Windows-updates en werk je stuurprogramma's bij.";
+"CPU: %@, not busy" = "CPU: %@, niet druk";
+"Check SSD health" = "SSD-conditie controleren";
+"Check which apps open automatically at startup — you can turn off what you don't need there" = "Kijk welke apps automatisch bij het opstarten openen — wat je niet nodig hebt, kun je daar uitzetten";
+"All users" = "Alle gebruikers";
+"All users · off" = "Alle gebruikers · uit";
+"Copied" = "Gekopieerd";
+"Copy report" = "Rapport kopiëren";
+"Couldn't check: administrator permission was declined." = "Controleren mislukt: toestemming van de beheerder is geweigerd.";
+"Couldn't read this: %@" = "Kon dit niet lezen: %@";
+"Crashes & stability" = "Crashes en stabiliteit";
+"Disk %@" = "Schijf %@";
+"Drive %@ is almost full (%lld GB free)" = "Station %@ is bijna vol (%lld GB vrij)";
+"Drive %@ is getting full (%lld GB free)" = "Station %@ raakt vol (%lld GB vrij)";
+"Drive %@: %@ free of %@" = "Station %@: %@ vrij van %@";
+"Drive %@: %lld GB free" = "Station %@: %lld GB vrij";
+"Memory is filling up (%@)" = "Geheugen raakt vol (%@)";
+"Memory is full (%@)" = "Geheugen is vol (%@)";
+"Memory was (almost) full — close apps you're not using, or restart your PC" = "Het geheugen was (bijna) vol — sluit apps die je niet gebruikt, of herstart je pc";
+"Memory: %@, normal" = "Geheugen: %@, normaal";
+"Measuring…" = "Meten…";
+"No crashes in the last 30 days" = "Geen crashes in de afgelopen 30 dagen";
+"No disk information available" = "Geen schijfinformatie beschikbaar";
+"No startup apps found" = "Geen opstart-apps gevonden";
+"No wake-ups at night in the last 7 days" = "Geen keer wakker geworden 's nachts in de afgelopen 7 dagen";
+"Not restarted for %lld days" = "%lld dagen niet herstart";
+"Not restarted for %lld days. A restart clears memory and finishes updates.\nHow to restart: click Start, then the power button, then Restart." = "%lld dagen niet herstart. Een herstart maakt het geheugen vrij en rondt updates af.\nZo herstart je: klik op Start, dan op de aan/uit-knop en dan op Opnieuw opstarten.";
+"Nothing is keeping your PC awake right now." = "Niets houdt je pc op dit moment wakker.";
+"Nothing logged in the last 30 days" = "Niets gelogd in de afgelopen 30 dagen";
+"Nothing wrong: CPU %@, memory normal." = "Niets aan de hand: CPU %@, geheugen normaal.";
+"Open Power & sleep" = "Open Energie en slaapstand";
+"Open Startup apps" = "Open Opstart-apps";
+"Open Windows Update" = "Open Windows Update";
+"Powered on: %lld hours" = "Ingeschakeld: %lld uur";
+"Read errors: %lld" = "Leesfouten: %lld";
+"Restart your PC to finish installing updates." = "Herstart je pc om de installatie van updates af te ronden.";
+"SSD wear: %lld%%" = "SSD-slijtage: %lld%%";
+"Scan large folders" = "Grote mappen scannen";
+"Show in Explorer" = "Toon in Verkenner";
+"Sleep & wake" = "Slaapstand en ontwaken";
+"Startup apps" = "Opstart-apps";
+"The CPU is busy: %@ on average" = "De CPU is druk bezig: gemiddeld %@";
+"The CPU is fairly busy: %@ on average" = "De CPU is redelijk druk bezig: gemiddeld %@";
+"The CPU peaked at %@ in the last hour" = "De CPU piekte het afgelopen uur op %@";
+"This PC doesn't report its battery capacity" = "Deze pc geeft zijn batterijcapaciteit niet door";
+"This disk doesn't report wear or temperature." = "Deze schijf geeft slijtage of temperatuur niet door.";
+"Unexpected shutdown (power loss or crash)" = "Onverwacht afgesloten (stroomuitval of crash)";
+"Unexpected shutdown: %lld times in the last 30 days" = "Onverwacht afgesloten: %lld keer in de afgelopen 30 dagen";
+"Wear: %lld%%" = "Slijtage: %lld%%";
+"What keeps it awake?" = "Wat houdt hem wakker?";
+"Why is my PC slow?" = "Waarom is mijn pc traag?";
+"Windows is almost out of virtual memory (%@ committed)" = "Windows heeft bijna geen virtueel geheugen meer (%@ vastgelegd)";
+"Windows is waiting for a restart to finish updating" = "Windows wacht op een herstart om het bijwerken af te ronden";
+"Windows stability index: %.1f out of 10" = "Windows-stabiliteitsindex: %.1f van 10";
+"Woke up %lld times at night in the last 7 days" = "%lld keer 's nachts wakker geworden in de afgelopen 7 dagen";
+"Your PC keeps waking up at night. Check what keeps it awake, or change the sleep settings." = "Je pc wordt 's nachts steeds wakker. Kijk wat hem wakker houdt, of wijzig de slaapstandinstellingen.";
+"Your disk is almost full (%lld GB free) — clean up large files; Windows gets slow without free space" = "Je schijf is bijna vol (%lld GB vrij) — ruim grote bestanden op; Windows wordt traag zonder vrije ruimte";
+"Last 30 days" = "Laatste 30 dagen";
+"Last 7 days" = "Laatste 7 dagen";
+"app crashes" = "app-crashes";
+"blue screens" = "blauwe schermen";
+"hangs" = "vastlopers";
+"unexpected shutdowns" = "onverwachte afsluitingen";
+"times to sleep" = "keer in slaapstand";
+"wake-ups" = "keer wakker";
+"at night (00:00–06:00)" = "'s nachts (00:00–06:00)";
+"woke up: %@" = "wakker geworden: %@";
+"out of 100" = "van 100";
+
+/* Network */
+"Allow location access to see the Wi-Fi name" = "Sta locatietoegang toe om de wifinaam te zien";
+"Open location settings" = "Open locatie-instellingen";
+"Wi-Fi" = "wifi";
+"IP address" = "IP-adres";
+"Network name" = "Netwerknaam";
+"Open in browser" = "Open in browser";
+"This PC" = "Deze pc";
+"This PC %@ on %@" = "Deze pc %@ op %@";
+"This network (auto), or 192.168.1.0/24 or 192.168.1.10-80" = "Dit netwerk (automatisch), of 192.168.1.0/24 of 192.168.1.10-80";
+"No answer" = "Geen antwoord";
+"Check the cable and the router's lights, or turn on Wi-Fi." = "Controleer de kabel en de lampjes van de router, of zet wifi aan.";
+"Check the cable, then restart the router." = "Controleer de kabel en herstart dan de router.";
+"Has an IP address" = "Heeft een IP-adres";
+"Internet answers (1.1.1.1)" = "Internet antwoordt (1.1.1.1)";
+"Move closer to the router or restart it. Some routers ignore pings; the internet check below tells more." = "Ga dichter bij de router zitten of herstart hem. Sommige routers negeren pings; de internetcontrole hieronder zegt meer.";
+"Name lookup (DNS) works" = "Naamopzoeking (DNS) werkt";
+"Network adapter is connected" = "Netwerkadapter is verbonden";
+"No network connection" = "Geen netwerkverbinding";
+"No router found" = "Geen router gevonden";
+"Router answers" = "Router antwoordt";
+"Secure web pages open" = "Beveiligde webpagina's openen";
+"The internet doesn't answer: restart the modem, or your provider has an outage." = "Het internet antwoordt niet: herstart het modem, of je provider heeft een storing.";
+"Try 1.1.1.1 as DNS server in Network settings." = "Probeer 1.1.1.1 als DNS-server in de netwerkinstellingen.";
+"Turn on Wi-Fi or plug in a cable." = "Zet wifi aan of sluit een kabel aan.";
+"Websites don't open although the internet answers: check a VPN, proxy or firewall." = "Websites openen niet hoewel het internet antwoordt: controleer een vpn, proxy of firewall.";
+"Your PC got no address from the router. Restart the router, then reconnect." = "Je pc kreeg geen adres van de router. Herstart de router en maak dan opnieuw verbinding.";
+"Couldn't move Fusebox: %@" = "Fusebox verplaatsen mislukt: %@";
+"Move Fusebox to Programs?" = "Fusebox naar Programma's verplaatsen?";
+"slow" = "traag";
+
+/* Docked */
+"Audio" = "Audio";
+"Bluetooth" = "Bluetooth";
+"USB" = "USB";
+"Battery %lld%%" = "Batterij %lld%%";
+"Connected" = "Verbonden";
+"Display audio (HDMI or DisplayPort)" = "Beeldschermaudio (HDMI of DisplayPort)";
+"DisplayPort over USB-C" = "DisplayPort via USB-C";
+"Handset" = "Hoorn";
+"Input" = "Invoer";
+"Line level" = "Lijnniveau";
+"Microphone" = "Microfoon";
+"No audio devices found." = "Geen audioapparaten gevonden.";
+"No displays found." = "Geen beeldschermen gevonden.";
+"No paired devices." = "Geen gekoppelde apparaten.";
+"Nothing connected." = "Niets aangesloten.";
+"Nothing plugged in" = "Niets aangesloten";
+"Output" = "Uitvoer";
+"Plugged in" = "Aangesloten";
+"Power in" = "Stroom in";
+"Power status unavailable." = "Stroomstatus niet beschikbaar.";
+"Running on battery" = "Op batterij";
+"Runs slower than it can" = "Draait trager dan het kan";
+"can do" = "kan";
+"Speakers" = "Luidsprekers";
+"USB 1 (1.5 Mb/s)" = "USB 1 (1,5 Mb/s)";
+"USB 1 (12 Mb/s)" = "USB 1 (12 Mb/s)";
+"USB 2 (480 Mb/s)" = "USB 2 (480 Mb/s)";
+"USB 3.2 Gen 1 (5 Gb/s)" = "USB 3.2 Gen 1 (5 Gb/s)";
+"USB 3.2 Gen 2 (10 Gb/s)" = "USB 3.2 Gen 2 (10 Gb/s)";
+"USB or DisplayLink" = "USB of DisplayLink";
+"Virtual" = "Virtueel";
+"Windows doesn't share charger and cable details with apps." = "Windows deelt geen gegevens over lader en kabel met apps.";
+"Wireless (Miracast)" = "Draadloos (Miracast)";
+
+/* Status sentence (PC wording) */
+"Your PC is busy" = "Je pc heeft het druk";
+"Your PC is getting warm" = "Je pc wordt warm";
+"Your PC is very hot — it's slowing itself down" = "Je pc is erg heet — hij remt zichzelf af";
+
+/* Window shell and Settings window */
+"Settings  Ctrl+," = "Instellingen  Ctrl+,";
+"Settings  Ctrl+,  ·  Low impact is on" = "Instellingen  Ctrl+,  ·  Zuinig staat aan";
+"Tray icon" = "Systeemvakpictogram";

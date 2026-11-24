@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Linux-only type check of Fusebox.App's C# (see xaml_stubs.py). Not part of the solution or CI. -->
+  <PropertyGroup>
+    <TargetFramework>$(WinTfm)</TargetFramework>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Fusebox.App</RootNamespace>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <OutputType>Library</OutputType>
+    <AppxGeneratePriEnabled>false</AppxGeneratePriEnabled>
+    <NoWarn>$(NoWarn);CS0649;CS0169;CS8618</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="../../src/Fusebox.App/**/*.cs" Exclude="../../src/Fusebox.App/obj/**;../../src/Fusebox.App/bin/**" />
+    <Compile Include="obj/XamlStubs.g.cs" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.5" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.6.5" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+    <ProjectReference Include="../../src/Fusebox.Platform/Fusebox.Platform.csproj" />
+  </ItemGroup>
+</Project>

@@ -1,0 +1,221 @@
+name: Windows
+
+# Only the Windows app: never runs for Mac-only changes.
+on:
+  push:
+    branches: [windows]
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  pull_request:
+    paths: ["windows/**", ".github/workflows/windows.yml"]
+  workflow_dispatch:
+    inputs:
+      release:
+        description: "Publish a Windows release (signed zips on GitHub Releases, not marked latest)"
+        type: boolean
+        default: false
+      notes:
+        description: "Release notes (markdown; bullets '- Topic: what' make the update notification)"
+        type: string
+        default: ""
+
+permissions:
+  contents: read
+
+concurrency:
+  group: windows-${{ github.ref }}
+  # Never cancel a running build on the windows branch: it may be publishing a release.
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
+env:
+  DOTNET_NOLOGO: 1
+  DOTNET_CLI_TELEMETRY_OPTOUT: 1
+
+jobs:
+  # Decides whether this run publishes a release, and fixes one build number for both architectures:
+  # UTC yyyyMMddHHmm for a release, 0 for ordinary (dev) builds, which never auto-update.
+  # A release happens when windows/RELEASE_NOTES.md changes on the windows branch (like release.sh on the Mac),
+  # or via "Run workflow" with release = true once this workflow is on the default branch.
+  meta:
+    runs-on: ubuntu-latest
+    outputs:
+      build: ${{ steps.m.outputs.build }}
+      version: ${{ steps.m.outputs.version }}
+      release: ${{ steps.m.outputs.release }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          persist-credentials: false
+      - id: m
+        env:
+          EVENT: ${{ github.event_name }}
+          REF: ${{ github.ref }}
+          DISPATCH_RELEASE: ${{ github.event_name == 'workflow_dispatch' && inputs.release }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          release=false
+          if [ "$REF" = "refs/heads/windows" ]; then
+            if [ "$DISPATCH_RELEASE" = "true" ]; then release=true; fi
+            if [ "$EVENT" = "push" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null \
+               && git diff --name-only "$BEFORE" "$GITHUB_SHA" | grep -qx 'windows/RELEASE_NOTES.md'; then release=true; fi
+          fi
+          if [ "$release" = "true" ]; then build=$(date -u +%Y%m%d%H%M); else build=0; fi
+          version=$(sed -n 's:.*<Version>\(.*\)</Version>.*:\1:p' windows/Directory.Build.props | head -1)
+          echo "release=$release" >> "$GITHUB_OUTPUT"
+          echo "build=$build" >> "$GITHUB_OUTPUT"
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "release=$release build=$build version=$version"
+
+  build:
+    needs: meta
+    strategy:
+      fail-fast: false
+      matrix:
+        include:   # x64 only: Arm PCs are not supported
+          - arch: x64
+            os: windows-latest
+    runs-on: ${{ matrix.os }}
+    defaults:
+      run:
+        shell: pwsh
+        working-directory: windows
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
+
+      - name: Unit tests
+        run: dotnet test tests/Fusebox.Tests -c Release
+
+      - name: Translations complete
+        run: python tools/strings-check.py
+
+      - name: Probe (every reader on this real Windows machine)
+        run: |
+          dotnet run --project tools/Fusebox.Probe -c Release | Tee-Object probe.json
+          if ($LASTEXITCODE -ne 0) { exit 1 }
+
+      - name: Publish (Native AOT, self-contained)
+        run: |
+          dotnet publish src/Fusebox.App -c Release -r win-${{ matrix.arch }} -p:Platform=${{ matrix.arch }} -p:FuseboxBuild=${{ needs.meta.outputs.build }} -o out/Fusebox
+          Set-Content -NoNewline -Path out/Fusebox/build.txt -Value '${{ needs.meta.outputs.build }}'
+          (Get-Item out/Fusebox/Fusebox.exe).VersionInfo.ProductVersion | Tee-Object version.txt
+
+      - name: Smoke test (starts, visits every page, idle CPU, screenshots)
+        env:
+          FUSEBOX_NO_INSTALL: "1"
+          FUSEBOX_SMOKE: "1"
+        run: |
+          New-Item -ItemType Directory -Force "$env:LOCALAPPDATA/Fusebox", shots | Out-Null
+          '{"setupDone":true}' | Set-Content "$env:LOCALAPPDATA/Fusebox/settings.json"
+          Add-Type -AssemblyName System.Windows.Forms, System.Drawing
+          function Shot($name) {
+            try {
+              $b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds
+              $bmp = New-Object System.Drawing.Bitmap $b.Width, $b.Height
+              [System.Drawing.Graphics]::FromImage($bmp).CopyFromScreen($b.Location, [System.Drawing.Point]::Empty, $b.Size)
+              $bmp.Save("$PWD/shots/$name.png")
+            } catch { Write-Warning "No screenshot: $_" }
+          }
+          function Fail($why) {
+            Get-Content "$env:LOCALAPPDATA/Fusebox/crash.log" -ErrorAction SilentlyContinue
+            Get-WinEvent -FilterHashtable @{LogName='Application'; Level=2; StartTime=(Get-Date).AddMinutes(-5)} -MaxEvents 5 -ErrorAction SilentlyContinue | Format-List TimeCreated, ProviderName, Message
+            Write-Error $why; exit 1
+          }
+          $p = Start-Process out/Fusebox/Fusebox.exe -PassThru
+          Start-Sleep -Seconds 10
+          if ($p.HasExited) { Fail "Fusebox exited at start with code $($p.ExitCode)" }
+          $p.Refresh(); $c1 = $p.TotalProcessorTime.TotalSeconds
+          Start-Sleep -Seconds 8
+          if ($p.HasExited) { Fail "Fusebox exited on Live with code $($p.ExitCode)" }
+          $p.Refresh()
+          "Working set: {0:N0} MB, idle CPU on Live: {1:N2}% of one core" -f ($p.WorkingSet64 / 1MB), (($p.TotalProcessorTime.TotalSeconds - $c1) / 8 * 100) | Tee-Object smoke.txt
+          Shot "0-live"
+          $pages = "1-processes", "2-checkup", "3-network", "4-docked", "5-settings", "6-wide-dark", "7-live-wide-dark", "8-processes-wide-dark", "9-checkup-wide-dark", "10-network-wide-dark", "11-docked-wide-dark", "12-settings-look-dark", "13-settings-live-dark", "14-settings-processes-dark", "15-settings-checkup-dark", "16-settings-network-dark", "17-settings-docked-dark", "18-settings-menubar-dark", "19-settings-alerts-dark", "20-settings-data-dark", "21-settings-about-dark", "22-tray-flyout-dark", "23-after-settings-closed"
+          Start-Sleep -Seconds 5
+          foreach ($pg in $pages) {
+            if ($p.HasExited) { Fail "Fusebox exited before $pg with code $($p.ExitCode)" }
+            Shot $pg
+            Start-Sleep -Seconds 5
+          }
+          if (-not $p.WaitForExit(40000)) { Stop-Process -Id $p.Id -Force; Fail "Fusebox did not quit after the tour" }
+          if (-not (Test-Path out/Fusebox/smoke-ok.txt)) { Fail "Tour did not finish (exit code $($p.ExitCode))" }
+          Get-Content out/Fusebox/smoke-ok.txt | Tee-Object -Append smoke.txt
+          Remove-Item out/Fusebox/smoke-ok.txt
+          "Visited all pages, quit cleanly." | Tee-Object -Append smoke.txt
+          # Second start, now WITH the saved window position and settings of the first run (a real user's every-day start).
+          Remove-Item "$env:LOCALAPPDATA/Fusebox/crash.log" -ErrorAction SilentlyContinue
+          $p2 = Start-Process out/Fusebox/Fusebox.exe -PassThru
+          Start-Sleep -Seconds 10
+          if ($p2.HasExited) { Fail "Second start (saved position/settings) exited with code $($p2.ExitCode)" }
+          Stop-Process -Id $p2.Id -Force
+          "Second start with saved settings: OK" | Tee-Object -Append smoke.txt
+          if (Test-Path "$env:LOCALAPPDATA/Fusebox/crash.log") { "--- handled exceptions (crash.log) ---"; Get-Content "$env:LOCALAPPDATA/Fusebox/crash.log" | Tee-Object -Append smoke.txt }
+
+      - name: Zip
+        run: Compress-Archive -Path out/Fusebox -DestinationPath Fusebox-Windows-${{ matrix.arch }}.zip
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: Fusebox-Windows-${{ matrix.arch }}
+          path: windows/Fusebox-Windows-${{ matrix.arch }}.zip
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: diagnostics-${{ matrix.arch }}
+          path: |
+            windows/probe.json
+            windows/smoke.txt
+            windows/version.txt
+            windows/shots/
+          if-no-files-found: ignore
+
+  # Publishes the signed-or-digest-checked zips. The app checks every update against GitHub's own SHA-256 digest of the asset;
+  # when a release key is configured (Signing.ReleaseKey + secret FUSEBOX_WIN_SIGNING_KEY) it also requires the .sig.
+  release:
+    if: needs.meta.outputs.release == 'true'
+    environment: release
+    needs: [meta, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: windows/global.json
+      - uses: actions/download-artifact@v4
+        with:
+          name: Fusebox-Windows-x64
+          path: dist
+      - name: Build the signer (no secret in this step)
+        run: dotnet build windows/tools/Fusebox.Sign -c Release -o signer
+      - name: Sign when a release key is configured
+        env:
+          FUSEBOX_WIN_SIGNING_KEY: ${{ secrets.FUSEBOX_WIN_SIGNING_KEY }}
+        run: |
+          haskey=$(grep -c 'ReleaseKey = "[A-Za-z0-9+/=]\{60,\}"' windows/src/Fusebox.Core/Update/Signing.cs || true)
+          if [ "$haskey" = "0" ]; then echo "No release key in the app: publishing with GitHub's SHA-256 digests only."; exit 0; fi
+          if [ -z "$FUSEBOX_WIN_SIGNING_KEY" ]; then echo "::error::The app has a release key but the secret FUSEBOX_WIN_SIGNING_KEY is missing."; exit 1; fi
+          for a in x64; do
+            dotnet signer/Fusebox.Sign.dll sign "dist/Fusebox-Windows-$a.zip"
+            dotnet signer/Fusebox.Sign.dll verify "dist/Fusebox-Windows-$a.zip" "dist/Fusebox-Windows-$a.zip.sig"
+          done
+      - name: Create release (beta, never marked latest because the Mac updater reads releases/latest)
+        env:
+          GH_TOKEN: ${{ github.token }}
+          DISPATCH_NOTES: ${{ inputs.notes }}
+          TAG: win-v${{ needs.meta.outputs.version }}-beta-${{ needs.meta.outputs.build }}
+          VERSION: ${{ needs.meta.outputs.version }}
+        run: |
+          if [ -n "$DISPATCH_NOTES" ]; then printf '%s\n' "$DISPATCH_NOTES" > dist/notes.md; else cp windows/RELEASE_NOTES.md dist/notes.md; fi
+          cd dist
+          gh release create "$TAG" Fusebox-Windows-*.zip* \
+            --title "Fusebox for Windows $VERSION beta" --notes-file notes.md --latest=false --target "$GITHUB_SHA"
+          gh release view "$TAG" --json tagName,assets --jq '{tag: .tagName, assets: [.assets[].name]}'
+          latest=$(gh api repos/${{ github.repository }}/releases/latest --jq .tag_name)
+          echo "latest release (must stay the Mac one): $latest"
+          case "$latest" in win-*) echo '::error::A Windows release became latest'; exit 1;; esac

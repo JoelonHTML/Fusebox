@@ -1,0 +1,16 @@
+/* Fusebox for Windows — Docked page (fr). PC/Windows wording of Mac strings and Windows-only text. */
+
+"Billboard: the dock tells the PC which extra modes (such as video over USB-C) are not active." = "Billboard : le dock indique au PC quels modes supplémentaires (comme la vidéo via USB-C) ne sont pas actifs.";
+"DisplayLink or USB graphics" = "DisplayLink ou graphique USB";
+"DisplayLink sends the picture compressed over USB, and the PC's processor does the work. Fine for office work; not for games or video (motion can stutter, some protected video won't play)." = "DisplayLink envoie l’image compressée via USB, et c’est le processeur du PC qui travaille. Bien pour la bureautique ; pas pour les jeux ou la vidéo (les mouvements peuvent saccader, certaines vidéos protégées ne se lisent pas).";
+"No USB devices found." = "Aucun appareil USB trouvé.";
+"Off (supported)" = "Désactivé (pris en charge)";
+"Plugged in, but your PC sends sound elsewhere. Choose it in Settings › System › Sound." = "Branché, mais votre PC envoie le son ailleurs. Choisissez-le dans Paramètres › Système › Son.";
+"Protocol" = "Protocole";
+"Runs at %@ pixels but the display has %@, so text looks soft. Check Settings › System › Display, the cable or the port." = "Tourne à %@ pixels mais l’écran en a %@, le texte paraît donc flou. Vérifiez Paramètres › Système › Affichage, le câble ou le port.";
+"USB-C (DP alt mode)" = "USB-C (DP alt mode)";
+"Yes: Windows and apps may hold back big downloads and updates" = "Oui : Windows et les apps peuvent retarder les gros téléchargements et mises à jour";
+"into this PC" = "vers ce PC";
+"modem" = "modem";
+"vendor %@" = "fabricant %@";
+"vendor %@ · product %@" = "fabricant %@ · produit %@";

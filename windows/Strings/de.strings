@@ -1,0 +1,205 @@
+/* Fusebox for Windows — de. Windows-only text; wins over the Mac strings with the same key. */
+
+
+/* Windows terms (override the Mac wording for the same key) */
+"Settings" = "Einstellungen";
+"Open Settings" = "Einstellungen öffnen";
+"Open Settings › About to install it." = "Öffne Einstellungen › Über, um es zu installieren.";
+"See what's new in Settings › About." = "Neuigkeiten unter Einstellungen › Über.";
+"DNS is slow (%@): try 1.1.1.1 as DNS server in Network settings" = "DNS ist langsam (%@): Versuche es mit 1.1.1.1 als DNS-Server in den Netzwerkeinstellungen";
+"Name lookups (DNS) fail: try 1.1.1.1 as DNS server in Network settings" = "Namensabfragen (DNS) scheitern: Versuche es mit 1.1.1.1 als DNS-Server in den Netzwerkeinstellungen";
+"Notifications" = "Benachrichtigungen";
+"Show notifications" = "Benachrichtigungen zeigen";
+"Send test notification" = "Testbenachrichtigung senden";
+"Location" = "Standort";
+"Startup & storage" = "Autostart & Speicher";
+
+/* Setup */
+"Setup" = "Einrichtung";
+"Done" = "Fertig";
+"Fusebox shows how busy your PC is: processor, memory, storage, internet and battery." = "Fusebox zeigt, wie ausgelastet dein PC ist: Prozessor, Arbeitsspeicher, Speicher, Internet und Batterie.";
+"Turn measurements on or off." = "Schalte Messwerte ein oder aus.";
+"Show Fusebox in the system tray?" = "Fusebox im Infobereich anzeigen?";
+"A small icon next to the clock, so you can check at a glance." = "Ein kleines Symbol neben der Uhr, damit du auf einen Blick nachsehen kannst.";
+"Show the icon in the system tray" = "Symbol im Infobereich anzeigen";
+"A notification when something needs attention, like your PC getting too hot." = "Eine Benachrichtigung, wenn etwas Aufmerksamkeit braucht, etwa wenn dein PC zu heiß wird.";
+"You can change all of this later in Settings." = "Das kannst du später alles in den Einstellungen ändern.";
+
+/* Settings */
+"A lightweight system monitor for your PC: live measurements, apps and advice." = "Ein leichter Systemmonitor für deinen PC: Live-Messwerte, Apps und Tipps.";
+"Another app already uses this shortcut." = "Eine andere App verwendet dieses Tastenkürzel bereits.";
+"Keyboard shortcut Ctrl+Alt+Win+F shows and hides Fusebox" = "Mit dem Tastenkürzel Strg+Alt+Win+F blendest du Fusebox ein oder aus";
+"Fusebox always saves a small file per day on your PC, so Checkup can look back." = "Fusebox speichert immer eine kleine Datei pro Tag auf deinem PC, damit Checkup zurückblicken kann.";
+"Fusebox measures every 5 seconds instead of 2, without glass effects, and Windows runs it in Efficiency mode. Automatic: on in Energy saver, or on battery below 20%." = "Fusebox misst alle 5 Sekunden statt alle 2, ohne Glaseffekte, und Windows führt es im Effizienzmodus aus. Automatisch: an im Energiesparmodus oder bei Batteriebetrieb unter 20 %.";
+"If Focus assist is on, Windows keeps these notifications quiet too." = "Wenn der Benachrichtigungsassistent aktiv ist, hält Windows auch diese Benachrichtigungen zurück.";
+"Turn measurements on or off. Use the arrows to change the order." = "Schalte Messwerte ein oder aus. Mit den Pfeilen änderst du die Reihenfolge.";
+"Drag the window larger for more columns" = "Ziehe das Fenster größer für mehr Spalten";
+
+/* Processes */
+"%@ crashed" = "%@ ist abgestürzt";
+"%@ stopped responding" = "%@ reagiert nicht mehr";
+"Fusebox itself: CPU %@ · RAM %@" = "Fusebox selbst: CPU %@ · RAM %@";
+"Network per app isn't shown: Windows only allows it with administrator rights." = "Das Netzwerk pro App wird nicht angezeigt: Windows erlaubt das nur mit Administratorrechten.";
+"Select an app to see what it does." = "Wähle eine App, um zu sehen, was sie tut.";
+"Windows doesn't allow it, or the app isn't responding." = "Windows erlaubt es nicht, oder die App reagiert nicht.";
+"Windows protects these parts, so they can't be stopped here." = "Windows schützt diese Teile, daher können sie hier nicht beendet werden.";
+"✕ Stop" = "✕ Beenden";
+"Average %@ · peak %@" = "Durchschnitt %@ · Spitze %@";
+"Average and peak count from when Fusebox started watching this app (the last hour is graphed). Fusebox keeps this in memory only." = "Durchschnitt und Spitze zählen ab dem Moment, in dem Fusebox diese App zu beobachten begann (die letzte Stunde ist im Diagramm zu sehen). Fusebox hält dies nur im Arbeitsspeicher.";
+"Publisher" = "Herausgeber";
+"Started" = "Gestartet";
+"Commit" = "Zugesichert";
+
+/* Checkup */
+"%@ reports its health as %@" = "%@ meldet seinen Zustand als %@";
+"%@ crashed %lld times in the last 30 days. Update or reinstall it." = "%@ ist in den letzten 30 Tagen %lld Mal abgestürzt. Aktualisiere die App oder installiere sie neu.";
+"%lld apps start with Windows" = "%lld Apps starten mit Windows";
+"%lld charge cycles" = "%lld Ladezyklen";
+"%lld problems logged in the last 30 days" = "%lld Probleme in den letzten 30 Tagen protokolliert";
+"Apps crashed or hung %lld times in the last 30 days" = "Apps sind in den letzten 30 Tagen %lld Mal abgestürzt oder hängen geblieben";
+"Blue screen (Windows restarted after a serious error)" = "Bluescreen (Windows wurde nach einem schwerwiegenden Fehler neu gestartet)";
+"Blue screen: %lld times in the last 30 days" = "Bluescreen: %lld Mal in den letzten 30 Tagen";
+"Blue screens are usually caused by a driver or failing hardware. Install Windows updates and update your drivers." = "Bluescreens werden meist durch einen Treiber oder defekte Hardware verursacht. Installiere Windows-Updates und aktualisiere deine Treiber.";
+"CPU: %@, not busy" = "CPU: %@, nicht ausgelastet";
+"Check SSD health" = "SSD-Zustand prüfen";
+"Check which apps open automatically at startup — you can turn off what you don't need there" = "Sieh nach, welche Apps beim Start automatisch geöffnet werden — was du nicht brauchst, kannst du dort ausschalten";
+"All users" = "Alle Benutzer";
+"All users · off" = "Alle Benutzer · aus";
+"Copied" = "Kopiert";
+"Copy report" = "Bericht kopieren";
+"Couldn't check: administrator permission was declined." = "Prüfung nicht möglich: Die Administratorberechtigung wurde abgelehnt.";
+"Couldn't read this: %@" = "Das konnte nicht gelesen werden: %@";
+"Crashes & stability" = "Abstürze & Stabilität";
+"Disk %@" = "Datenträger %@";
+"Drive %@ is almost full (%lld GB free)" = "Laufwerk %@ ist fast voll (%lld GB frei)";
+"Drive %@ is getting full (%lld GB free)" = "Laufwerk %@ füllt sich (%lld GB frei)";
+"Drive %@: %@ free of %@" = "Laufwerk %@: %@ frei von %@";
+"Drive %@: %lld GB free" = "Laufwerk %@: %lld GB frei";
+"Memory is filling up (%@)" = "Der Arbeitsspeicher füllt sich (%@)";
+"Memory is full (%@)" = "Der Arbeitsspeicher ist voll (%@)";
+"Memory was (almost) full — close apps you're not using, or restart your PC" = "Der Arbeitsspeicher war (fast) voll — schließe Apps, die du nicht benutzt, oder starte deinen PC neu";
+"Memory: %@, normal" = "Arbeitsspeicher: %@, normal";
+"Measuring…" = "Messen …";
+"No crashes in the last 30 days" = "Keine Abstürze in den letzten 30 Tagen";
+"No disk information available" = "Keine Datenträgerinformationen verfügbar";
+"No startup apps found" = "Keine Autostart-Apps gefunden";
+"No wake-ups at night in the last 7 days" = "Keine nächtlichen Aufwachvorgänge in den letzten 7 Tagen";
+"Not restarted for %lld days" = "Seit %lld Tagen nicht neu gestartet";
+"Not restarted for %lld days. A restart clears memory and finishes updates.\nHow to restart: click Start, then the power button, then Restart." = "Seit %lld Tagen nicht neu gestartet. Ein Neustart gibt Arbeitsspeicher frei und schließt Updates ab.\nSo startest du neu: Klicke auf Start, dann auf die Ein/Aus-Schaltfläche und dann auf Neu starten.";
+"Nothing is keeping your PC awake right now." = "Im Moment hält nichts deinen PC wach.";
+"Nothing logged in the last 30 days" = "Nichts protokolliert in den letzten 30 Tagen";
+"Nothing wrong: CPU %@, memory normal." = "Nichts auffällig: CPU %@, Arbeitsspeicher normal.";
+"Open Power & sleep" = "Energie & Ruhezustand öffnen";
+"Open Startup apps" = "Autostart-Apps öffnen";
+"Open Windows Update" = "Windows Update öffnen";
+"Powered on: %lld hours" = "Eingeschaltet: %lld Stunden";
+"Read errors: %lld" = "Lesefehler: %lld";
+"Restart your PC to finish installing updates." = "Starte deinen PC neu, um die Installation der Updates abzuschließen.";
+"SSD wear: %lld%%" = "SSD-Verschleiß: %lld %%";
+"Scan large folders" = "Große Ordner scannen";
+"Show in Explorer" = "Im Explorer anzeigen";
+"Sleep & wake" = "Ruhezustand & Aufwachen";
+"Startup apps" = "Autostart-Apps";
+"The CPU is busy: %@ on average" = "Die CPU ist stark ausgelastet: durchschnittlich %@";
+"The CPU is fairly busy: %@ on average" = "Die CPU ist ziemlich ausgelastet: durchschnittlich %@";
+"The CPU peaked at %@ in the last hour" = "Die CPU erreichte in der letzten Stunde eine Spitze von %@";
+"This PC doesn't report its battery capacity" = "Dieser PC meldet seine Batteriekapazität nicht";
+"This disk doesn't report wear or temperature." = "Dieser Datenträger meldet weder Verschleiß noch Temperatur.";
+"Unexpected shutdown (power loss or crash)" = "Unerwartetes Herunterfahren (Stromausfall oder Absturz)";
+"Unexpected shutdown: %lld times in the last 30 days" = "Unerwartetes Herunterfahren: %lld Mal in den letzten 30 Tagen";
+"Wear: %lld%%" = "Verschleiß: %lld %%";
+"What keeps it awake?" = "Was hält ihn wach?";
+"Why is my PC slow?" = "Warum ist mein PC langsam?";
+"Windows is almost out of virtual memory (%@ committed)" = "Windows geht der virtuelle Arbeitsspeicher aus (%@ zugesichert)";
+"Windows is waiting for a restart to finish updating" = "Windows wartet auf einen Neustart, um die Aktualisierung abzuschließen";
+"Windows stability index: %.1f out of 10" = "Windows-Stabilitätsindex: %.1f von 10";
+"Woke up %lld times at night in the last 7 days" = "In den letzten 7 Tagen %lld Mal nachts aufgewacht";
+"Your PC keeps waking up at night. Check what keeps it awake, or change the sleep settings." = "Dein PC wacht nachts immer wieder auf. Prüfe, was ihn wach hält, oder ändere die Energiesparoptionen.";
+"Your disk is almost full (%lld GB free) — clean up large files; Windows gets slow without free space" = "Dein Datenträger ist fast voll (%lld GB frei) — räume große Dateien auf; Windows wird ohne freien Speicherplatz langsam";
+"Last 30 days" = "Letzte 30 Tage";
+"Last 7 days" = "Letzte 7 Tage";
+"app crashes" = "App-Abstürze";
+"blue screens" = "Bluescreens";
+"hangs" = "Hänger";
+"unexpected shutdowns" = "unerwartete Herunterfahrvorgänge";
+"times to sleep" = "Mal im Ruhezustand";
+"wake-ups" = "Aufwachvorgänge";
+"at night (00:00–06:00)" = "nachts (00:00–06:00)";
+"woke up: %@" = "aufgewacht: %@";
+"out of 100" = "von 100";
+
+/* Network */
+"Allow location access to see the Wi-Fi name" = "Erlaube den Standortzugriff, um den WLAN-Namen zu sehen";
+"Open location settings" = "Standorteinstellungen öffnen";
+"Wi-Fi" = "WLAN";
+"IP address" = "IP-Adresse";
+"Network name" = "Netzwerkname";
+"Open in browser" = "Im Browser öffnen";
+"This PC" = "Dieser PC";
+"This PC %@ on %@" = "Dieser PC %@ auf %@";
+"This network (auto), or 192.168.1.0/24 or 192.168.1.10-80" = "Dieses Netzwerk (automatisch) oder 192.168.1.0/24 oder 192.168.1.10-80";
+"No answer" = "Keine Antwort";
+"Check the cable and the router's lights, or turn on Wi-Fi." = "Prüfe das Kabel und die Anzeigen des Routers oder schalte WLAN ein.";
+"Check the cable, then restart the router." = "Prüfe das Kabel und starte dann den Router neu.";
+"Has an IP address" = "Hat eine IP-Adresse";
+"Internet answers (1.1.1.1)" = "Internet antwortet (1.1.1.1)";
+"Move closer to the router or restart it. Some routers ignore pings; the internet check below tells more." = "Geh näher an den Router oder starte ihn neu. Manche Router ignorieren Pings; die Internetprüfung unten sagt mehr.";
+"Name lookup (DNS) works" = "Namensauflösung (DNS) funktioniert";
+"Network adapter is connected" = "Netzwerkadapter ist verbunden";
+"No network connection" = "Keine Netzwerkverbindung";
+"No router found" = "Kein Router gefunden";
+"Router answers" = "Router antwortet";
+"Secure web pages open" = "Sichere Webseiten öffnen sich";
+"The internet doesn't answer: restart the modem, or your provider has an outage." = "Das Internet antwortet nicht: Starte das Modem neu, oder dein Anbieter hat eine Störung.";
+"Try 1.1.1.1 as DNS server in Network settings." = "Versuche es mit 1.1.1.1 als DNS-Server in den Netzwerkeinstellungen.";
+"Turn on Wi-Fi or plug in a cable." = "Schalte WLAN ein oder schließe ein Kabel an.";
+"Websites don't open although the internet answers: check a VPN, proxy or firewall." = "Websites öffnen sich nicht, obwohl das Internet antwortet: Prüfe VPN, Proxy oder Firewall.";
+"Your PC got no address from the router. Restart the router, then reconnect." = "Dein PC hat keine Adresse vom Router erhalten. Starte den Router neu und verbinde dich dann erneut.";
+"Couldn't move Fusebox: %@" = "Fusebox konnte nicht verschoben werden: %@";
+"Move Fusebox to Programs?" = "Fusebox in „Programme“ verschieben?";
+"slow" = "langsam";
+
+/* Docked */
+"Audio" = "Audio";
+"Bluetooth" = "Bluetooth";
+"USB" = "USB";
+"Battery %lld%%" = "Batterie %lld %%";
+"Connected" = "Verbunden";
+"Display audio (HDMI or DisplayPort)" = "Bildschirmaudio (HDMI oder DisplayPort)";
+"DisplayPort over USB-C" = "DisplayPort über USB-C";
+"Handset" = "Hörer";
+"Input" = "Eingabe";
+"Line level" = "Line-Pegel";
+"Microphone" = "Mikrofon";
+"No audio devices found." = "Keine Audiogeräte gefunden.";
+"No displays found." = "Keine Bildschirme gefunden.";
+"No paired devices." = "Keine gekoppelten Geräte.";
+"Nothing connected." = "Nichts angeschlossen.";
+"Nothing plugged in" = "Nichts angeschlossen";
+"Output" = "Ausgabe";
+"Plugged in" = "Angeschlossen";
+"Power in" = "Stromaufnahme";
+"Power status unavailable." = "Stromstatus nicht verfügbar.";
+"Running on battery" = "Im Batteriebetrieb";
+"Runs slower than it can" = "Läuft langsamer als möglich";
+"can do" = "möglich";
+"Speakers" = "Lautsprecher";
+"USB 1 (1.5 Mb/s)" = "USB 1 (1,5 Mb/s)";
+"USB 1 (12 Mb/s)" = "USB 1 (12 Mb/s)";
+"USB 2 (480 Mb/s)" = "USB 2 (480 Mb/s)";
+"USB 3.2 Gen 1 (5 Gb/s)" = "USB 3.2 Gen 1 (5 Gb/s)";
+"USB 3.2 Gen 2 (10 Gb/s)" = "USB 3.2 Gen 2 (10 Gb/s)";
+"USB or DisplayLink" = "USB oder DisplayLink";
+"Virtual" = "Virtuell";
+"Windows doesn't share charger and cable details with apps." = "Windows gibt keine Informationen zu Ladegerät und Kabel an Apps weiter.";
+"Wireless (Miracast)" = "Drahtlos (Miracast)";
+
+/* Status sentence (PC wording) */
+"Your PC is busy" = "Dein PC ist ausgelastet";
+"Your PC is getting warm" = "Dein PC wird warm";
+"Your PC is very hot — it's slowing itself down" = "Dein PC ist sehr heiß — er drosselt sich";
+
+/* Window shell and Settings window */
+"Settings  Ctrl+," = "Einstellungen  Strg+,";
+"Settings  Ctrl+,  ·  Low impact is on" = "Einstellungen  Strg+,  ·  Sparsam ist an";
+"Tray icon" = "Infobereich-Symbol";

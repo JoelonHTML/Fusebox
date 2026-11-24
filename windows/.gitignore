@@ -1,0 +1,7 @@
+bin/
+obj/
+out/
+*.zip
+probe.json
+smoke.txt
+screenshot.png

@@ -1,0 +1,28 @@
+<Window x:Class="Fusebox.App.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fusebox">
+    <!-- Content runs up behind the title bar. Row 0 = the tab row (in the title bar), row 1 = the page host. -->
+    <Grid x:Name="Root">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="32" />
+            <RowDefinition Height="*" />
+        </Grid.RowDefinitions>
+        <Grid x:Name="TitleRow">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto" />
+                <ColumnDefinition Width="*" />
+                <ColumnDefinition x:Name="CaptionColumn" Width="92" />
+            </Grid.ColumnDefinitions>
+            <!-- The drop (selected-tab pill) sits behind the buttons and slides (TranslationTransition, off in Low impact). -->
+            <Grid x:Name="TabHost" Margin="4,2,0,2" VerticalAlignment="Center">
+                <Border x:Name="Drop" HorizontalAlignment="Left" VerticalAlignment="Top" CornerRadius="8"
+                        Background="{ThemeResource FuseboxAccentSoft}" IsHitTestVisible="False" />
+                <StackPanel x:Name="TabStrip" Orientation="Horizontal" Spacing="2" />
+            </Grid>
+            <!-- The only drag region (SetTitleBar): the tab buttons stay clickable. -->
+            <Border x:Name="DragArea" Grid.Column="1" Background="Transparent" />
+        </Grid>
+        <Frame x:Name="Host" Grid.Row="1" />
+    </Grid>
+</Window>

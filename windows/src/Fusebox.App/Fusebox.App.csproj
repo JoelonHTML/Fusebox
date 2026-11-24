@@ -1,0 +1,51 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>$(WinTfm)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.22000.0</TargetPlatformMinVersion>
+    <SupportedOSPlatformVersion>10.0.22000.0</SupportedOSPlatformVersion>
+    <RootNamespace>Fusebox.App</RootNamespace>
+    <AssemblyName>Fusebox</AssemblyName>
+    <UseWinUI>true</UseWinUI>
+    <!-- Unpackaged + self-contained: one folder, no installer, no .NET or Windows App SDK runtime needed on the PC. -->
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Platforms>x64;ARM64</Platforms>
+    <RuntimeIdentifiers>win-x64;win-arm64</RuntimeIdentifiers>
+    <ApplicationManifest>app.manifest</ApplicationManifest>
+    <ApplicationIcon>Assets\Fusebox.ico</ApplicationIcon>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- Native AOT: faster start, less memory, no JIT. -->
+    <PublishAot>true</PublishAot>
+    <!-- Generates Fusebox.pri (compiled XAML lookup) for unpackaged apps too; without it MainWindow.xaml fails to load. -->
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <IsAotCompatible>true</IsAotCompatible>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>en;nl;de;fr;es</SatelliteResourceLanguages>
+    <!-- Release builds pass -p:FuseboxBuild=yyyyMMddHHmm; dev builds are 0 (never auto-update). The build is also in the exe's product version. -->
+    <FuseboxBuild Condition="'$(FuseboxBuild)' == ''">0</FuseboxBuild>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
+    <InformationalVersion>$(Version)+$(FuseboxBuild)</InformationalVersion>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- Only the parts we use (the metapackage would also pull in AI/ML runtimes). -->
+    <PackageReference Include="Microsoft.WindowsAppSDK.WinUI" Version="2.6.5" />
+    <PackageReference Include="Microsoft.WindowsAppSDK.Foundation" Version="2.6.5" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.28000.2526" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Fusebox.Platform/Fusebox.Platform.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Assets\**" CopyToOutputDirectory="PreserveNewest" />
+    <Content Include="../../../Resources/Fonts/**" Link="Assets\Fonts\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+  <!-- Build number and version as constants (AOT-safe, no reflection). -->
+  <Target Name="FuseboxBuildInfo" BeforeTargets="BeforeBuild">   <!-- before the XAML compiler's own C# pass -->
+    <WriteLinesToFile File="$(IntermediateOutputPath)BuildInfo.g.cs" Overwrite="true" WriteOnlyWhenDifferent="true"
+                      Lines="namespace Fusebox.App { static class BuildInfo { public const long Build = $(FuseboxBuild)L%3B public const string Version = &quot;$(Version)&quot;%3B } }" />
+    <ItemGroup><Compile Include="$(IntermediateOutputPath)BuildInfo.g.cs" /></ItemGroup>
+  </Target>
+</Project>

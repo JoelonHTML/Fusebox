@@ -1,0 +1,15 @@
+<Window x:Class="Fusebox.App.Settings.SettingsWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Settings">
+    <!-- System look (Mica, Fluent controls); follows only the Light/Dark choice. Sidebar items are built in code (SettingsWindow.Tabs).
+         Like Windows Settings: an open sidebar from 860 DIPs wide, icons only below that (the menu button opens it over the page). -->
+    <Grid x:Name="Root">
+        <NavigationView x:Name="Nav" PaneDisplayMode="Auto" IsBackButtonVisible="Collapsed" IsSettingsVisible="False"
+                        IsPaneToggleButtonVisible="False" OpenPaneLength="260" IsTitleBarAutoPaddingEnabled="False"
+                        ExpandedModeThresholdWidth="860" CompactModeThresholdWidth="0"
+                        SelectionChanged="Nav_SelectionChanged" DisplayModeChanged="Nav_DisplayModeChanged">
+            <Frame x:Name="Host" />
+        </NavigationView>
+    </Grid>
+</Window>

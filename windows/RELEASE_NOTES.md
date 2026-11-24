@@ -1,0 +1,4 @@
+- Window: after a restart it opens on the screen where you left it, at the right size when your screens use different scaling (for example 100 % and 200 %)
+- Network: a long network adapter name now wraps instead of being cut off
+- Steadier: the last minute of measurements is no longer lost when Fusebox quits at the same moment it saves, and the app page no longer waits while new apps are read
+- Checkup no longer asks Windows twice for the same reliability history when you switch quickly

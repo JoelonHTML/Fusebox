@@ -1,0 +1,9 @@
+<Window x:Class="Fusebox.App.TrayFlyout"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        Title="Fusebox">
+    <!-- The tray flyout (Mac rich panel, FEATURES.md §8.6): 336 wide, padding 12, rows 10 apart. Rows are built in code (TrayFlyout.Build). -->
+    <Grid x:Name="Root">
+        <StackPanel x:Name="Panel" Width="336" Padding="12" Spacing="10" VerticalAlignment="Top" />
+    </Grid>
+</Window>
