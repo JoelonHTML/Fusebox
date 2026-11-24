@@ -271,7 +271,6 @@ public sealed partial class MainWindow : Window
 
     void PlaceAtLaunch()
     {
-        double s = Win32.Scale(hwnd);
         var (w, h) = ReadSize("liveSize") ?? (DefaultW, DefaultH);
         var tl = Prefs.Str("windowTopLeft").Split(',');
         Windows.Graphics.PointInt32? pos = null;
@@ -282,6 +281,10 @@ public sealed partial class MainWindow : Window
             if (DisplayArea.GetFromPoint(new(x + 20, y + 20), DisplayAreaFallback.None) is { } da
                 && Placement.TopLeftVisible(x, y, [new Box(da.WorkArea.X, da.WorkArea.Y, da.WorkArea.Width, da.WorkArea.Height)])) pos = new(x, y);
         }
+        // First onto the saved screen, then size it with THAT screen's scaling (a 100 % and a 200 % screen differ 2×):
+        // sizing first with the scaling of the screen Windows happened to create the window on gave the wrong size there.
+        if (pos is { } p0) AppWindow.Move(p0);
+        double s = Win32.Scale(hwnd);
         var work = WorkArea(pos);
         var start = pos ?? AppWindow.Position;
         // Pixels: at 100 % and above the DIP minimums of Fit are already met, so only the screen clamp and the shift matter.

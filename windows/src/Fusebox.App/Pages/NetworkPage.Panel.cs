@@ -324,7 +324,10 @@ public sealed partial class NetworkPage
         {
             c.Terms = NetTerms.Wired; c.Icon.Glyph = ""; c.Title.Text = L("Cable");
             c.Face.Children.Add(Line("", L("Connected by cable, not Wi-Fi")));
-            var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 18 };
+            // Grid, not a horizontal StackPanel: the adapter column gets the rest of the width, so a long adapter name wraps instead of being cut off.
+            var row = new Grid { ColumnSpacing = 18 };
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+            row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             if (linkMbit is { } mb)
             {
                 var text = LinkSpeedText(mb); var i = text.IndexOf(' ');
@@ -335,6 +338,7 @@ public sealed partial class NetworkPage
             var nm = Lbl(n.Description.Length > 0 ? n.Description : n.Name, 13, "FuseboxOnRow"); ad.Children.Add(nm);
             ad.Children.Add(Lbl(n.Name, 10, "FuseboxOnRowSecondary"));
             Tip(ad, NetTerm.Cable);
+            Grid.SetColumn(ad, 1);
             row.Children.Add(ad);
             c.Face.Children.Add(row);
         }
