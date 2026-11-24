@@ -22,8 +22,8 @@ enum SelfLog {
             p.withMemoryRebound(to: rusage_info_t?.self, capacity: 1) { proc_pid_rusage(getpid(), RUSAGE_INFO_V6, $0) }
         }
         guard ok == 0 else { return }
-        let gpu = AppMonitor.gpuTimes()
-        let ws = gpu.first { AppMonitor.gpuNames[$0.key] == "WindowServer" }?.value ?? 0
+        let (gpu, names) = AppMonitor.gpuUsage()
+        let ws = gpu.first { names[$0.key] == "WindowServer" }?.value ?? 0
         let now = Mark(t: ProcessInfo.processInfo.systemUptime, cpuNs: Double(ri.ri_user_time + ri.ri_system_time) * tick,
                        energyNj: ri.ri_energy_nj, wakeups: ri.ri_interrupt_wkups + ri.ri_pkg_idle_wkups,
                        gpuNs: gpu[getpid()] ?? 0, wsNs: ws)
