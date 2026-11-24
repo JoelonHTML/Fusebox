@@ -37,9 +37,13 @@ public static class CsvLog
         Opt1(s.TempC), Opt1(s.GpuTempC), I(s.NetIn), I(s.NetOut), Opt1(s.PingMs), F1(s.DiskFree / GB), Opt1(s.Battery),
         F1(s.DiskTotal / GB), I(s.DiskRead), I(s.DiskWrite), F2(s.SwapBytes / GiB), "", OptI(s.WifiDbm)) + "\n";
 
+    static readonly object appendGate = new();
+
     /// <summary>Appends text (header first on a new file). False on failure: the caller keeps its buffer.</summary>
     public static bool Append(string file, string header, string text)
     {
+        // One writer at a time: a background flush and the flush on quit can hit the same day file (header twice, or an IOException that drops the last minute).
+        lock (appendGate)
         try
         {
             Directory.CreateDirectory(Path.GetDirectoryName(file)!);

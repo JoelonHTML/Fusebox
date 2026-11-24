@@ -23,7 +23,7 @@ Doel: dezelfde Fusebox (Clear · Light · Live) als native Windows 11-app, net z
 - Let op: **.NET 8 is sinds 10 november 2026 niet meer ondersteund**, daarom .NET 10 (LTS tot nov. 2028).
 - Native AOT (ondersteund door WinUI 3 sinds Windows App SDK 1.6): snellere start, minder geheugen, geen JIT.
 - Unpackaged (geen MSIX): installeren = map uitpakken in `%LOCALAPPDATA%\Programs\Fusebox`, geen beheerdersrechten, eenvoudig zelf bijwerken (zoals de Mac-zip).
-- Doelplatformen: **alleen Windows 11**, **x64 en arm64** (Snapdragon-laptops: de Windows-tegenhanger van Apple Silicon).
+- Doelplatformen: **alleen Windows 11**, **alleen x64** (arm64 vervallen, besluit Joël 22 nov.: "arm hoeft niet, supporten we niet").
 
 ---
 
@@ -279,3 +279,37 @@ Vrijwel alle schermen worden opnieuw opgezet volgens de spec. Concreet de groots
 - Gevonden en opgelost met bewijs uit CI: crash Processen (Parent null), crash Checkup (niet-partial subklassen onder AOT), flyout InvalidCastException (presenter-cast), flyout rechts afgekapt (buiten- vs binnenmaat), "Alle logs verwijderen" wiste ook eigen CSV's van de gebruiker, MAC van de gateway in de openbare CI-log, Netwerk bleef pingen als het venster verborgen was.
 - Nog open (klein): lege ruimte onderin de flyout; pagina's renderen door als alleen de flyout open is; resultaatbestand van de beheerdertaak staat in een map van de gebruiker (laag risico); twee dialogen tegelijk kan een fout geven; app-namen met regeleinde in peaks.csv.
 - Alleen op een echte pc te testen: batterij, wifi, Bluetooth, USB, beheerdertaken, meldingen en de automatische update 0.1.0 → 0.2.0.
+
+### 7.10 Stand en vergelijking met de Mac (24 nov. 2026, Mac 0.13.2 ↔ Windows 0.2.5)
+- Uitgebracht t/m **0.2.5 beta**, alleen x64. Mac-main t/m 0.13.2 is in de `windows`-branch gemerged.
+- Mac 0.13.1/0.13.2 nagelopen:
+  - Venster volgt de muis naar een ander scherm: Windows sleept zelf (SetTitleBar), dus de AppKit-fout speelt hier niet. Niet te testen in CI (één scherm).
+  - Positie bewaren: gebeurde op Windows al pas na loslaten (WM_EXITSIZEMOVE).
+  - Openen op het bewaarde scherm: deed Windows al; **fix**: eerst naar dat scherm, dan de maat met díe schaal (100 % ↔ 200 %).
+  - Crash GPU-namen (gedeelde dictionary, twee threads): op Windows is die map lokaal, dus geen tweeling. Audit van alle gedeelde staat gaf geen crash-race. **Fixes**: CSV-schrijver met een slot (laatste minuut kon wegvallen bij afsluiten), Reliability-cache met een slot, app-beschrijving leest het bestand buiten het slot (UI wachtte). Latent, niet gefixt: `Notify.handlers` (wordt nu alleen bij start gevuld).
+
+**Windows mist nog (kan wel):**
+- Efficiëntiemodus heeft Windows al; de Mac-variant per app is gelijk. Niets te doen.
+- "Transparantie-effecten uit" van Windows volgen (Mac: Reduce transparency) [S]
+- Wifi-signaal zonder locatietoestemming (24H2): nu "geen signaalinformatie" als Windows de BSSID weigert; het signaalpercentage kan zonder BSSID [S] (?)
+- Klassiek menu als alternatief voor het systeemvak-paneel (Mac `richPanel` uit); nu alleen het rechtsklikmenu [S] (?)
+- Opruimknoppen bij opslag (Prullenbak legen / Schijfopruiming openen) als de Mac die heeft [S] (?)
+- Netwerkgebruik per app [M] (?: nagaan of de Mac dit toont)
+
+**Windows heeft, de Mac niet:**
+- Opstart-apps aan/uit (Run, Opstartmap, Taakplanner, services) met terugzetten
+- Windows Update / "herstart nodig", OneDrive als achtergrondtaak
+- Logboek en Betrouwbaarheidsmonitor: Checkup werkt op dag één
+- SSD-gezondheid en "wat houdt de pc wakker" via een eenmalige beheerdertaak
+- Netwerkprofiel (openbaar/privé) en versleutelde DNS
+- Vermelding in Apps en onderdelen + verwijderen; update-terugdraaien als de nieuwe versie niet start
+- Sneltoets-recorder met conflictcontrole
+
+**Kan niet of is niet zinvol op Windows:**
+- CPU-temperatuur en ventilatoren: vergt een kerneldriver (Defender blokkeert); ventilatorcurves, stofdetectie en de fan-helper vervallen
+- Geheugendruk bestaat niet op Windows (wel commit en gecomprimeerd geheugen)
+- Energie per app in watt: Windows geeft het niet
+- Laadlimiet: geen merkonafhankelijke Windows-API
+- Wifi-naam/BSSID: bewust nooit getoond (privacy); ruisniveau/SNR geeft Windows niet
+- USB-C-vermogen, lader en kabel: Windows geeft het niet
+- Mac-vensterfixes, Liquid Glass (→ Mica/Acrylic), Dock-icoon (→ taakbalkknop), Sparkle (→ eigen updater met SHA-256)

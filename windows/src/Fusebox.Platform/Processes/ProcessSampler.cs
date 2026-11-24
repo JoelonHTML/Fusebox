@@ -197,19 +197,18 @@ public sealed unsafe class AppMeta
     public static (string Name, string? Company, string? Version) Describe(string? path, string imageName)
     {
         if (path == null) return (AppGrouper.Stem(imageName), null, null);
-        lock (info)
+        lock (info) { if (info.TryGetValue(path, out var hit)) return hit; }
+        // The file read stays outside the lock: the UI thread (app page) must not wait while the sampler reads many new exes.
+        (string, string?, string?) r;
+        try
         {
-            if (info.TryGetValue(path, out var r)) return r;
-            try
-            {
-                var v = FileVersionInfo.GetVersionInfo(path);
-                string name = !string.IsNullOrWhiteSpace(v.FileDescription) ? v.FileDescription!.Trim()
-                    : !string.IsNullOrWhiteSpace(v.ProductName) ? v.ProductName!.Trim() : System.IO.Path.GetFileNameWithoutExtension(path);
-                r = (name, Clean(v.CompanyName), Clean(v.ProductVersion ?? v.FileVersion));
-            }
-            catch { r = (System.IO.Path.GetFileNameWithoutExtension(path), null, null); }
-            return info[path] = r;
+            var v = FileVersionInfo.GetVersionInfo(path);
+            string name = !string.IsNullOrWhiteSpace(v.FileDescription) ? v.FileDescription!.Trim()
+                : !string.IsNullOrWhiteSpace(v.ProductName) ? v.ProductName!.Trim() : System.IO.Path.GetFileNameWithoutExtension(path);
+            r = (name, Clean(v.CompanyName), Clean(v.ProductVersion ?? v.FileVersion));
         }
+        catch { r = (System.IO.Path.GetFileNameWithoutExtension(path), null, null); }
+        lock (info) return info[path] = r;
     }
 
     static string? Clean(string? s) => string.IsNullOrWhiteSpace(s) ? null : s.Trim();

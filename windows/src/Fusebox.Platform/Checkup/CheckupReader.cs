@@ -35,13 +35,18 @@ public static class CheckupReader
     static List<Reliability.Point>? reliability; static DateTime reliabilityAt = DateTime.MinValue;
 
     /// <summary>Reliability Monitor's stability index for the last 30 days (cached 10 minutes). Empty when Windows has none.</summary>
+    static readonly object reliabilityGate = new();
+
     public static List<Reliability.Point> ReliabilityHistory()
     {
+        lock (reliabilityGate)   // two quick card rebuilds would otherwise both start a 45 s PowerShell
+        {
         if (reliability != null && DateTime.UtcNow - reliabilityAt < TimeSpan.FromMinutes(10)) return reliability;
         var json = PowerShell("Get-CimInstance Win32_ReliabilityStabilityMetrics | Where-Object { $_.TimeGenerated -gt (Get-Date).AddDays(-30) } | "
             + "Select-Object @{n='T';e={$_.TimeGenerated.ToUniversalTime().ToString('o')}},@{n='I';e={$_.SystemStabilityIndex}} | ConvertTo-Json -Compress", 45000);
         reliabilityAt = DateTime.UtcNow;
         return reliability = Reliability.Parse(json);
+        }
     }
 
     /// <summary><c>powercfg /batteryreport /xml</c> (no admin): present capacity, cycles and the capacity history. Null without a battery or on failure.</summary>
