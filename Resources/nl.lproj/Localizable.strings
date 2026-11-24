@@ -1629,3 +1629,10 @@
 "Another app already uses this shortcut." = "Een andere app gebruikt deze toetscombinatie al.";
 "macOS already uses this shortcut." = "macOS gebruikt deze toetscombinatie al.";
 "Fusebox already uses this shortcut." = "Fusebox gebruikt deze toetscombinatie al.";
+"Show details" = "Toon details";
+"Hide details" = "Verberg details";
+"Temperature %lld °C" = "Temperatuur %lld °C";
+"Available spare %lld%%" = "Beschikbare reserve %lld%%";
+"%@ power cycles" = "%@ keer aangezet";
+"%@ unsafe shutdowns" = "%@ keer onveilig uitgezet";
+"%@ TB read" = "%@ TB gelezen";

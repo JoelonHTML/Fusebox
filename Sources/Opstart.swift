@@ -665,10 +665,19 @@ enum SSDHealth {
         var used = 0, spare = 100, spareMin = 0       // % versleten (kan > 100), % reserve, drempel van de fabrikant
         var writtenTB = 0.0, hours = 0, mediaErrors = 0
         var critical: UInt8 = 0                       // NVMe "critical warning"-bits, 0 = niets
+        // Alleen voor "Show details"
+        var tempC: Int?                               // nil = de SSD meldt geen temperatuur
+        var powerCycles = 0, unsafeShutdowns = 0, readTB = 0.0
         var warn: Bool { used >= 80 || critical != 0 || spare < spareMin || mediaErrors > 0 }
         var text: String {
             let tb = writtenTB < 1 ? "\(Int((writtenTB * 1000).rounded())) GB" : writtenTB < 10 ? "\(one(writtenTB)) TB" : "\(Int(writtenTB.rounded())) TB"
             return L("Wear \(used)% · \(tb) written in total")
+        }
+        /// Regels achter "Show details": wat de SSD verder zelf bijhoudt.
+        var details: [String] {
+            let n = { (v: Int) in v.formatted(.number.locale(Locale(identifier: "en_US"))) }
+            return [tempC.map { L("Temperature \($0) °C") }, L("Available spare \(spare)%"), L("\(n(powerCycles)) power cycles"),
+                    L("\(n(unsafeShutdowns)) unsafe shutdowns"), L("\(readTB < 10 ? one(readTB) : "\(Int(readTB.rounded()))") TB read")].compactMap { $0 }
         }
     }
 
@@ -688,13 +697,17 @@ enum SSDHealth {
         }
     }
 
-    /// 512 bytes NVMe SMART/Health-log → Info. Getallen zijn little-endian; data units = 512 000 bytes.
+    /// 512 bytes NVMe SMART/Health-log (log 02h) → Info. Getallen zijn little-endian; data units = 512 000 bytes.
+    /// Plaatsen: temperatuur 1–2 (kelvin), reserve 3, drempel 4, versleten 5, gelezen 32, geschreven 48, keren aangezet 112,
+    /// uren 128, onveilig uitgezet 144, mediafouten 160.
     static func parse(_ b: [UInt8]) -> Info? {
         guard b.count >= 192 else { return nil }
         func le(_ o: Int, _ n: Int) -> Double { (0..<n).reversed().reduce(0.0) { $0 * 256 + Double(b[o + $1]) } }
         let clamp = { (v: Double) in Int(Swift.min(v, 1e9)) }
         return Info(used: Int(b[5]), spare: Int(b[3]), spareMin: Int(b[4]), writtenTB: le(48, 16) * 512_000 / 1e12,
-                    hours: clamp(le(128, 16)), mediaErrors: clamp(le(160, 16)), critical: b[0])
+                    hours: clamp(le(128, 16)), mediaErrors: clamp(le(160, 16)), critical: b[0],
+                    tempC: le(1, 2) == 0 ? nil : Int(le(1, 2)) - 273, powerCycles: clamp(le(112, 16)), unsafeShutdowns: clamp(le(144, 16)),
+                    readTB: le(32, 16) * 512_000 / 1e12)
     }
 
     /// Interne SSD (IOEmbeddedNVMeBlockDevice / IONVMeBlockDevice met "NVMe SMART Capable").
@@ -741,7 +754,19 @@ enum SSDHealth {
         precondition(Info(writtenTB: 0.82).text == "Wear 0% · 820 GB written in total" && Info(writtenTB: 8.0088).text == "Wear 0% · 8.0 TB written in total", "kleine getallen")
         precondition(Info(used: 80).warn && Info(critical: 4).warn && Info(spare: 5, spareMin: 10).warn && Info(mediaErrors: 1).warn, "waarschuwen")
         precondition(parse([1, 2, 3]) == nil, "te kort")
-        if let real = read() { print("ssd: \(real.text), \(real.hours) h") } else { print("ssd: geen S.M.A.R.T.") }
+        // Details: 313 K = 40 °C, 74 219 000 units ≈ 38 TB gelezen, 312 keer aangezet, 4 keer onveilig uit
+        precondition(i.tempC == nil && i.details.first == "Available spare 100%", "geen temperatuur gemeld \(i.details)")
+        b[1] = 0x39; b[2] = 0x01
+        let readUnits: UInt32 = 74_219_000
+        for n in 0..<4 { b[32 + n] = UInt8(readUnits >> (8 * UInt32(n)) & 0xff) }
+        b[112] = 0x38; b[113] = 0x01; b[144] = 4
+        let d = parse(b)!
+        precondition(d.tempC == 40 && d.powerCycles == 312 && d.unsafeShutdowns == 4 && d.used == 3 && d.hours == 10_000, "smart-details \(d)")
+        precondition(d.details == ["Temperature 40 °C", "Available spare 100%", "312 power cycles", "4 unsafe shutdowns", "38 TB read"], "details \(d.details)")
+        precondition(Info(powerCycles: 1234, readTB: 8.04).details == ["Available spare 100%", "1,234 power cycles", "0 unsafe shutdowns", "8.0 TB read"], "details klein")
+        b[112...127] = ArraySlice(repeating: 0xff, count: 16)
+        precondition(parse(b)!.powerCycles == 1_000_000_000, "128-bit teller begrensd")
+        if let real = read() { print("ssd: \(real.text), \(real.hours) h; \(real.details.joined(separator: ", "))") } else { print("ssd: geen S.M.A.R.T.") }
     }
 }
 
@@ -750,14 +775,22 @@ struct SSDHealthCard: View {
     @Environment(\.theme) private var theme
     let index: Int
     @State private var info = SSDHealth.cached
+    @AppStorage("ssdDetails") private var details = false
 
     var body: some View {
         if let info {
             VStack(alignment: .leading, spacing: 4) {
-                CardTitle(icon: "internaldrive", title: L("SSD health"), tone: info.warn ? 1 : 3)
+                HStack {
+                    CardTitle(icon: "internaldrive", title: L("SSD health"), tone: info.warn ? 1 : 3)
+                    Spacer()
+                    Button(details ? "Hide details" : "Show details") { details.toggle() }.buttonStyle(Pill(color: theme.onRow()))
+                }
                 Headline(big: info.warn ? L("Check soon") : L("OK"), small: info.text + L(" · \(info.hours.formatted(.number.locale(Locale(identifier: "en_US")))) hours on"), tone: info.warn ? 1 : 3)
                 if info.warn {
                     Text("The SSD is wearing out or reports errors. Keep a recent backup.").font(theme.label(11)).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true)
+                }
+                if details {
+                    Capped(items: info.details, id: \.self) { Text($0).font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)

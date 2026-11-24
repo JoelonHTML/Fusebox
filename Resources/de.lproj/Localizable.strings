@@ -1629,3 +1629,10 @@
 "Another app already uses this shortcut." = "Eine andere App verwendet diesen Kurzbefehl bereits.";
 "macOS already uses this shortcut." = "macOS verwendet diesen Kurzbefehl bereits.";
 "Fusebox already uses this shortcut." = "Fusebox verwendet diesen Kurzbefehl bereits.";
+"Show details" = "Details zeigen";
+"Hide details" = "Details ausblenden";
+"Temperature %lld °C" = "Temperatur %lld °C";
+"Available spare %lld%%" = "Verfügbare Reserve %lld %%";
+"%@ power cycles" = "%@ Einschaltvorgänge";
+"%@ unsafe shutdowns" = "%@ unsichere Abschaltungen";
+"%@ TB read" = "%@ TB gelesen";
