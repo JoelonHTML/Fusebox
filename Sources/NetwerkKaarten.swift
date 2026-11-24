@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 enum NetTerm: String, CaseIterable, Identifiable {
     case router, internet, live, jitter, lost, p95, dnsLookup
     case type, vpn, metered, ipv4, ipv6, gateway, dnsServers, ipv6Internet, publicIP
-    case signal, noise, linkSpeed, channel, standard, cable
+    case signal, noise, linkSpeed, channel, standard, security, cable, adapterMax, duplex
     case download, upload, delay, busyDelay, stability, kinds
     var id: String { rawValue }
 
@@ -38,7 +38,10 @@ enum NetTerm: String, CaseIterable, Identifiable {
         case .linkSpeed: L("Link speed")
         case .channel: L("Channel")
         case .standard: L("Standard")
+        case .security: L("Security")
         case .cable: L("Cable")
+        case .adapterMax: L("Adapter can do")
+        case .duplex: L("Duplex")
         case .download: L("Download")
         case .upload: L("Upload")
         case .delay: L("Delay")
@@ -72,6 +75,9 @@ enum NetTerm: String, CaseIterable, Identifiable {
         case .channel: L("The radio channel, band and width. 5 and 6 GHz are faster and less crowded; 2.4 GHz reaches further but is often busy. Wider channels are faster.")
         case .standard: L("The Wi-Fi generation in use. Wi-Fi 6 and 7 are faster and cope better with many devices than Wi-Fi 4 or 5.")
         case .cable: L("A cable has no signal or interference to worry about, so it's usually faster and steadier than Wi-Fi. The link speed shows what the cable and port can do.")
+        case .security: L("How this Wi-Fi network is protected. WPA3 is the strongest and WPA2 is fine. With WEP, the first WPA or no security at all, others can listen in: change it in the router's settings.")
+        case .adapterMax: L("The fastest speed this network adapter supports. If the link speed is lower, the cable or the port on the router or switch is holding it back. 100 Mbit/s on a 1 Gbit/s adapter usually means a damaged cable.")
+        case .duplex: L("Full duplex means both sides can send at the same time, which is normal. Half duplex is slow and points to a bad cable or a very old hub.")
         case .download: L("How much data per second comes in: streaming, websites, downloads. Compare it with your subscription; over Wi-Fi you often get less than over a cable.")
         case .upload: L("How much data per second goes out: video calls, sending files, backups. Usually lower than download.")
         case .delay: L("The delay to the test server while the line is quiet. Below 20 ms is very good, below 50 ms fine.")
@@ -82,8 +88,8 @@ enum NetTerm: String, CaseIterable, Identifiable {
     }
 
     static let connection: [NetTerm] = [.router, .internet, .live, .jitter, .lost, .dnsLookup, .type, .vpn, .metered, .ipv4, .ipv6, .gateway, .dnsServers, .ipv6Internet, .publicIP]
-    static let wifi: [NetTerm] = [.signal, .noise, .linkSpeed, .channel, .standard]
-    static let wired: [NetTerm] = [.cable, .linkSpeed]
+    static let wifi: [NetTerm] = [.signal, .noise, .linkSpeed, .channel, .standard, .security]
+    static let wired: [NetTerm] = [.cable, .linkSpeed, .adapterMax, .duplex]
     static let speed: [NetTerm] = [.download, .upload, .delay, .busyDelay, .stability, .kinds]
     #if os(macOS)
     static let report: [NetTerm] = [.router, .internet, .jitter, .lost, .p95, .dnsLookup, .download, .upload, .delay, .busyDelay, .stability, .signal, .noise, .linkSpeed]
@@ -96,8 +102,10 @@ enum NetTerm: String, CaseIterable, Identifiable {
 
 /// Label met uitleg: na 0,4 s zweven een klein popover (stippellijn als hint), klikken zet het vast (ook voor toetsenbord).
 struct TermLabel: View {
-    let term: NetTerm
-    var title: String? = nil
+    let label: String, item: (title: String, text: String)
+    init(term: NetTerm, title: String? = nil) { label = title ?? term.title; item = (term.title, term.text) }
+    /// Zelfde label voor een waarde die geen netwerkterm is ("More details" op Live).
+    init(_ title: String, hint: String) { label = title; item = (title, hint) }
     @Environment(\.theme) private var theme
     @State private var hover = false
     @State private var show = false
@@ -105,7 +113,7 @@ struct TermLabel: View {
 
     var body: some View {
         Button { pinned.toggle(); show = pinned } label: {
-            Text(title ?? term.title).underline(hover, pattern: .dot, color: theme.onRow(true).opacity(0.7))
+            Text(label).underline(hover, pattern: .dot, color: theme.onRow(true).opacity(0.7))
         }
         .buttonStyle(.plain)
         .onHover { inside in
@@ -115,31 +123,33 @@ struct TermLabel: View {
             } else if !pinned { show = false }
         }
         .onChange(of: show) { if !show { pinned = false } }
-        .popover(isPresented: $show, arrowEdge: .bottom) { TermsPopover(terms: [term]) }
-        .accessibilityHint(term.text)
+        .popover(isPresented: $show, arrowEdge: .bottom) { TermsPopover(items: [item]) }
+        .accessibilityHint(item.text)
     }
 }
 
 /// Inhoud van de uitleg-popovers: één term (label) of alle termen van een kaart (ⓘ).
 struct TermsPopover: View {
     var title: String? = nil
-    let terms: [NetTerm]
+    let items: [(title: String, text: String)]
+    init(title: String? = nil, terms: [NetTerm]) { self.title = title; items = terms.map { ($0.title, $0.text) } }
+    init(items: [(title: String, text: String)]) { self.items = items }
     @Environment(\.theme) private var theme
 
     var body: some View {
         let body = theme.font.font(11.5 * theme.scale, weight: .regular, style: theme.design)
         let list = VStack(alignment: .leading, spacing: 10) {
             if let title { Text(title).font(theme.label(13)).foregroundStyle(theme.text) }
-            ForEach(terms) { t in
+            ForEach(items.indices, id: \.self) { i in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(t.title).font(theme.label(11.5)).foregroundStyle(theme.text)
-                    Text(t.text).font(body).foregroundStyle(theme.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(items[i].title).font(theme.label(11.5)).foregroundStyle(theme.text)
+                    Text(items[i].text).font(body).foregroundStyle(theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .padding(14).frame(width: 300, alignment: .leading)
         Group {
-            if terms.count > 3 { ScrollView { list }.frame(maxHeight: 460) } else { list }
+            if items.count > 3 { ScrollView { list }.frame(maxHeight: 460) } else { list }
         }
         .presentationBackground(theme.bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.regularMaterial))
     }
@@ -343,13 +353,15 @@ struct InternetCards: View {
                 if w.rate > 0 { kv(.linkSpeed, "\(Int(w.rate)) Mbit/s") }
                 if let ch = w.channel { kv(.channel, ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · ")) }
                 if let phy = w.phy { kv(.standard, phy) }
+                if let sec = w.security { kv(.security, sec) }
             }
         } else {
             let c = stats.conn
             let wired = c?.kind == "Ethernet"
+            let note = c?.media?.note(linkMbit: c?.linkMbit)   // loopt de kabel onder wat de adapter kan?
             card(c == nil ? "Wi-Fi" : wired ? L("Cable") : c?.kind == "VPN" ? "VPN" : L("Network link"),
                  icon: c == nil ? "wifi.slash" : wired ? "cable.connector" : c?.kind == "VPN" ? "lock.shield" : "network",
-                 index: 1, terms: NetTerm.wired, open: nil) {
+                 index: 1, terms: NetTerm.wired, open: c?.media?.maxMbit != nil || c?.media?.duplex != nil ? $linkOpen : nil) {
                 EmptyView()
             } face: {
                 if let c {
@@ -368,11 +380,17 @@ struct InternetCards: View {
                             Text(c.iface).font(theme.label(10)).foregroundStyle(theme.onRow(true))
                         }
                     }
+                    if let note, note.serious { status("exclamationmark.triangle.fill", note.text, ok: false) }
                 } else {
                     status("wifi.slash", L("Not connected"), ok: false)
                 }
             } details: {
-                EmptyView()
+                if let m = c?.media {
+                    if let now = c?.linkMbit { kv(.linkSpeed, EtherMedia.speed(Int(now))) }
+                    if let top = m.maxMbit { kv(.adapterMax, EtherMedia.speed(top)) }
+                    if let d = m.duplex { kv(.duplex, d) }
+                    if let note, !note.serious { Text(note.text).font(theme.label(10)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true) }
+                }
             }
         }
     }

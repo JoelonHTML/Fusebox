@@ -15,7 +15,7 @@ enum Prefs {
             "hotkeyCode": 3, "hotkeyMods": 6400, "hotkeyLabel": "⌃⌥⌘F",   // F met ⌃⌥⌘ (Carbon: 4096+2048+256)
             // Live-pagina
             "metrics": Metric.defaultOrder, "metricsHidden": "",
-            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "learnedBattery": true, "netSpeed": false, "netPing": false, "lastSeenBuild": 0, "dockedInternals": false, "cpuGraph": "usage", "gpuGraph": "usage",
+            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "learnedBattery": true, "netSpeed": false, "netPing": false, "lastSeenBuild": 0, "dockedInternals": false, "cpuGraph": "usage", "gpuGraph": "usage", "moreDetails": "",
             "warnCPU": 85.0, "warnTemp": 95.0, "warnPing": 100.0,
             // Pagina's (Instellingen › Processes, Checkup, Network, Docked); "…Hide" = komma-lijst van wat uit staat
             "procFilter": "all", "procSort": "cpu", "procHide": "", "procSmall": "idle",

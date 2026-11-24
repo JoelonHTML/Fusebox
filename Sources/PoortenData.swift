@@ -82,7 +82,14 @@ struct USBDev: Identifiable, Hashable {
     var vid = 0, pid = 0
     var bps: Double?
     var hub = false, billboard = false
-    var powerMA: Int?
+    var powerMA: Int?                // toegewezen stroom op 5 V ("Power Allocated" in Systeeminformatie)
+    var canSinkMA: Int?              // wat het apparaat hoogstens kan opnemen (alleen Apple-apparaten melden dit)
+    var failedMA: Int?               // vroeg meer dan de poort kon geven (1 = hoeveel is onbekend)
+    var portMA: Int?                 // wat de poort waar het in zit hoogstens levert
+    var poolMA: Int?                 // hub: wat hij in totaal te verdelen heeft
+    var viaHub = false
+    var ether: EtherMedia?           // USB-netwerkadapter: afgesproken snelheid en wat hij kan
+    var bsd: String?                 // netwerkinterface erachter ("en7"), alleen om `ether` te lezen
     var bcd: Int?                    // USB-versie van het apparaat (0x0200 = 2.0, 0x0310 = 3.1)
     var children: [USBDev] = []
     var raw: [RawLine] = []
@@ -266,7 +273,14 @@ enum Ports {
         return port
     }
 
-    static func usb(_ n: RegNode) -> USBDev {
+    /// Stroomgrenzen die een controller of hub-driver meldt (IOUSBHostFamilyDefinitions.h).
+    static let supplyKeys = ["kUSBWakePortCurrentLimit", "kUSBWakePowerSupply"]
+    /// Van de poort waar het apparaat in zit (ouder in het IOService-vlak); de lezer zet ze met "port." ervoor bij het apparaat.
+    /// Gezien op deze Mac: elke USB-poort meldt kUSBWakePortCurrentLimit = 3000.
+    static let portKeys = ["kUSBWakePortCurrentLimit", "kUSBBusCurrentAllocation"]
+
+    /// `portMA`: wat de poort hoogstens levert als de poort zelf het niet meldt (van de controller of de hub erboven).
+    static func usb(_ n: RegNode, portMA: Int? = nil, viaHub: Bool = false) -> USBDev {
         let p = n.props
         var d = USBDev(id: n.id)
         d.name = str(p["USB Product Name"]) ?? str(p["kUSBProductString"]) ?? n.name.components(separatedBy: "@").first ?? n.name
@@ -275,10 +289,74 @@ enum Ports {
         d.bps = (p["UsbLinkSpeed"] as? NSNumber)?.doubleValue
         d.hub = int(p["bDeviceClass"]) == 9
         d.billboard = int(p["bDeviceClass"]) == 0x11 || d.name.localizedCaseInsensitiveContains("billboard")
-        d.powerMA = int(p["UsbPowerSinkAllocation"]); d.bcd = int(p["bcdUSB"])
+        d.powerMA = int(p["UsbPowerSinkAllocation"]) ?? int(p["kUSBBusCurrentAllocation"]) ?? int(p["port.kUSBBusCurrentAllocation"]); d.bcd = int(p["bcdUSB"])
+        d.canSinkMA = int(p["UsbPowerSinkCapability"]).flatMap { $0 > 0 ? $0 : nil }
+        d.failedMA = int(p["kUSBFailedRequestedPower"]).flatMap { $0 > 0 ? $0 : nil }
+        d.portMA = int(p["port.kUSBWakePortCurrentLimit"]) ?? portMA; d.poolMA = int(p["kUSBWakePowerSupply"]); d.viaHub = viaHub
+        d.bsd = str(p["BSD Name"]).flatMap { $0.hasPrefix("en") ? $0 : nil }
         d.raw = rawLines(p)
-        d.children = n.children.filter { $0.props["idVendor"] != nil }.map(usb)
+        let down = int(p["kUSBWakePortCurrentLimit"])
+        d.children = n.children.filter { $0.props["idVendor"] != nil }.map { usb($0, portMA: down, viaHub: d.hub) }
         return d
+    }
+
+    // MARK: USB-stroom (5 V)
+
+    /// "500 mA · 2.5 W": stroom bij de USB-busspanning van 5 V.
+    static func powerText(_ mA: Int) -> String { "\(mA) mA · \(trim(Double(mA) * 5 / 1000)) W" }
+
+    /// Wat de apparaten op één hub (of in één Mac-poort) samen toegewezen kregen, tegen wat die kan leveren.
+    struct USBBudget: Hashable {
+        var usedMA = 0, devices = 0
+        var supplyMA: Int?
+        var over: Bool { supplyMA.map { usedMA > $0 } ?? false }
+        /// "900 mA · 4.5 W to 2 devices" (+ " of 3000 mA")
+        var text: String {
+            (devices == 1 ? L("\(powerText(usedMA)) to 1 device") : L("\(powerText(usedMA)) to \(devices) devices")) + (supplyMA.map { L(" of \($0) mA") } ?? "")
+        }
+    }
+
+    /// nil als geen enkel apparaat een toewijzing meldt (dan tonen we niets).
+    static func budget(_ devs: [USBDev], supplyMA: Int?) -> USBBudget? {
+        let used = devs.compactMap(\.powerMA)
+        return used.isEmpty ? nil : USBBudget(usedMA: used.reduce(0, +), devices: used.count, supplyMA: supplyMA)
+    }
+
+    /// Stroom voor wat er direct in een Mac-poort zit.
+    static func portBudget(_ roots: [USBDev]) -> USBBudget? { budget(roots, supplyMA: roots.compactMap(\.portMA).max()) }
+
+    /// Eén apparaat: vroeg meer dan de poort kon geven, of krijgt duidelijk minder dan het kan opnemen.
+    static func powerNote(_ d: USBDev) -> PortNote? {
+        let fix = d.viaHub ? L(" Plug it straight into the Mac, or use a hub with its own power adapter.") : ""
+        if let f = d.failedMA {
+            return PortNote(text: (f > 1 ? L("\(d.name) asked for \(powerText(f)), more than this port can give, so it may not work.")
+                                         : L("\(d.name) asked for more power than this port can give, so it may not work.")) + fix, level: .warn, topic: .devices)
+        }
+        if let can = d.canSinkMA, let got = d.powerMA, got > 0, can > got {
+            // Duidelijk minder (de helft of minder) = waarschuwing; een klein verschil is alleen een weetje
+            return PortNote(text: L("\(d.name) gets \(powerText(got)) here but can take \(powerText(can)), so it charges slower.") + fix,
+                            level: can >= got * 2 ? .warn : .info, topic: .devices)
+        }
+        return nil
+    }
+
+    /// Voor de regel van de poort: hubs en de poort zelf die meer moeten leveren dan ze kunnen;
+    /// het oordeel over één los apparaat alleen als dat het enige in de poort is (anders staat het op zijn eigen regel).
+    static func powerNotes(_ roots: [USBDev]) -> [PortNote] {
+        var out: [PortNote] = []
+        func add(_ t: String) { out.append(PortNote(text: t, level: .warn, topic: .devices)) }
+        if let b = portBudget(roots), b.over {
+            add(L("What's plugged into this port asks for \(b.usedMA) mA together, but the port supplies up to \(b.supplyMA ?? 0) mA. Move a device to another port, or use a hub with its own power adapter."))
+        }
+        func walk(_ d: USBDev) {
+            if d.hub, let b = budget(d.children, supplyMA: d.poolMA), b.over {
+                add(L("The devices on \(d.name) ask for \(b.usedMA) mA together, but it can supply \(b.supplyMA ?? 0) mA. Move one to another port, or use a hub with its own power adapter."))
+            }
+            d.children.forEach(walk)
+        }
+        roots.forEach(walk)
+        if roots.count == 1, !roots[0].hub, let n = powerNote(roots[0]) { out.append(n) }
+        return out
     }
 
     // MARK: Teksten
@@ -462,7 +540,44 @@ enum Ports {
         if roots.contains(where: \.billboard) || devices(roots).contains(where: \.billboard) {
             add(L("Billboard device present: the dock or adapter reports that an extra mode (such as video over USB-C) is not active or not supported on this connection."), .info, .devices)
         }
+        out += powerNotes(roots)
         return out
+    }
+
+    /// USB-stroom met verzonnen registerwaarden (sleutels uit IOUSBHostFamilyDefinitions.h; niet op echte hardware getest).
+    static func powerSelfTest() {
+        precondition(powerText(500) == "500 mA · 2.5 W" && powerText(900) == "900 mA · 4.5 W" && powerText(2400) == "2400 mA · 12 W", "stroomtekst")
+        // Hub zonder eigen voeding (500 mA te verdelen) in een Mac-poort (3 A): schijf 500, toetsenbord 100, iPad kan 2400 maar krijgt 500
+        let hubNode = RegNode(name: "Hub@1", id: 70, props: ["USB Product Name": "Travel Hub", "idVendor": 1, "bDeviceClass": 9, "kUSBBusCurrentAllocation": 100,
+                                                              "kUSBWakePortCurrentLimit": 500, "kUSBWakePowerSupply": 500],
+                              children: [RegNode(name: "Disk@1", id: 71, props: ["USB Product Name": "Disk", "idVendor": 2, "UsbPowerSinkAllocation": 500, "BSD Name": "disk4"]),
+                                         RegNode(name: "Keys@2", id: 72, props: ["USB Product Name": "Keys", "idVendor": 3, "port.kUSBBusCurrentAllocation": 100, "port.kUSBWakePortCurrentLimit": 500]),
+                                         RegNode(name: "iPad@3", id: 73, props: ["USB Product Name": "iPad", "idVendor": 0x5AC, "UsbPowerSinkAllocation": 500, "UsbPowerSinkCapability": 2400]),
+                                         RegNode(name: "LAN@4", id: 74, props: ["USB Product Name": "USB LAN", "idVendor": 4, "BSD Name": "en7"])])
+        let hub = usb(hubNode, portMA: 3000)
+        precondition(hub.powerMA == 100 && hub.portMA == 3000 && hub.poolMA == 500 && !hub.viaHub, "hub stroom")
+        precondition(hub.children.map(\.powerMA) == [500, 100, 500, nil] && hub.children.allSatisfy { $0.portMA == 500 && $0.viaHub }, "apparaten stroom")
+        precondition(usb(RegNode(name: "X@1", id: 77, props: ["idVendor": 7, "port.kUSBWakePortCurrentLimit": 3000]), portMA: 900).portMA == 3000, "poort zelf gaat voor")
+        precondition(hub.children[0].bsd == nil && hub.children[3].bsd == "en7", "bsd alleen netwerk")
+        let b = budget(hub.children, supplyMA: hub.poolMA)
+        precondition(b?.usedMA == 1100 && b?.devices == 3 && b?.over == true && b?.text == "1100 mA · 5.5 W to 3 devices of 500 mA", "hub-budget \(b?.text ?? "")")
+        precondition(portBudget([hub])?.over == false && portBudget([hub])?.text == "100 mA · 0.5 W to 1 device of 3000 mA", "poort-budget")
+        precondition(budget([hub.children[3]], supplyMA: 500) == nil && budget([], supplyMA: nil) == nil, "zonder sleutels niets")
+        let ipad = powerNote(hub.children[2])
+        precondition(ipad?.level == .warn && ipad?.text == "iPad gets 500 mA · 2.5 W here but can take 2400 mA · 12 W, so it charges slower. Plug it straight into the Mac, or use a hub with its own power adapter.", "ipad \(ipad?.text ?? "")")
+        precondition(powerNote(hub.children[0]) == nil && powerNote(hub.children[3]) == nil, "gewoon apparaat: geen oordeel")
+        var near = hub.children[2]; near.powerMA = 2100; near.viaHub = false
+        precondition(powerNote(near)?.level == .info && powerNote(near)?.text.hasSuffix("charges slower.") == true, "klein verschil = weetje")
+        var failed = usb(RegNode(name: "Drive@1", id: 75, props: ["USB Product Name": "Drive", "idVendor": 5, "kUSBFailedRequestedPower": 900]), portMA: 500, viaHub: true)
+        precondition(powerNote(failed)?.level == .warn && powerNote(failed)?.text.hasPrefix("Drive asked for 900 mA · 4.5 W, more than this port can give") == true, "geweigerd")
+        failed.failedMA = 1
+        precondition(powerNote(failed)?.text.hasPrefix("Drive asked for more power than this port can give") == true, "geweigerd zonder getal")
+        // Voor de poortregel: de hub die te veel moet leveren; een los apparaat alleen als het het enige is
+        let pn = powerNotes([hub])
+        precondition(pn.count == 1 && pn[0].serious && pn[0].topic == .devices && pn[0].text.hasPrefix("The devices on Travel Hub ask for 1100 mA together, but it can supply 500 mA."), "hub te veel")
+        precondition(powerNotes([failed]).count == 1 && powerNotes([usb(RegNode(name: "Plain@1", id: 76, props: ["idVendor": 6]))]).isEmpty, "los apparaat")
+        var two = [hub.children[0], hub.children[2]]; two[0].portMA = 900; two[1].portMA = 900
+        precondition(powerNotes(two).first?.text.hasPrefix("What's plugged into this port asks for 1000 mA together, but the port supplies up to 900 mA.") == true, "poort te veel")
     }
 
     // MARK: Ruwe waarden (voor "Advanced")
@@ -472,7 +587,9 @@ enum Ports {
         "IOReportLegend", "IOReportLegendPublic", "IOCFPlugInTypes", "Owner"]
 
     static func rawLines(_ p: [String: Any]) -> [RawLine] {
-        p.keys.filter { !skipKeys.contains($0) && !$0.hasPrefix("IOFunctionParent") }.sorted().map { RawLine(key: $0, value: rawValue(p[$0] as Any)) }
+        // Serienummers en apparaat-ID's (UDID/ECID) tonen we nergens, ook niet tussen de ruwe waarden
+        p.keys.filter { k in !skipKeys.contains(k) && !k.hasPrefix("IOFunctionParent") && !["serial", "udid", "ecid"].contains { k.localizedCaseInsensitiveContains($0) } }
+            .sorted().map { RawLine(key: $0, value: rawValue(p[$0] as Any)) }
     }
 
     static func rawValue(_ v: Any) -> String {
@@ -540,7 +657,7 @@ enum Ports {
 
         let hubNode = RegNode(name: "Hub@1", id: 42, props: ["USB Product Name": "Test Hub", "idVendor": 1, "bDeviceClass": 9, "UsbLinkSpeed": 480_000_000],
                               children: [RegNode(name: "Key@2", id: 43, props: ["kUSBProductString": "Test Keys", "idVendor": 2, "UsbLinkSpeed": 1_500_000]),
-                                         RegNode(name: "Disk@3", id: 44, props: ["idVendor": 0xABCD, "UsbLinkSpeed": 480_000_000, "UsbPowerSinkAllocation": 500]),
+                                         RegNode(name: "Disk@3", id: 44, props: ["idVendor": 0xABCD, "UsbLinkSpeed": 480_000_000, "UsbPowerSinkAllocation": 500, "BSD Name": "disk4"]),
                                          RegNode(name: "NotADevice", id: 45)])
         let hub = usb(hubNode)
         precondition(usbMax(0x0310) == nil && usbMax(0x0300) == 5e9 && usbMax(0x0210) == 480e6 && usbMax(0x0110) == 12e6, "usb max")
@@ -559,6 +676,7 @@ enum Ports {
         precondition(fn.contains { $0.text.contains("says up to 5 Gbit/s, but the link runs at 10 Gbit/s") } && fn.contains { $0.text.hasPrefix("Billboard") }
                      && fn.contains { $0.level == .good }, "verschil")
         precondition(usbSpeedName(480e6) == "High Speed (USB 2)" && usbSpeedName(10e9) == "SuperSpeed+ (USB 3.2 Gen 2)" && pdText(2) == "USB PD 2.0", "namen")
+        powerSelfTest()
 
         var empty = PortInfo(id: "x", kind: "USB-C", number: 1)
         precondition(headline(empty, roots: [], tb: []) == "Nothing connected" && notes(empty, roots: [], tb: nil).isEmpty, "leeg")
@@ -572,6 +690,7 @@ enum Ports {
         precondition(nowText(now) == "Drawing 17.5 W now (20.4 V × 0.86 A) · battery charging", "nu \(nowText(now) ?? "")")
         precondition(chargerText(mag.charger!) == "Charger up to 94 W · agreed on 20 V × 4.7 A (94 W)", "lader")
         precondition(rawValue(true as NSNumber) == "Yes" && rawValue(Data([0xAB, 1])) == "<ab01>" && rawValue(["b": 1, "a": "x"] as [String: Any]) == "{a=x, b=1}", "ruw")
+        precondition(rawLines(["USB Serial Number": "X1", "kUSBSerialNumberString": "X1", "UsbAppleDeviceUDID": "u", "idVendor": 5]).map(\.key) == ["idVendor"], "geen serienummers")
         Displays.selfTest()
         Wireless.selfTest()
         AudioJack.selfTest()
@@ -706,7 +825,11 @@ enum PortReader {
         s.ports = children(root, "IOPort").map { Ports.port(node($0, "IOPort", depth: 3)) }
             .sorted { ($0.isMagSafe ? 1 : 0, $0.number) < ($1.isMagSafe ? 1 : 0, $1.number) }
         // USB-boom: wortel → controllers → apparaten
-        s.usb = children(root, "IOUSB").flatMap { ctrl in children(ctrl, "IOUSB").map { Ports.usb(node($0, "IOUSB", depth: 8)) } }
+        s.usb = children(root, "IOUSB").flatMap { ctrl -> [USBDev] in
+            defer { IOObjectRelease(ctrl) }
+            let limit = Ports.int(prop(ctrl, "kUSBWakePortCurrentLimit"))   // wat een poort van de Mac hoogstens levert
+            return children(ctrl, "IOUSB").map { e in defer { IOObjectRelease(e) }; return ether(Ports.usb(node(e, "IOUSB", depth: 8), portMA: limit)) }
+        }
         s.tb = services("IOThunderboltSwitch").compactMap(tbDevice)
         s.tbLinks = services("IOThunderboltPort").compactMap { e in
             defer { IOObjectRelease(e) }
@@ -718,6 +841,14 @@ enum PortReader {
         Sampler.battery(into: &b)   // zelfde bron als Live
         s.power?.percent = b.battery; s.power?.minutes = b.batteryMinutes
         return s
+    }
+
+    /// USB-netwerkadapters: afgesproken snelheid en wat de adapter kan (zelfde ioctl als `ifconfig -m`).
+    private static func ether(_ d: USBDev) -> USBDev {
+        var d = d
+        if let b = d.bsd { d.ether = EtherMedia.read(b) }
+        d.children = d.children.map(ether)
+        return d
     }
 
     private static func tbDevice(_ e: io_registry_entry_t) -> TBDev? {
@@ -764,6 +895,23 @@ enum PortReader {
         IORegistryEntryGetRegistryEntryID(e, &n.id)
         var p: Unmanaged<CFMutableDictionary>?
         if IORegistryEntryCreateCFProperties(e, &p, kCFAllocatorDefault, 0) == KERN_SUCCESS { n.props = p?.takeRetainedValue() as? [String: Any] ?? [:] }
+        if plane == "IOUSB", n.props["idVendor"] != nil {
+            // De poort waar het apparaat in zit (ouder in het IOService-vlak) meldt wat hij levert en heeft toegewezen
+            var port: io_registry_entry_t = 0
+            if IORegistryEntryGetParentEntry(e, kIOServicePlane, &port) == KERN_SUCCESS {
+                for k in Ports.portKeys { if let v = prop(port, k) { n.props["port." + k] = v } }
+                IOObjectRelease(port)
+            }
+            if Ports.int(n.props["bDeviceClass"]) == 9 {
+                // Hub: de stroomgrenzen staan op de hub-driver (kind in het IOService-vlak), niet op het apparaat zelf
+                for c in children(e, kIOServicePlane) {
+                    for k in Ports.supplyKeys where n.props[k] == nil { if let v = prop(c, k) { n.props[k] = v } }
+                    IOObjectRelease(c)
+                }
+            } else if let b = IORegistryEntrySearchCFProperty(e, kIOServicePlane, "BSD Name" as CFString, kCFAllocatorDefault, IOOptionBits(kIORegistryIterateRecursively)) as? String {
+                n.props["BSD Name"] = b   // netwerkadapter ("en7") of schijf ("disk4"); Ports.usb gebruikt alleen "en…"
+            }
+        }
         if depth > 0 { n.children = children(e, plane).map { c in defer { IOObjectRelease(c) }; return node(c, plane, depth: depth - 1) } }
         return n
     }
@@ -785,6 +933,45 @@ enum PortReader {
         var out: [io_registry_entry_t] = []
         while case let c = IOIteratorNext(it), c != 0 { out.append(c) }
         return out
+    }
+}
+
+// MARK: - Controle op een Mac met dock (scripts/check-docked.sh): wat Fusebox uit het register haalt, als tekst
+
+extension PortReader {
+    /// `Fusebox --check-docked`: alleen lezen, geen venster. Geen serienummers of adressen.
+    static func check() {
+        let s = read()
+        func tree(_ d: USBDev, _ pad: String) {
+            var parts = [d.hub ? "hub" : "device", d.maker]
+            if let b = d.bps { parts.append(Ports.speedText(b)) }
+            if let a = d.powerMA { parts.append("allocated \(Ports.powerText(a))") }
+            if let c = d.canSinkMA { parts.append("can take \(Ports.powerText(c))") }
+            if let f = d.failedMA { parts.append("asked in vain for \(f) mA") }
+            if let p = d.portMA { parts.append("port gives up to \(Ports.powerText(p))") }
+            if d.hub, let b = Ports.budget(d.children, supplyMA: d.poolMA) { parts.append("shares \(b.text)" + (b.over ? " (OVER)" : "")) }
+            if let e = d.ether { parts.append("network adapter \(d.bsd ?? "") now \(e.activeMbit.map(EtherMedia.speed) ?? "–") of \(e.maxMbit.map(EtherMedia.speed) ?? "–")") }
+            print("\(pad)- \(d.name) [\(parts.joined(separator: "; "))]")
+            if let n = d.ether?.note() { print("\(pad)  \(n.serious ? "!" : "i") \(n.text)") }
+            if let n = Ports.powerNote(d) { print("\(pad)  \(n.serious ? "!" : "i") \(n.text)") }
+            d.children.forEach { tree($0, pad + "  ") }
+        }
+        print("== What Fusebox shows on Docked ==")
+        for p in PortSum.all(s) {
+            print("\(p.port.title): \(Ports.headline(p.port, roots: p.roots, tb: p.tb))")
+            for n in p.notes { print("  \(n.level == .warn ? "!" : n.level == .info ? "i" : "+") \(n.text)") }
+            if let b = Ports.portBudget(p.roots) { print("  USB power: \(b.text)" + (b.over ? " (OVER)" : "")) }
+            p.roots.forEach { tree($0, "  ") }
+        }
+        let claimed = Set(s.ports.flatMap(\.usbRoots)), other = s.usb.filter { !claimed.contains($0.id) }
+        if !other.isEmpty { print("Other USB devices (not linked to a port):"); other.forEach { tree($0, "  ") } }
+        if s.usb.isEmpty { print("No USB devices connected.") }
+        print("== Network adapters (cable check) ==")
+        for i in 0..<16 {
+            guard let m = EtherMedia.read("en\(i)"), m.maxMbit != nil || m.activeMbit != nil else { continue }   // Wi-Fi en Thunderbolt-bruggen melden geen snelheid
+            print("en\(i): \(m.linked ? "linked" : "no link") · now \(m.activeMbit.map(EtherMedia.speed) ?? "–") · adapter can do \(m.maxMbit.map(EtherMedia.speed) ?? "–") · duplex \(m.duplex ?? "–")")
+            if let n = m.note() { print("  \(n.serious ? "!" : "i") \(n.text)") }
+        }
     }
 }
 

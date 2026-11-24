@@ -47,6 +47,7 @@ struct MetricDetail: View {
                 stats(r)
                 if !metric.peakKinds.isEmpty { peakList(h) }
                 extras(s, h)
+                if MoreInfo.available(metric) { MoreDetails(metric: metric, sample: s) }
             }
             .padding(.horizontal, 14).padding(.bottom, 14)
         }
