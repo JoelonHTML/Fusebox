@@ -71,6 +71,7 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: "NO"
         SWIFT_EMIT_LOC_STRINGS: "YES"
         CODE_SIGN_STYLE: Automatic
+        # DEVELOPMENT_TEAM: zie Local.xcconfig (staat niet in git)
     postBuildScripts:
       - name: Vertalingen samenvoegen
         basedOnDependencyAnalysis: false

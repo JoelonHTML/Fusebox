@@ -1,6 +1,6 @@
 # Fusebox voor iPhone — plan
 
-Status: **versie 0.1 is gebouwd en getest in de simulator** (24 november 2026). Nog niet op een echte iPhone getest. Zie §9.
+Status: **versie 0.1 is gebouwd, getest in de simulator en staat op Joëls iPhone 17 Pro Max** (24 november 2026). Zie §9.
 Nagekeken op 24 november 2026 in de documentatie van Apple (bronnen in §8).
 De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`) blijft zoals hij is; alles voor de iPhone komt in `ios/`.
 
@@ -306,9 +306,15 @@ Mac-app gecontroleerd na de wijzigingen: bouwt, `--selftest` slaagt, `scripts/st
 - Nederlands. De andere talen alleen via de vertaalcontrole.
 - Eigen verbruik: 2 à 3% van één processorkern met Network open (debug-build).
 
+### Op een echte iPhone (iPhone 17 Pro Max)
+
+- Geïnstalleerd met het gratis team (team-ID, staat in `project.yml`). Verloopt na 7 dagen.
+- Zelftest slaagt op het toestel.
+- iOS geeft hier het routeradres wel door (192.168.1.1); de ping met één stap is dus alleen reserve.
+
 ### Niet getest
 
-- **Op een echte iPhone.** De simulator gebruikt het netwerk van de Mac: geen toestemming "Lokaal netwerk", geen blokkade van multicast. Op een iPhone vallen namen via UPnP weg en duurt de eerste scan pas na "Sta toe".
+- **De scan en de schermen op het toestel zelf.** Daar vraagt iOS eerst "Lokaal netwerk toestaan?", en vallen namen via UPnP weg (geen multicast-recht).
 - Mobiele data (de simulator heeft het niet).
 - Docked met echte apparaten (de simulator heeft er geen).
 
@@ -319,4 +325,4 @@ Mac-app gecontroleerd na de wijzigingen: bouwt, `--selftest` slaagt, `scripts/st
 3. Open dat project in Xcode, kies bij Signing & Capabilities je eigen team (je Apple ID), kies je iPhone bovenin en druk op Run.
 4. Na 7 dagen opnieuw stap 3.
 
-Tip: geef me je Team ID (staat in Xcode bij je account). Dan zet ik hem in `project.yml`, zodat je hem niet na elke `build.sh` opnieuw hoeft te kiezen.
+Je team staat al in `project.yml`, dus kiezen in stap 3 is niet meer nodig.
