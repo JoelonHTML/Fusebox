@@ -1602,3 +1602,10 @@
 "Off. Switch on to start it again at your next login." = "Désactivé. Activez-le pour qu’il redémarre à la prochaine ouverture de session.";
 "Couldn't change this item." = "Impossible de modifier cet élément.";
 "Managed by macOS: change it in System Settings › General › Login Items & Extensions" = "Géré par macOS : modifiez-le dans Réglages Système › Général › Ouverture et extensions";
+"Show details" = "Afficher les détails";
+"Hide details" = "Masquer les détails";
+"Temperature %lld °C" = "Température %lld °C";
+"Available spare %lld%%" = "Réserve disponible %lld %%";
+"%@ power cycles" = "%@ mises sous tension";
+"%@ unsafe shutdowns" = "%@ arrêts non sécurisés";
+"%@ TB read" = "%@ TB lus";

@@ -1602,3 +1602,10 @@
 "Off. Switch on to start it again at your next login." = "Uit. Zet aan om het bij de volgende keer inloggen weer te laten starten.";
 "Couldn't change this item." = "Kon dit onderdeel niet wijzigen.";
 "Managed by macOS: change it in System Settings › General › Login Items & Extensions" = "Beheerd door macOS: wijzig het in Systeeminstellingen › Algemeen › Inlogonderdelen en extensies";
+"Show details" = "Toon details";
+"Hide details" = "Verberg details";
+"Temperature %lld °C" = "Temperatuur %lld °C";
+"Available spare %lld%%" = "Beschikbare reserve %lld%%";
+"%@ power cycles" = "%@ keer aangezet";
+"%@ unsafe shutdowns" = "%@ keer onveilig uitgezet";
+"%@ TB read" = "%@ TB gelezen";
