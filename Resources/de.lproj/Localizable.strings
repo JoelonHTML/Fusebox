@@ -1597,3 +1597,9 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Ja bei mobilen Daten, einem iPhone-Hotspot oder mit Datensparmodus. macOS und Apps halten dann große Downloads und Backups zurück.";
 "busy" = "unter Last";
 "top %@" = "max. %@";
+
+/* feat-rollback */
+"Couldn't back up the current version" = "Die aktuelle Version konnte nicht gesichert werden";
+"Fusebox went back to the previous version" = "Fusebox ist zur vorherigen Version zurückgekehrt";
+"The update didn't start properly. Fusebox will not try version %@ again automatically." = "Das Update ist nicht richtig gestartet. Fusebox versucht Version %@ nicht noch einmal automatisch.";
+"The update didn't start properly. Fusebox will not try that version again automatically." = "Das Update ist nicht richtig gestartet. Fusebox versucht diese Version nicht noch einmal automatisch.";

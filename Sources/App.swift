@@ -120,6 +120,7 @@ struct MeterkastApp: App {
         Prefs.register()
         LaunchOnce.launched = Date()
         guard CommandLine.arguments.contains("--selftest") else {
+            Updater.rollBackIfNeverConfirmed()   // update die nooit goed startte: vorige versie terug, vóór er iets van UI is
             NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in
                 MainActor.assumeIsolated { Prefs.applyDock() }
             }
