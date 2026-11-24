@@ -16,11 +16,11 @@ struct DetailRow: Equatable {
 
 enum MoreInfo {
     /// Metingen met een "More details"-blok.
-    static func available(_ m: Metric) -> Bool { [.battery, .net].contains(m) }
+    static func available(_ m: Metric) -> Bool { [.cpu, .gpu, .ram, .net, .ssd, .battery].contains(m) }
 
     /// Om de hoeveel seconden opnieuw lezen zolang het blok open staat (nooit vaker dan de meettik zelf).
-    /// Verbinding en Wi-Fi veranderen traag en kosten een paar systeemaanroepen: eens per 10 s.
-    static func interval(_ m: Metric) -> Double { m == .battery ? 2 : 10 }
+    /// Batterij en geheugen: elke meting (één goedkope aanroep). De rest verandert traag of kost meer: eens per 10 s.
+    static func interval(_ m: Metric) -> Double { m == .battery || m == .ram ? 2 : 10 }
 
     @MainActor static func rows(_ m: Metric, _ s: Sample) async -> [DetailRow] {
         switch m {
@@ -32,8 +32,121 @@ enum MoreInfo {
                 let c = NetConnection.current()
                 return network(c, wifi: c.flatMap { $0.kind == "Wi-Fi" ? WifiDetail.current($0.iface) : nil })
             }.value
+        case .ram: return vmStats().map { memory($0, page: Double(vm_kernel_page_size)) } ?? []
+        case .gpu: return graphics() + displays(PortReader.displays())
+        case .cpu: return processor(chip: sysctlString("machdep.cpu.brand_string"), thermal: ProcessInfo.processInfo.thermalState, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled)
+        case .ssd:
+            SSDHealth.refresh()   // hooguit eens per uur echt lezen (achtergrond); hier alleen wat al bekend is
+            return storage(SSDHealth.cached)
         default: return []
         }
+    }
+
+    // MARK: Geheugen (zelfde bron en indeling als Activiteitenweergave)
+
+    private static let host = mach_host_self()
+
+    static func vmStats() -> vm_statistics64? {
+        var vm = vm_statistics64()
+        var n = mach_msg_type_number_t(MemoryLayout<vm_statistics64>.stride / MemoryLayout<integer_t>.stride)
+        let ok = withUnsafeMutablePointer(to: &vm) { $0.withMemoryRebound(to: integer_t.self, capacity: Int(n)) { host_statistics64(host, HOST_VM_INFO64, $0, &n) } }
+        return ok == KERN_SUCCESS ? vm : nil
+    }
+
+    /// "3.7 GB" (1024-tallig, zoals de rest van de RAM-weergave), onder 1 GB in MB.
+    static func gib(_ bytes: Double) -> String { bytes >= 1_073_741_824 ? "\(one(bytes / 1_073_741_824)) GB" : "\(Int(bytes / 1_048_576)) MB" }
+
+    /// Appgeheugen + wired + gecomprimeerd = "in gebruik"; bestanden in cache tellen niet mee (macOS geeft ze meteen vrij).
+    static func memory(_ vm: vm_statistics64, page: Double) -> [DetailRow] {
+        func gb(_ pages: Double) -> String { gib(pages * page) }
+        let app = max(Double(vm.internal_page_count) - Double(vm.purgeable_count), 0)
+        let packed = Double(vm.compressor_page_count), holds = Double(vm.total_uncompressed_pages_in_compressor)
+        var r = [DetailRow(title: L("App memory"), value: gb(app), hint: L("Memory that your apps and their data are using right now.")),
+                 DetailRow(title: L("Wired memory"), value: gb(Double(vm.wire_count)), hint: L("Memory that macOS itself needs. It can't be compressed or moved to the SSD.")),
+                 DetailRow(title: L("Compressed"), value: holds > packed ? L("\(gb(packed)) (holds \(gb(holds)))") : gb(packed),
+                           hint: L("Memory that macOS has squeezed together to make room. It holds more than the space it takes; unpacking it costs a little time.")),
+                 DetailRow(title: L("Cached files"), value: gb(Double(vm.external_page_count) + Double(vm.purgeable_count)),
+                           hint: L("Files kept in memory so they open faster next time. macOS frees this the moment apps need the room, so it doesn't count as used."))]
+        if vm.swapouts > 0 {
+            r.append(DetailRow(title: L("Swapped out since restart"), value: gb(Double(vm.swapouts)),
+                               hint: L("How much memory macOS has moved to the SSD since the last restart because memory was full. If this keeps growing fast, more memory or fewer open apps would help.")))
+            r.append(DetailRow(title: L("Swapped in since restart"), value: gb(Double(vm.swapins)),
+                               hint: L("How much was read back from the SSD into memory. While that happens, apps feel slow.")))
+        }
+        return r
+    }
+
+    // MARK: Grafische chip en schermen (ingebouwd en extern; geen serienummers)
+
+    /// "Apple M4 · 10 cores" uit de IOAccelerator; leeg als de Mac het niet meldt.
+    static func graphics() -> [DetailRow] {
+        let e = IOServiceGetMatchingService(kIOMainPortDefault, IOServiceMatching("IOAccelerator"))
+        guard e != 0 else { return [] }
+        defer { IOObjectRelease(e) }
+        func prop(_ k: String) -> Any? { IORegistryEntryCreateCFProperty(e, k as CFString, kCFAllocatorDefault, 0)?.takeRetainedValue() }
+        return graphics(model: prop("model") as? String, cores: (prop("gpu-core-count") as? NSNumber)?.intValue)
+    }
+
+    static func graphics(model: String?, cores: Int?) -> [DetailRow] {
+        guard let model, !model.isEmpty else { return [] }
+        return [DetailRow(title: L("Graphics chip"), value: model + (cores.map { " · " + L("\($0) cores") } ?? ""),
+                          hint: L("The graphics chip in this Mac and its number of cores. On Apple silicon it sits in the same chip as the processor and shares the memory."))]
+    }
+
+    static func displays(_ ds: [DisplayInfo]) -> [DetailRow] {
+        ds.flatMap { d -> [DetailRow] in
+            var r = [DetailRow(title: d.name, value: "", hint: "", head: true)]
+            if d.w > 0 {
+                // Geschaalde Retina-stand: macOS tekent op meer pixels dan het paneel heeft; dan telt wat het paneel toont
+                let full = d.maxW > 0 && d.w * d.h >= d.maxW * d.maxH
+                r.append(DetailRow(title: L("Resolution"), value: d.maxW == 0 ? Displays.res(d.w, d.h) : full ? Displays.res(d.maxW, d.maxH) + L(" (native)") : Displays.res(d.w, d.h) + L(" (native \(Displays.res(d.maxW, d.maxH)))"),
+                                   hint: L("The number of pixels the display shows now. Native is the panel's own pixel count, where the picture is sharpest.")))
+                if d.lw > 0, (d.lw, d.lh) != (full ? (d.maxW, d.maxH) : (d.w, d.h)) {
+                    r.append(DetailRow(title: L("Looks like"), value: Displays.res(d.lw, d.lh),
+                                       hint: L("The size macOS draws everything at. A smaller size here makes text and windows bigger; the display still uses all its pixels.")))
+                }
+            }
+            if d.hz > 0 {
+                r.append(DetailRow(title: L("Refresh rate"), value: Displays.hz(d.hz) + (d.maxHz > d.hz + 1 ? L(" (can do \(Displays.hz(d.maxHz)))") : ""),
+                                   hint: L("How many times per second the picture is redrawn; higher is smoother. If the display can do more than it runs at, the cable, an adapter or a setting is holding it back.")))
+            }
+            r.append(DetailRow(title: L("HDR"), value: d.edr > 1 ? L("Up to \(trim(d.edr))× SDR brightness (EDR)") : L("No"),
+                               hint: L("Whether the display can show highlights brighter than normal white, and how much brighter.")))
+            r.append(DetailRow(title: L("Connection"), value: Displays.linkText(d),
+                               hint: L("How the display is connected: built in, straight from the Mac's graphics (DisplayPort or HDMI), or through DisplayLink over USB.")))
+            return r
+        }
+    }
+
+    // MARK: Processor
+
+    static func sysctlString(_ name: String) -> String? {
+        var size = 0
+        guard sysctlbyname(name, nil, &size, nil, 0) == 0, size > 1 else { return nil }
+        var buf = [CChar](repeating: 0, count: size)
+        return sysctlbyname(name, &buf, &size, nil, 0) == 0 ? String(cString: buf) : nil
+    }
+
+    static func processor(chip: String?, thermal: ProcessInfo.ThermalState, lowPower: Bool) -> [DetailRow] {
+        var r: [DetailRow] = []
+        if let chip, !chip.isEmpty { r.append(DetailRow(title: L("Chip"), value: chip, hint: L("The processor chip in this Mac."))) }
+        let heat: String = switch thermal { case .nominal: L("No"); case .fair: L("A little"); case .serious: L("Yes, clearly"); default: L("Yes, heavily") }
+        r.append(DetailRow(title: L("Slowed down by heat"), value: heat,
+                           hint: L("When your Mac gets hot, macOS slows the processor down to cool it. Give it air, or close what keeps it busy.")))
+        r.append(DetailRow(title: L("Low Power Mode"), value: lowPower ? L("On") : L("Off"),
+                           hint: L("With Low Power Mode on, macOS keeps the processor slower to save energy. You set it in System Settings › Battery.")))
+        return r
+    }
+
+    // MARK: SSD (wat de SSD zelf bijhoudt; al gelezen voor Checkup)
+
+    static func storage(_ i: SSDHealth.Info?) -> [DetailRow] {
+        guard let i else { return [] }
+        let tb = i.writtenTB < 1 ? "\(Int((i.writtenTB * 1000).rounded())) GB" : i.writtenTB < 10 ? "\(one(i.writtenTB)) TB" : "\(Int(i.writtenTB.rounded())) TB"
+        return [DetailRow(title: L("Wear"), value: "\(i.used)%", hint: L("How much of its expected life the SSD has used, according to the SSD itself. Above 80% it's wise to keep a good backup.")),
+                DetailRow(title: L("Written in total"), value: tb, hint: L("Everything ever written to this SSD. Writing is what wears an SSD out.")),
+                DetailRow(title: L("Switched on"), value: L("\(i.hours) hours"), hint: L("How long the SSD has been switched on in its whole life.")),
+                DetailRow(title: L("Spare blocks"), value: "\(i.spare)%", hint: L("Reserve space the SSD keeps to replace worn-out parts. 100% means none of it has been needed yet."))]
     }
 
     // MARK: Verbinding: Wi-Fi of kabel (zelfde waarden en uitleg als op Network; nooit de netwerknaam of het BSSID)
@@ -154,6 +267,28 @@ enum MoreInfo {
         precondition(value(b, "Charger") == "96W USB-C Power Adapter · 94 W" && value(b, "Charger agreed on") == "20 V × 4.7 A"
                      && value(b, "Coming in now") == "17.5 W (20.4 V × 0.86 A)", "lader \(b.map(\.value))")
         precondition(battery([:], tempC: nil).isEmpty, "geen batterij")
+        // Geheugen: de tellers van deze Mac op een gewoon moment (vm_stat), pagina's van 16 KB
+        var vm = vm_statistics64()
+        vm.internal_page_count = 245_192; vm.purgeable_count = 4; vm.wire_count = 207_959; vm.compressor_page_count = 427_137
+        vm.total_uncompressed_pages_in_compressor = 752_693; vm.external_page_count = 122_431; vm.swapins = 17_560_347; vm.swapouts = 24_789_876
+        let m = memory(vm, page: 16384)
+        precondition(m.map(\.value) == ["3.7 GB", "3.2 GB", "6.5 GB (holds 11.5 GB)", "1.9 GB", "378.3 GB", "267.9 GB"], "geheugen \(m.map(\.value))")
+        precondition(m.map(\.title) == ["App memory", "Wired memory", "Compressed", "Cached files", "Swapped out since restart", "Swapped in since restart"], "geheugen-titels")
+        vm.swapouts = 0; vm.total_uncompressed_pages_in_compressor = 0; vm.compressor_page_count = 10
+        precondition(memory(vm, page: 16384).map(\.value) == ["3.7 GB", "3.2 GB", "0 MB", "1.9 GB"] && gib(512 * 1_048_576) == "512 MB", "geen swap: regels weg")
+        // Schermen: ingebouwd (geschaald) en extern op 30 Hz terwijl 60 kan
+        let inside = DisplayInfo(id: 1, name: "Built-in Retina Display", link: .builtIn, w: 3420, h: 2214, lw: 1710, lh: 1107, hz: 120, maxW: 3024, maxH: 1964, maxHz: 120, edr: 16)
+        let outside = DisplayInfo(id: 2, name: "Test Monitor", link: .native, transport: "HDMI", w: 2560, h: 1440, hz: 30, maxW: 3840, maxH: 2160, maxHz: 60, edr: 1)
+        let dr = displays([inside, outside])
+        precondition(dr.count == 11 && dr[0].head && dr[0].title == "Built-in Retina Display" && dr[6].title == "Test Monitor", "schermen koppen")
+        precondition(dr[1...5].map(\.value) == ["3024 × 1964 (native)", "1710 × 1107", "120 Hz", "Up to 16× SDR brightness (EDR)", "Built in"], "ingebouwd \(dr[1...5].map(\.value))")
+        precondition(dr[7...10].map(\.value) == ["2560 × 1440 (native 3840 × 2160)", "30 Hz (can do 60 Hz)", "No", "HDMI (straight from the Mac's graphics)"], "extern \(dr[7...10].map(\.value))")
+        precondition(displays([]).isEmpty && graphics(model: "Apple M4", cores: 10).first?.value == "Apple M4 · 10 cores" && graphics(model: nil, cores: 10).isEmpty, "grafische chip")
+        // Processor en SSD
+        let p = processor(chip: "Apple M4", thermal: .serious, lowPower: true)
+        precondition(p.map(\.value) == ["Apple M4", "Yes, clearly", "On"] && processor(chip: nil, thermal: .nominal, lowPower: false).map(\.value) == ["No", "Off"], "processor")
+        let ssd = storage(SSDHealth.Info(used: 3, spare: 100, spareMin: 10, writtenTB: 41.2, hours: 10_000))
+        precondition(ssd.map(\.value) == ["3%", "41 TB", "10000 hours", "100%"] && storage(nil).isEmpty, "ssd \(ssd.map(\.value))")
         // Wi-Fi: geen netwerknaam of BSSID; kabel: wat de adapter kan
         precondition(WifiDetail.securityName(11) == "WPA3 Personal" && WifiDetail.securityName(4) == "WPA2 Personal" && WifiDetail.securityName(0) == "None (open network)"
                      && WifiDetail.securityName(13) == "WPA2/WPA3 Personal" && WifiDetail.securityName(Int.max) == nil, "wifi-beveiliging")
@@ -169,6 +304,9 @@ enum MoreInfo {
         let cr = network(conn("Ethernet", media: EtherMedia(activeMbit: 100, maxMbit: 1000, fullDuplex: true, linked: true)), wifi: nil)
         precondition(cr.map(\.value) == ["Ethernet · USB LAN", "100 Mbit/s", "1 Gbit/s", "Full duplex"] && network(nil, wifi: nil).isEmpty, "kabel-regels \(cr.map(\.value))")
         // Echte waarden van deze Mac, ter controle (geen serienummers)
+        print("meer details: geheugen " + (vmStats().map { memory($0, page: Double(vm_kernel_page_size)) } ?? []).map { "\($0.title) \($0.value)" }.joined(separator: " | "))
+        print("meer details: chip " + (graphics() + processor(chip: sysctlString("machdep.cpu.brand_string"), thermal: ProcessInfo.processInfo.thermalState, lowPower: ProcessInfo.processInfo.isLowPowerModeEnabled)).map { "\($0.title) \($0.value)" }.joined(separator: " | "))
+        print("meer details: schermen " + MainActor.assumeIsolated { displays(PortReader.displays()) }.map { $0.head ? "[\($0.title)]" : "\($0.title) \($0.value)" }.joined(separator: " | "))
         let c = NetConnection.current()
         print("meer details: verbinding " + network(c, wifi: c.flatMap { $0.kind == "Wi-Fi" ? WifiDetail.current($0.iface) : nil }).map { "\($0.title) \($0.value)" }.joined(separator: " | "))
         print("meer details: batterij " + battery(smartBattery(), tempC: nil).map { "\($0.title) \($0.value)" }.joined(separator: " | "))
