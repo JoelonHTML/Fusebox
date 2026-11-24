@@ -64,7 +64,7 @@ struct SettingsScreen: View {
             section(L("About"), "info.circle", 3) {
                 let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "–"
                 row("Fusebox") { Text(verbatim: L("Version \(v)") + " beta").font(theme.number(13)).foregroundStyle(theme.onRow()) }
-                note(L("The iPhone version of the Mac app. Processes, Checkup and most of Docked need access that iOS doesn't give apps, so they are not here."))
+                note(L("The network part of the Mac app: internet, speed test and the devices on your network."))
             }
         }
     }

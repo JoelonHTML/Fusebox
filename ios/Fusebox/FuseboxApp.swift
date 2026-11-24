@@ -2,8 +2,8 @@ import SwiftUI
 
 // MARK: - Fusebox voor iPhone
 //
-// Zelfde uitgangspunten als de Mac: licht, rustig, uitleg per waarde. Er loopt niets als de app dicht is, en een
-// pagina meet alleen terwijl hij in beeld staat. De tabs heten zoals op de Mac (Live en Docked blijven onvertaald).
+// Een netwerkscanner: internet, snelheidstest en de apparaten op je netwerk, met de netwerkcode van de Mac.
+// Zelfde uitgangspunten als de Mac: licht, rustig, uitleg per waarde. Er loopt niets als de app dicht is.
 
 @main
 struct FuseboxApp: App {
@@ -34,19 +34,18 @@ struct RootView: View {
     @Environment(\.colorScheme) private var system
     @Environment(\.scenePhase) private var phase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var page = "network"
+    @State private var settings = false
 
     var body: some View {
         let _ = (accent, textScale, font)   // opnieuw tekenen als een van deze instellingen verandert (zitten in Theme.resolved)
         let mode = AppearanceMode(rawValue: modeID) ?? .system
         // Zelfde volgorde als de Mac: thema → eigen accent/tekstgrootte/lettertype → licht of donker
         let theme = Theme.resolved(themeID).adapted(to: mode.scheme ?? system)
-        TabView(selection: $page) {
-            Tab(value: "network") { NetworkScreen() } label: { Label(L("Network"), systemImage: "network") }
-            Tab(value: "live") { LiveScreen() } label: { Label { Text(verbatim: "Live") } icon: { Image(systemName: "gauge.with.needle") } }
-            Tab(value: "docked") { DockedScreen() } label: { Label { Text(verbatim: "Docked") } icon: { Image(systemName: "dock.rectangle") } }
-            Tab(value: "settings") { SettingsScreen() } label: { Label(L("Settings"), systemImage: "gearshape") }
-        }
+        NetworkScreen { settings = true }
+            .sheet(isPresented: $settings) {
+                SettingsScreen().environment(\.theme, theme).tint(theme.accent).preferredColorScheme(mode.scheme)
+                    .presentationDragIndicator(.visible)
+            }
         .environment(\.theme, theme)
         // Energiebesparingsmodus of "Verminder beweging": geen animaties, net als Low impact op de Mac
         .environment(\.onScreen, phase == .active && !reduceMotion && !ProcessInfo.processInfo.isLowPowerModeEnabled)

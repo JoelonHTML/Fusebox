@@ -1,6 +1,6 @@
 # Fusebox voor iPhone — plan
 
-Status: **versie 0.1 is gebouwd, getest in de simulator en staat op Joëls iPhone 17 Pro Max** (24 november 2026). Zie §9.
+Status: **versie 0.1 staat op Joëls iPhone 17 Pro Max** (24 november 2026). Op Joëls verzoek is het **alleen een netwerkscanner**: Live en Docked zijn eruit gehaald (zie §9).
 Nagekeken op 24 november 2026 in de documentatie van Apple (bronnen in §8).
 De Mac-app (`Sources/`, `Helper/`, `Resources/`, `build.sh`) blijft zoals hij is; alles voor de iPhone komt in `ios/`.
 
@@ -108,6 +108,9 @@ Drie knoppen onderin: **Network** (startscherm), **Live**, **Instellingen**. Lat
 Tik op een apparaat: een blad met de details (naam en waar die vandaan komt, IP, soort, diensten, reactietijd, poorten checken, hernoemen, vergeten).
 
 ### Wat erin zit
+
+Eén scherm, **Netwerk**, met een tandwiel rechtsboven voor de instellingen. Live en Docked zijn op 24 november 2026 weggehaald: Joël heeft er op de iPhone niets aan. De oude code staat in commit 11ca02f.
+
 
 | # | Onderdeel | Waarom |
 |---|---|---|
@@ -272,11 +275,9 @@ Mijlpaal 0 is klein en bewust eerst: een paar dingen (router-adres, ping zonder 
 | Tab | Inhoud |
 |---|---|
 | **Network** | Internet-paneel (router, internet, live grafiek, oordeel, Zoek het probleem, details, publiek IP), snelheidstest Snel en Volledig met historie en "wifi tegen mobiel", netwerkrapport (pdf) via het deelmenu, apparatenlijst met filter, detailblad, poorten checken (webpoorten tikbaar), hernoemen, vergeten. |
-| **Live** | Batterij, warmte (vier standen), opslag, netwerkverkeer met grafiek, en tips bovenaan ("opslag bijna vol", "iPhone is heet"). |
-| **Docked** | Wat er aan de iPhone hangt (zie §1). |
 | **Instellingen** | De zes thema's, licht/donker, tekstgrootte, lettertype, taal (via iOS), scannen bij openen, eenheid snelheidstest, ping-adres. |
 
-Op mobiele data krijgt Zoek het probleem een eigen oordeel (geen router om te meten). In Energiebesparingsmodus meet Live elke 5 s in plaats van 2 en zijn er geen animaties.
+Op mobiele data krijgt Zoek het probleem een eigen oordeel (geen router om te meten). In Energiebesparingsmodus zijn er geen animaties.
 
 ### Waar het staat
 
@@ -316,7 +317,6 @@ Mac-app gecontroleerd na de wijzigingen: bouwt, `--selftest` slaagt, `scripts/st
 
 - **De scan en de schermen op het toestel zelf.** Daar vraagt iOS eerst "Lokaal netwerk toestaan?", en vallen namen via UPnP weg (geen multicast-recht).
 - Mobiele data (de simulator heeft het niet).
-- Docked met echte apparaten (de simulator heeft er geen).
 
 ### Zelf op je iPhone zetten (gratis Apple ID)
 

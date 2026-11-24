@@ -7,6 +7,7 @@ import Combine
 // een tik. De modellen (InternetStats, NetScanner) zijn dezelfde als op de Mac.
 
 struct NetworkScreen: View {
+    var openSettings: () -> Void = {}
     @StateObject private var stats = InternetStats()
     @StateObject private var scanner = NetScanner()
     @Environment(\.scenePhase) private var phase
@@ -15,9 +16,16 @@ struct NetworkScreen: View {
     @State private var visible = false
     @State private var lastScan = Date.distantPast
     @State private var started = false
+    @Environment(\.theme) private var theme
 
     var body: some View {
         Screen {
+            HStack(alignment: .firstTextBaseline) {
+                PageTitle(title: L("Network"))
+                Spacer()
+                Button(action: openSettings) { Image(systemName: "gearshape").font(.system(size: 20)).foregroundStyle(theme.secondary) }
+                    .buttonStyle(.plain).accessibilityLabel(Text("Settings"))
+            }
             InternetCard(stats: stats)
             SpeedCard(stats: stats)
             DeviceList(scanner: scanner) { scan() }
