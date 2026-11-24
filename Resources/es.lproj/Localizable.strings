@@ -1662,3 +1662,6 @@
 "Voltage × current: what the battery delivers or takes in at this moment." = "Tensión × corriente: lo que la batería entrega o recibe en este momento.";
 "What the battery can hold today when it is full. This slowly drops as the battery ages." = "Lo que la batería puede almacenar hoy cuando está llena. Baja poco a poco a medida que la batería envejece.";
 "What the battery could hold when it was new." = "Lo que la batería podía almacenar cuando era nueva.";
+"None (open network)" = "Ninguna (red abierta)";
+"Security" = "Seguridad";
+"How this Wi-Fi network is protected. WPA3 is the strongest and WPA2 is fine. With WEP, the first WPA or no security at all, others can listen in: change it in the router's settings." = "Cómo está protegida esta red Wi-Fi. WPA3 es la más segura y WPA2 está bien. Con WEP, el primer WPA o sin ninguna seguridad, otros pueden escuchar: cámbialo en los ajustes del router.";

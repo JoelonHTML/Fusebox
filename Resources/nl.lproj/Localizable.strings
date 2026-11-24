@@ -1662,3 +1662,6 @@
 "Voltage × current: what the battery delivers or takes in at this moment." = "Spanning × stroom: wat de batterij op dit moment levert of opneemt.";
 "What the battery can hold today when it is full. This slowly drops as the battery ages." = "Wat de batterij nu kan bevatten als hij vol is. Dit daalt langzaam naarmate de batterij ouder wordt.";
 "What the battery could hold when it was new." = "Wat de batterij kon bevatten toen hij nieuw was.";
+"None (open network)" = "Geen (open netwerk)";
+"Security" = "Beveiliging";
+"How this Wi-Fi network is protected. WPA3 is the strongest and WPA2 is fine. With WEP, the first WPA or no security at all, others can listen in: change it in the router's settings." = "Hoe dit wifinetwerk is beveiligd. WPA3 is het sterkst en WPA2 is prima. Met WEP, de eerste WPA of helemaal geen beveiliging kunnen anderen meeluisteren: pas dat aan in de instellingen van de router.";

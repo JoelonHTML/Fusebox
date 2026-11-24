@@ -173,6 +173,7 @@ struct EtherMedia: Hashable {
 struct WifiDetail {
     let rssi: Int, noise: Int, rate: Double
     let channel: Int?, band: String?, width: String?, phy: String?
+    var security: String? = nil   // "WPA3 Personal"; nil = onbekend (of iPhone)
     var snr: Int? { rssi < 0 && noise < 0 ? rssi - noise : nil }
     var word: String { rssi >= -60 ? L("good") : rssi >= -70 ? L("fair") : L("weak") }
 
@@ -187,11 +188,36 @@ struct WifiDetail {
         case 5: "Wi-Fi 5 (802.11ac)"; case 6: "Wi-Fi 6 (802.11ax)"; case 7: "Wi-Fi 7 (802.11be)"; default: nil
         }
         return WifiDetail(rssi: w.rssiValue(), noise: w.noiseMeasurement(), rate: w.transmitRate(),
-                          channel: ch.map(\.channelNumber), band: band, width: width, phy: phy)
+                          channel: ch.map(\.channelNumber), band: band, width: width, phy: phy, security: securityName(w.security().rawValue))
         #else
         return nil   // iOS geeft apps geen signaalsterkte, ruis, kanaal of snelheid
         #endif
     }
+
+    #if os(macOS)
+    /// CWSecurity (CoreWLANTypes.h) → naam zoals op de router. Onbekend = nil (dan tonen we niets).
+    /// Leesbaar zonder locatietoestemming; de netwerknaam en het BSSID lezen we nergens.
+    static func securityName(_ raw: Int) -> String? {
+        switch raw {
+        case 0: L("None (open network)")
+        case 1: "WEP"
+        case 2: "WPA Personal"
+        case 3: "WPA/WPA2 Personal"
+        case 4: "WPA2 Personal"
+        case 5: "WPA Personal"
+        case 6: "Dynamic WEP"
+        case 7: "WPA Enterprise"
+        case 8: "WPA/WPA2 Enterprise"
+        case 9: "WPA2 Enterprise"
+        case 10: "WPA Enterprise"
+        case 11: "WPA3 Personal"
+        case 12: "WPA3 Enterprise"
+        case 13: "WPA2/WPA3 Personal"
+        case 14, 15: "Enhanced Open (OWE)"
+        default: nil
+        }
+    }
+    #endif
 }
 
 /// Snel of Volledig. Oude metingen (één stroom, vaste bytes) hebben geen soort.

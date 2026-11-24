@@ -11,7 +11,7 @@ import UniformTypeIdentifiers
 enum NetTerm: String, CaseIterable, Identifiable {
     case router, internet, live, jitter, lost, p95, dnsLookup
     case type, vpn, metered, ipv4, ipv6, gateway, dnsServers, ipv6Internet, publicIP
-    case signal, noise, linkSpeed, channel, standard, cable, adapterMax, duplex
+    case signal, noise, linkSpeed, channel, standard, security, cable, adapterMax, duplex
     case download, upload, delay, busyDelay, stability, kinds
     var id: String { rawValue }
 
@@ -38,6 +38,7 @@ enum NetTerm: String, CaseIterable, Identifiable {
         case .linkSpeed: L("Link speed")
         case .channel: L("Channel")
         case .standard: L("Standard")
+        case .security: L("Security")
         case .cable: L("Cable")
         case .adapterMax: L("Adapter can do")
         case .duplex: L("Duplex")
@@ -74,6 +75,7 @@ enum NetTerm: String, CaseIterable, Identifiable {
         case .channel: L("The radio channel, band and width. 5 and 6 GHz are faster and less crowded; 2.4 GHz reaches further but is often busy. Wider channels are faster.")
         case .standard: L("The Wi-Fi generation in use. Wi-Fi 6 and 7 are faster and cope better with many devices than Wi-Fi 4 or 5.")
         case .cable: L("A cable has no signal or interference to worry about, so it's usually faster and steadier than Wi-Fi. The link speed shows what the cable and port can do.")
+        case .security: L("How this Wi-Fi network is protected. WPA3 is the strongest and WPA2 is fine. With WEP, the first WPA or no security at all, others can listen in: change it in the router's settings.")
         case .adapterMax: L("The fastest speed this network adapter supports. If the link speed is lower, the cable or the port on the router or switch is holding it back. 100 Mbit/s on a 1 Gbit/s adapter usually means a damaged cable.")
         case .duplex: L("Full duplex means both sides can send at the same time, which is normal. Half duplex is slow and points to a bad cable or a very old hub.")
         case .download: L("How much data per second comes in: streaming, websites, downloads. Compare it with your subscription; over Wi-Fi you often get less than over a cable.")
@@ -86,7 +88,7 @@ enum NetTerm: String, CaseIterable, Identifiable {
     }
 
     static let connection: [NetTerm] = [.router, .internet, .live, .jitter, .lost, .dnsLookup, .type, .vpn, .metered, .ipv4, .ipv6, .gateway, .dnsServers, .ipv6Internet, .publicIP]
-    static let wifi: [NetTerm] = [.signal, .noise, .linkSpeed, .channel, .standard]
+    static let wifi: [NetTerm] = [.signal, .noise, .linkSpeed, .channel, .standard, .security]
     static let wired: [NetTerm] = [.cable, .linkSpeed, .adapterMax, .duplex]
     static let speed: [NetTerm] = [.download, .upload, .delay, .busyDelay, .stability, .kinds]
     #if os(macOS)
@@ -351,6 +353,7 @@ struct InternetCards: View {
                 if w.rate > 0 { kv(.linkSpeed, "\(Int(w.rate)) Mbit/s") }
                 if let ch = w.channel { kv(.channel, ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · ")) }
                 if let phy = w.phy { kv(.standard, phy) }
+                if let sec = w.security { kv(.security, sec) }
             }
         } else {
             let c = stats.conn

@@ -16,18 +16,44 @@ struct DetailRow: Equatable {
 
 enum MoreInfo {
     /// Metingen met een "More details"-blok.
-    static func available(_ m: Metric) -> Bool { m == .battery }
+    static func available(_ m: Metric) -> Bool { [.battery, .net].contains(m) }
 
     /// Om de hoeveel seconden opnieuw lezen zolang het blok open staat (nooit vaker dan de meettik zelf).
-    static func interval(_ m: Metric) -> Double { 2 }
+    /// Verbinding en Wi-Fi veranderen traag en kosten een paar systeemaanroepen: eens per 10 s.
+    static func interval(_ m: Metric) -> Double { m == .battery ? 2 : 10 }
 
     @MainActor static func rows(_ m: Metric, _ s: Sample) async -> [DetailRow] {
         switch m {
         case .battery:
             let temp = s.batteryTemp
             return await Task.detached { battery(smartBattery(), tempC: temp) }.value
+        case .net:
+            return await Task.detached {
+                let c = NetConnection.current()
+                return network(c, wifi: c.flatMap { $0.kind == "Wi-Fi" ? WifiDetail.current($0.iface) : nil })
+            }.value
         default: return []
         }
+    }
+
+    // MARK: Verbinding: Wi-Fi of kabel (zelfde waarden en uitleg als op Network; nooit de netwerknaam of het BSSID)
+
+    static func network(_ c: NetConnection?, wifi w: WifiDetail?) -> [DetailRow] {
+        guard let c else { return [] }
+        func row(_ t: NetTerm, _ v: String, title: String? = nil) -> DetailRow { DetailRow(title: title ?? t.title, value: v, hint: t.text) }
+        var r = [row(.type, [c.kind, c.kind == "Wi-Fi" ? nil : c.name].compactMap { $0 }.joined(separator: " · "))]
+        if let w {
+            r.append(row(.signal, "\(w.rssi) dBm (\(w.word))"))
+            if let snr = w.snr { r.append(row(.noise, "\(w.noise) dBm · SNR \(snr) dB", title: L("Noise"))) }
+            if let ch = w.channel { r.append(row(.channel, ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · "))) }
+            if let phy = w.phy { r.append(row(.standard, phy)) }
+            if let sec = w.security { r.append(row(.security, sec)) }
+        } else if let m = c.media {
+            if let now = c.linkMbit { r.append(row(.linkSpeed, EtherMedia.speed(Int(now)))) }
+            if let top = m.maxMbit { r.append(row(.adapterMax, EtherMedia.speed(top))) }
+            if let d = m.duplex { r.append(row(.duplex, d)) }
+        }
+        return r
     }
 
     // MARK: Batterij en lader (AppleSmartBattery in het IORegistry)
@@ -128,7 +154,23 @@ enum MoreInfo {
         precondition(value(b, "Charger") == "96W USB-C Power Adapter · 94 W" && value(b, "Charger agreed on") == "20 V × 4.7 A"
                      && value(b, "Coming in now") == "17.5 W (20.4 V × 0.86 A)", "lader \(b.map(\.value))")
         precondition(battery([:], tempC: nil).isEmpty, "geen batterij")
+        // Wi-Fi: geen netwerknaam of BSSID; kabel: wat de adapter kan
+        precondition(WifiDetail.securityName(11) == "WPA3 Personal" && WifiDetail.securityName(4) == "WPA2 Personal" && WifiDetail.securityName(0) == "None (open network)"
+                     && WifiDetail.securityName(13) == "WPA2/WPA3 Personal" && WifiDetail.securityName(Int.max) == nil, "wifi-beveiliging")
+        func conn(_ kind: String, media: EtherMedia? = nil) -> NetConnection {
+            NetConnection(iface: "en9", kind: kind, ipv4: nil, ipv6: [], router: nil, dns: [], ipv6Internet: false, name: "USB LAN", linkMbit: media == nil ? nil : 100, media: media)
+        }
+        let w = WifiDetail(rssi: -64, noise: -95, rate: 864, channel: 44, band: "5 GHz", width: "160 MHz", phy: "Wi-Fi 6 (802.11ax)", security: "WPA3 Personal")
+        let wr = network(conn("Wi-Fi"), wifi: w)
+        precondition(wr.map(\.value) == ["Wi-Fi", "-64 dBm (fair)", "-95 dBm · SNR 31 dB", "44 · 5 GHz · 160 MHz", "Wi-Fi 6 (802.11ax)", "WPA3 Personal"], "wifi-regels \(wr.map(\.value))")
+        precondition(wr.map(\.title) == ["Type", "Signal", "Noise", "Channel", "Standard", "Security"] && wr.allSatisfy { !$0.hint.isEmpty }, "wifi-titels")
+        let bare = network(conn("Wi-Fi"), wifi: WifiDetail(rssi: -50, noise: 0, rate: 0, channel: nil, band: nil, width: nil, phy: nil))
+        precondition(bare.map(\.title) == ["Type", "Signal"], "wifi zonder kanaal: niets verzinnen")
+        let cr = network(conn("Ethernet", media: EtherMedia(activeMbit: 100, maxMbit: 1000, fullDuplex: true, linked: true)), wifi: nil)
+        precondition(cr.map(\.value) == ["Ethernet · USB LAN", "100 Mbit/s", "1 Gbit/s", "Full duplex"] && network(nil, wifi: nil).isEmpty, "kabel-regels \(cr.map(\.value))")
         // Echte waarden van deze Mac, ter controle (geen serienummers)
+        let c = NetConnection.current()
+        print("meer details: verbinding " + network(c, wifi: c.flatMap { $0.kind == "Wi-Fi" ? WifiDetail.current($0.iface) : nil }).map { "\($0.title) \($0.value)" }.joined(separator: " | "))
         print("meer details: batterij " + battery(smartBattery(), tempC: nil).map { "\($0.title) \($0.value)" }.joined(separator: " | "))
     }
 }
