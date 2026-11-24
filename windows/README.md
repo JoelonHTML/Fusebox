@@ -27,7 +27,7 @@ Fusebox updates itself: it checks GitHub every 15 minutes and installs new versi
 - **Checkup:** why the PC feels slow, a health score, app crashes, startup apps, large folders, battery condition, sleep and wake events, and tips with links to the matching Settings page.
 - **Network:** every device on your network (name, IP, maker, latency), speed test (only when you start it), a "Find the problem" check for gateway, DNS, internet and Wi-Fi, and the Wi-Fi signal.
 - **Docked:** USB devices and hubs with their speed now and at most, displays (resolution, refresh rate, connection), Bluetooth battery levels and the headphone jack.
-- **Settings:** style (Glass, Minimal light, Color blocks, Instrument, Terminal), light, dark or system theme, which measurements you see, notifications, Low impact mode, and a shortcut (Ctrl+Alt+Win+F) to show or hide Fusebox.
+- **Settings:** style (Glass, Liquid Glass, Minimal light, Color blocks, Instrument, Terminal), light, dark or system theme, which measurements you see, notifications, Low impact mode, and a shortcut (Ctrl+Alt+F, changeable) to show or hide Fusebox.
 - **System tray icon:** a small panel with the key numbers, next to the clock. The icon can show CPU %.
 
 Some things ask for administrator approval, once each time: **SSD health** (Checkup) and **what keeps the PC awake** (Checkup). Fusebox then asks Windows for elevation (UAC) to run one small PowerShell script from Windows itself (never Fusebox's own files) and that's it. It runs as a normal user the rest of the time.
