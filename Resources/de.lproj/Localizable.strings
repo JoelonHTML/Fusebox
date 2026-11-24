@@ -1597,3 +1597,8 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Ja bei mobilen Daten, einem iPhone-Hotspot oder mit Datensparmodus. macOS und Apps halten dann große Downloads und Backups zurück.";
 "busy" = "unter Last";
 "top %@" = "max. %@";
+
+/* feat-hotkey */
+"Another app already uses this shortcut." = "Eine andere App verwendet diesen Kurzbefehl bereits.";
+"macOS already uses this shortcut." = "macOS verwendet diesen Kurzbefehl bereits.";
+"Fusebox already uses this shortcut." = "Fusebox verwendet diesen Kurzbefehl bereits.";

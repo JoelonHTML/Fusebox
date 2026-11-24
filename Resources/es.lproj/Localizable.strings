@@ -1597,3 +1597,8 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Sí con datos móviles, un punto de acceso del iPhone o el Modo de datos reducidos. macOS y las apps retrasan entonces las descargas grandes y las copias de seguridad.";
 "busy" = "con carga";
 "top %@" = "máx. %@";
+
+/* feat-hotkey */
+"Another app already uses this shortcut." = "Otra app ya usa este atajo.";
+"macOS already uses this shortcut." = "macOS ya usa este atajo.";
+"Fusebox already uses this shortcut." = "Fusebox ya usa este atajo.";
