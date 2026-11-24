@@ -139,7 +139,6 @@
 "%lld items start at login" = "%lld ítems se abren al iniciar sesión";
 "%lld kinds on" = "%lld tipos activados";
 "%lld left behind" = "%lld huérfanos";
-"%lld mA power budget" = "%lld mA disponibles";
 "%lld min" = "%lld min";
 "%lld min ago" = "hace %lld min";
 "%lld of 3 pings lost" = "%lld de 3 pings perdidos";
@@ -1603,3 +1602,27 @@
 "Fusebox went back to the previous version" = "Fusebox ha vuelto a la versión anterior";
 "The update didn't start properly. Fusebox will not try version %@ again automatically." = "La actualización no se inició correctamente. Fusebox no volverá a intentar instalar la versión %@ automáticamente.";
 "The update didn't start properly. Fusebox will not try that version again automatically." = "La actualización no se inició correctamente. Fusebox no volverá a intentar instalar esa versión automáticamente.";
+/* feat-details */
+" Plug it straight into the Mac, or use a hub with its own power adapter." = " Conéctalo directamente al Mac o usa un hub con su propio adaptador de corriente.";
+" of %lld mA" = " de %lld mA";
+"%@ asked for %@, more than this port can give, so it may not work." = "%1$@ pidió %2$@, más de lo que puede dar este puerto, así que puede que no funcione.";
+"%@ asked for more power than this port can give, so it may not work." = "%@ pidió más corriente de la que puede dar este puerto, así que puede que no funcione.";
+"%@ gets %@ here but can take %@, so it charges slower." = "%1$@ recibe aquí %2$@ pero admite %3$@, así que se carga más despacio.";
+"%@ to %lld devices" = "%1$@ a %2$lld dispositivos";
+"%@ to 1 device" = "%@ a 1 dispositivo";
+"Allocated" = "Asignado";
+"Asked for" = "Solicitado";
+"Can take" = "Admite";
+"Its devices ask for more power than this hub can supply." = "Sus dispositivos piden más corriente de la que puede dar este hub.";
+"Port gives" = "El puerto da";
+"Shared out" = "Repartido";
+"The devices on %@ ask for %lld mA together, but it can supply %lld mA. Move one to another port, or use a hub with its own power adapter." = "Los dispositivos de %1$@ piden %2$lld mA en total, pero puede dar %3$lld mA. Pasa uno a otro puerto o usa un hub con su propio adaptador de corriente.";
+"The most the port this device is plugged into can supply. A hub without its own power adapter has to share what it gets from the Mac." = "Lo máximo que puede dar el puerto al que está conectado este dispositivo. Un hub sin adaptador de corriente propio tiene que repartir lo que recibe del Mac.";
+"The most this device can draw. Only Apple devices such as an iPhone or iPad report this. If it gets less, it charges slower." = "Lo máximo que admite este dispositivo. Solo lo indican los dispositivos de Apple, como un iPhone o un iPad. Si recibe menos, se carga más despacio.";
+"The power this device may draw from the port (USB runs at 5 V). Most devices use less than this." = "La corriente que este dispositivo puede tomar del puerto (USB funciona a 5 V). La mayoría de los dispositivos usan menos.";
+"USB power" = "Alimentación USB";
+"What the Mac has allocated to what's plugged into this port, and the most the port can supply (USB runs at 5 V). Devices usually use less than their allocation." = "Lo que el Mac ha asignado a lo que está conectado a este puerto y lo máximo que puede dar el puerto (USB funciona a 5 V). Los dispositivos suelen usar menos de lo asignado.";
+"What the device asked for but did not get, because the port or hub couldn't supply it." = "Lo que pidió el dispositivo y no recibió, porque el puerto o el hub no podían darlo.";
+"What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share." = "Lo que este hub ha asignado a los dispositivos conectados a él y, si lo indica, cuánto tiene para repartir.";
+"What's plugged into this port asks for %lld mA together, but the port supplies up to %lld mA. Move a device to another port, or use a hub with its own power adapter." = "Lo conectado a este puerto pide %1$lld mA en total, pero el puerto da como máximo %2$lld mA. Pasa un dispositivo a otro puerto o usa un hub con su propio adaptador de corriente.";
+"up to %@" = "hasta %@";

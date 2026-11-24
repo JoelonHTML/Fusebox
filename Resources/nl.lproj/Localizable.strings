@@ -139,7 +139,6 @@
 "%lld items start at login" = "%lld onderdelen starten bij inloggen";
 "%lld kinds on" = "%lld soorten aan";
 "%lld left behind" = "%lld achtergebleven";
-"%lld mA power budget" = "%lld mA stroombudget";
 "%lld min" = "%lld min";
 "%lld min ago" = "%lld min geleden";
 "%lld of 3 pings lost" = "%lld van 3 pings verloren";
@@ -1603,3 +1602,27 @@
 "Fusebox went back to the previous version" = "Fusebox is teruggegaan naar de vorige versie";
 "The update didn't start properly. Fusebox will not try version %@ again automatically." = "De update startte niet goed. Fusebox probeert versie %@ niet opnieuw automatisch.";
 "The update didn't start properly. Fusebox will not try that version again automatically." = "De update startte niet goed. Fusebox probeert die versie niet opnieuw automatisch.";
+/* feat-details */
+" Plug it straight into the Mac, or use a hub with its own power adapter." = " Sluit het rechtstreeks op de Mac aan, of gebruik een hub met een eigen voedingsadapter.";
+" of %lld mA" = " van %lld mA";
+"%@ asked for %@, more than this port can give, so it may not work." = "%1$@ vroeg om %2$@, meer dan deze poort kan leveren, dus het werkt misschien niet.";
+"%@ asked for more power than this port can give, so it may not work." = "%@ vroeg om meer stroom dan deze poort kan leveren, dus het werkt misschien niet.";
+"%@ gets %@ here but can take %@, so it charges slower." = "%1$@ krijgt hier %2$@ maar kan %3$@ aan, dus het laadt langzamer op.";
+"%@ to %lld devices" = "%1$@ naar %2$lld apparaten";
+"%@ to 1 device" = "%@ naar 1 apparaat";
+"Allocated" = "Toegewezen";
+"Asked for" = "Gevraagd";
+"Can take" = "Kan aan";
+"Its devices ask for more power than this hub can supply." = "De apparaten vragen meer stroom dan deze hub kan leveren.";
+"Port gives" = "Poort levert";
+"Shared out" = "Verdeeld";
+"The devices on %@ ask for %lld mA together, but it can supply %lld mA. Move one to another port, or use a hub with its own power adapter." = "De apparaten op %1$@ vragen samen %2$lld mA, maar die kan %3$lld mA leveren. Sluit er één op een andere poort aan, of gebruik een hub met een eigen voedingsadapter.";
+"The most the port this device is plugged into can supply. A hub without its own power adapter has to share what it gets from the Mac." = "Het meeste dat de poort waar dit apparaat in zit kan leveren. Een hub zonder eigen voedingsadapter moet verdelen wat hij van de Mac krijgt.";
+"The most this device can draw. Only Apple devices such as an iPhone or iPad report this. If it gets less, it charges slower." = "Het meeste dat dit apparaat kan opnemen. Alleen Apple-apparaten zoals een iPhone of iPad melden dit. Krijgt het minder, dan laadt het langzamer op.";
+"The power this device may draw from the port (USB runs at 5 V). Most devices use less than this." = "De stroom die dit apparaat uit de poort mag halen (USB werkt op 5 V). De meeste apparaten gebruiken minder.";
+"USB power" = "USB-stroom";
+"What the Mac has allocated to what's plugged into this port, and the most the port can supply (USB runs at 5 V). Devices usually use less than their allocation." = "Wat de Mac heeft toegewezen aan wat er in deze poort zit, en het meeste dat de poort kan leveren (USB werkt op 5 V). Apparaten gebruiken meestal minder dan hun toewijzing.";
+"What the device asked for but did not get, because the port or hub couldn't supply it." = "Wat het apparaat vroeg maar niet kreeg, omdat de poort of hub het niet kon leveren.";
+"What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share." = "Wat deze hub heeft toegewezen aan de apparaten die erin zitten, en (als de hub het meldt) hoeveel hij te verdelen heeft.";
+"What's plugged into this port asks for %lld mA together, but the port supplies up to %lld mA. Move a device to another port, or use a hub with its own power adapter." = "Wat in deze poort zit vraagt samen %1$lld mA, maar de poort levert hooguit %2$lld mA. Sluit een apparaat op een andere poort aan, of gebruik een hub met een eigen voedingsadapter.";
+"up to %@" = "hooguit %@";

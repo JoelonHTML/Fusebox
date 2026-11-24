@@ -119,6 +119,7 @@ struct MeterkastApp: App {
     static func main() {
         Prefs.register()
         LaunchOnce.launched = Date()
+        if CommandLine.arguments.contains("--check-docked") { PortReader.check(); return }   // scripts/check-docked.sh: alleen lezen, geen venster
         guard CommandLine.arguments.contains("--selftest") else {
             Updater.rollBackIfNeverConfirmed()   // update die nooit goed startte: vorige versie terug, vóór er iets van UI is
             NotificationCenter.default.addObserver(forName: NSApplication.didFinishLaunchingNotification, object: nil, queue: .main) { _ in

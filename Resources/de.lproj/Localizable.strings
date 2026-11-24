@@ -139,7 +139,6 @@
 "%lld items start at login" = "%lld Objekte starten bei der Anmeldung";
 "%lld kinds on" = "%lld Arten an";
 "%lld left behind" = "%lld Überbleibsel";
-"%lld mA power budget" = "%lld mA Strombudget";
 "%lld min" = "%lld Min.";
 "%lld min ago" = "vor %lld Min.";
 "%lld of 3 pings lost" = "%lld von 3 Pings verloren";
@@ -1603,3 +1602,27 @@
 "Fusebox went back to the previous version" = "Fusebox ist zur vorherigen Version zurückgekehrt";
 "The update didn't start properly. Fusebox will not try version %@ again automatically." = "Das Update ist nicht richtig gestartet. Fusebox versucht Version %@ nicht noch einmal automatisch.";
 "The update didn't start properly. Fusebox will not try that version again automatically." = "Das Update ist nicht richtig gestartet. Fusebox versucht diese Version nicht noch einmal automatisch.";
+/* feat-details */
+" Plug it straight into the Mac, or use a hub with its own power adapter." = " Schließ es direkt am Mac an oder nimm einen Hub mit eigenem Netzteil.";
+" of %lld mA" = " von %lld mA";
+"%@ asked for %@, more than this port can give, so it may not work." = "%1$@ hat %2$@ angefordert, mehr als dieser Anschluss liefern kann. Es funktioniert deshalb vielleicht nicht.";
+"%@ asked for more power than this port can give, so it may not work." = "%@ hat mehr Strom angefordert, als dieser Anschluss liefern kann. Es funktioniert deshalb vielleicht nicht.";
+"%@ gets %@ here but can take %@, so it charges slower." = "%1$@ bekommt hier %2$@, kann aber %3$@ aufnehmen und lädt deshalb langsamer.";
+"%@ to %lld devices" = "%1$@ an %2$lld Geräte";
+"%@ to 1 device" = "%@ an 1 Gerät";
+"Allocated" = "Zugeteilt";
+"Asked for" = "Angefordert";
+"Can take" = "Verträgt";
+"Its devices ask for more power than this hub can supply." = "Die Geräte fordern mehr Strom an, als dieser Hub liefern kann.";
+"Port gives" = "Anschluss liefert";
+"Shared out" = "Verteilt";
+"The devices on %@ ask for %lld mA together, but it can supply %lld mA. Move one to another port, or use a hub with its own power adapter." = "Die Geräte an %1$@ fordern zusammen %2$lld mA an, er kann aber nur %3$lld mA liefern. Steck eines an einen anderen Anschluss oder nimm einen Hub mit eigenem Netzteil.";
+"The most the port this device is plugged into can supply. A hub without its own power adapter has to share what it gets from the Mac." = "Das Maximum, das der Anschluss liefern kann, an dem dieses Gerät steckt. Ein Hub ohne eigenes Netzteil muss teilen, was er vom Mac bekommt.";
+"The most this device can draw. Only Apple devices such as an iPhone or iPad report this. If it gets less, it charges slower." = "Das Maximum, das dieses Gerät aufnehmen kann. Nur Apple-Geräte wie iPhone oder iPad melden das. Bekommt es weniger, lädt es langsamer.";
+"The power this device may draw from the port (USB runs at 5 V). Most devices use less than this." = "Der Strom, den dieses Gerät vom Anschluss ziehen darf (USB läuft mit 5 V). Die meisten Geräte brauchen weniger.";
+"USB power" = "USB-Strom";
+"What the Mac has allocated to what's plugged into this port, and the most the port can supply (USB runs at 5 V). Devices usually use less than their allocation." = "Was der Mac dem zugeteilt hat, was an diesem Anschluss steckt, und das Maximum, das der Anschluss liefern kann (USB läuft mit 5 V). Geräte brauchen meist weniger als zugeteilt.";
+"What the device asked for but did not get, because the port or hub couldn't supply it." = "Was das Gerät angefordert, aber nicht bekommen hat, weil Anschluss oder Hub es nicht liefern konnten.";
+"What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share." = "Was dieser Hub den angeschlossenen Geräten zugeteilt hat und (falls der Hub es meldet) wie viel er zu verteilen hat.";
+"What's plugged into this port asks for %lld mA together, but the port supplies up to %lld mA. Move a device to another port, or use a hub with its own power adapter." = "Was an diesem Anschluss steckt, fordert zusammen %1$lld mA an, der Anschluss liefert aber höchstens %2$lld mA. Steck ein Gerät an einen anderen Anschluss oder nimm einen Hub mit eigenem Netzteil.";
+"up to %@" = "bis zu %@";

@@ -282,9 +282,11 @@ enum PortTree {
     private static func device(_ d: USBDev) -> TNode {
         // USB 3-apparaat dat op USB 2-snelheid hangt: betrouwbaar teken van een rem (kabel, hub of poort)
         let slow = (d.bcd ?? 0) >= 0x300 && (d.bps ?? 0) > 0 && (d.bps ?? 0) <= 480e6
+        let power = Ports.powerNote(d)   // vroeg meer stroom dan de poort geeft, of krijgt duidelijk minder dan het kan
         return TNode(id: "usb:\(d.id)", kind: .device, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil, slow: slow),
                      facts: [d.maker, d.bps.map(shortSpeed)].compactMap { $0 },
-                     warn: slow ? L("Runs at USB 2 speed, but it can do USB 3. Try another cable or port.") : nil, usb: d)
+                     warn: slow ? L("Runs at USB 2 speed, but it can do USB 3. Try another cable or port.") : power?.serious == true ? power?.text : nil,
+                     info: power?.serious == false ? power?.text : nil, usb: d)
     }
 
     /// Met "internals": de echte USB-boom. Hubs zonder iets erachter vallen weg; een hub met alleen één hub eronder wordt één regel.
@@ -297,7 +299,8 @@ enum PortTree {
         if d.leaves.isEmpty { return nil }
         if d.children.count == 1, d.children[0].hub { return usb(d.children[0], via: via + 1) }
         return TNode(id: "usb:\(d.id)", kind: .hub, icon: deviceIcon(d), title: d.name, main: LinkLoad(now: d.bps, max: nil),
-                     facts: [d.maker, via > 0 ? L("\(via + 1) hubs") : nil].compactMap { $0 }, dim: true,
+                     facts: [d.maker, via > 0 ? L("\(via + 1) hubs") : nil].compactMap { $0 },
+                     warn: Ports.budget(d.children, supplyMA: d.poolMA)?.over == true ? L("Its devices ask for more power than this hub can supply.") : nil, dim: true,
                      children: d.children.compactMap { usb($0, via: 0) }, usb: d)
     }
 
@@ -663,10 +666,29 @@ private struct DeviceCard: View {
         VStack(alignment: .leading, spacing: 8) {
             Label(dev.name, systemImage: deviceIcon(dev)).font(theme.label(14).weight(.semibold))
             if let b = dev.bps { let x = speedParts(b); BigNum(value: x.0, unit: x.1, size: 22) }
-            Text([dev.maker, dev.bps.map(Ports.usbSpeedName), dev.powerMA.map { "\($0) mA" }, String(format: "ID %04X:%04X", dev.vid, dev.pid)]
+            Text([dev.maker, dev.bps.map(Ports.usbSpeedName), String(format: "ID %04X:%04X", dev.vid, dev.pid)]
                     .compactMap { $0 }.joined(separator: " · "))
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
+            if let n = Ports.powerNote(dev) { NoteBox(note: n) }
+            USBPowerFacts(dev: dev)
             Disclosure(title: L("All values")) { RawList(lines: dev.raw) }
+        }
+    }
+}
+
+/// USB-stroom van één apparaat of hub: toegewezen, wat het kan opnemen, wat de poort geeft. Niets als de Mac het niet meldt.
+private struct USBPowerFacts: View {
+    let dev: USBDev
+    var body: some View {
+        let shared = dev.hub ? Ports.budget(dev.children, supplyMA: dev.poolMA) : nil
+        if dev.powerMA != nil || dev.canSinkMA != nil || dev.failedMA != nil || shared != nil {
+            PortGroup(L("USB power"), icon: "bolt.fill") {
+                if let a = dev.powerMA { PortFact(L("Allocated"), Ports.powerText(a), help: L("The power this device may draw from the port (USB runs at 5 V). Most devices use less than this.")) }
+                if let c = dev.canSinkMA { PortFact(L("Can take"), Ports.powerText(c), help: L("The most this device can draw. Only Apple devices such as an iPhone or iPad report this. If it gets less, it charges slower.")) }
+                if let f = dev.failedMA, f > 1 { PortFact(L("Asked for"), Ports.powerText(f), help: L("What the device asked for but did not get, because the port or hub couldn't supply it.")) }
+                if let p = dev.portMA { PortFact(L("Port gives"), L("up to \(Ports.powerText(p))"), help: L("The most the port this device is plugged into can supply. A hub without its own power adapter has to share what it gets from the Mac.")) }
+                if let b = shared { PortFact(L("Shared out"), b.text, help: L("What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share.")) }
+            }
         }
     }
 }
@@ -723,6 +745,7 @@ private struct PortDetails: View {
                 if topics.contains(.cable) && !port.isMagSafe && port.connected { cableSection }
                 if topics.contains(.power) && (!port.sources.isEmpty || port.charger != nil) { chargerSection }
                 if topics.contains(.data) && port.connected { linkSection }
+                if topics.contains(.power) && (Ports.portBudget(sum.roots) != nil || sum.devices.contains { $0.powerMA != nil }) { usbPowerSection }
                 if topics.contains(.port) { factsSection }
             }
             if topics.contains(.devices) && (!sum.roots.isEmpty || !sum.tb.isEmpty) {
@@ -787,6 +810,23 @@ private struct PortDetails: View {
         }
     }
 
+    /// Wat de apparaten in deze poort samen aan stroom toegewezen kregen, en per apparaat.
+    private var usbPowerSection: some View {
+        PortGroup(L("USB power"), icon: "bolt.fill") {
+            if let b = Ports.portBudget(sum.roots) {
+                PortFact(L("Allocated"), b.text, help: L("What the Mac has allocated to what's plugged into this port, and the most the port can supply (USB runs at 5 V). Devices usually use less than their allocation."))
+            }
+            ForEach(sum.devices.filter { $0.powerMA != nil }) { d in
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    Text(d.name).foregroundStyle(theme.onRow(true)).lineLimit(1).truncationMode(.tail)
+                    Spacer(minLength: 4)
+                    Text(Ports.powerText(d.powerMA ?? 0)).foregroundStyle(theme.onRow()).lineLimit(1).layoutPriority(1)
+                }
+                .font(theme.label(11))
+            }
+        }
+    }
+
     private var linkSection: some View {
         PortGroup(L("Measured by the Mac"), icon: "gauge.with.needle") {
             ForEach(port.links, id: \.self) { l in
@@ -839,11 +879,15 @@ private struct PortGroup<Content: View>: View {
 /// "Naam   waarde", de waarde loopt door op de volgende regel als het smal wordt.
 private struct PortFact: View {
     let key: String, value: String
+    var help: String? = nil   // uitleg bij aanwijzen (stippellijn als hint, zoals TermLabel)
+    @State private var hover = false
     @Environment(\.theme) private var theme
-    init(_ key: String, _ value: String) { self.key = key; self.value = value }
+    init(_ key: String, _ value: String, help: String? = nil) { self.key = key; self.value = value; self.help = help }
     var body: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            Text(key).foregroundStyle(theme.onRow(true)).frame(width: 84, alignment: .leading)
+            Text(key).underline(hover && help != nil, pattern: .dot, color: theme.onRow(true).opacity(0.7))
+                .foregroundStyle(theme.onRow(true)).frame(width: 84, alignment: .leading)
+                .onHover { hover = $0 }.help(help ?? "")
             Text(value).foregroundStyle(theme.onRow()).fixedSize(horizontal: false, vertical: true).textSelection(.enabled)
         }
         .font(theme.label(11))
@@ -946,7 +990,7 @@ private struct USBRow: View {
         if let b = dev.bps { parts.append(Ports.usbSpeedName(b)) }
         if dev.hub { parts.append(dev.children.count == 1 ? L("1 device on it") : L("\(dev.children.count) devices on it")) }
         if hubs > 0 { parts.append(hubs == 1 ? L("via 1 hub") : L("via \(hubs) hubs")) }
-        if let p = dev.powerMA { parts.append(L("\(p) mA power budget")) }
+        if let p = dev.powerMA { parts.append(Ports.powerText(p)) }
         if dev.billboard { parts.append(L("billboard (mode info)")) }
         parts.append(String(format: "ID %04X:%04X", dev.vid, dev.pid))
         return parts.joined(separator: " · ")

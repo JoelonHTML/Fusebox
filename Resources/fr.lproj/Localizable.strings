@@ -139,7 +139,6 @@
 "%lld items start at login" = "%lld éléments s’ouvrent à l’ouverture de session";
 "%lld kinds on" = "%lld types activés";
 "%lld left behind" = "%lld orphelins";
-"%lld mA power budget" = "budget d’alimentation %lld mA";
 "%lld min" = "%lld min";
 "%lld min ago" = "il y a %lld min";
 "%lld of 3 pings lost" = "%lld ping(s) sur 3 perdu(s)";
@@ -1603,3 +1602,27 @@
 "Fusebox went back to the previous version" = "Fusebox est revenu à la version précédente";
 "The update didn't start properly. Fusebox will not try version %@ again automatically." = "La mise à jour n’a pas démarré correctement. Fusebox ne réessaiera pas automatiquement la version %@.";
 "The update didn't start properly. Fusebox will not try that version again automatically." = "La mise à jour n’a pas démarré correctement. Fusebox ne réessaiera pas automatiquement cette version.";
+/* feat-details */
+" Plug it straight into the Mac, or use a hub with its own power adapter." = " Branchez-le directement sur le Mac ou utilisez un hub avec son propre adaptateur secteur.";
+" of %lld mA" = " sur %lld mA";
+"%@ asked for %@, more than this port can give, so it may not work." = "%1$@ a demandé %2$@, plus que ce port ne peut fournir : il risque de ne pas fonctionner.";
+"%@ asked for more power than this port can give, so it may not work." = "%@ a demandé plus de courant que ce port ne peut fournir : il risque de ne pas fonctionner.";
+"%@ gets %@ here but can take %@, so it charges slower." = "%1$@ reçoit ici %2$@ mais peut accepter %3$@ : la recharge est donc plus lente.";
+"%@ to %lld devices" = "%1$@ pour %2$lld appareils";
+"%@ to 1 device" = "%@ pour 1 appareil";
+"Allocated" = "Alloué";
+"Asked for" = "Demandé";
+"Can take" = "Accepte";
+"Its devices ask for more power than this hub can supply." = "Ses appareils demandent plus de courant que ce hub ne peut en fournir.";
+"Port gives" = "Le port fournit";
+"Shared out" = "Réparti";
+"The devices on %@ ask for %lld mA together, but it can supply %lld mA. Move one to another port, or use a hub with its own power adapter." = "Les appareils sur %1$@ demandent %2$lld mA au total, mais il peut en fournir %3$lld mA. Branchez-en un sur un autre port ou utilisez un hub avec son propre adaptateur secteur.";
+"The most the port this device is plugged into can supply. A hub without its own power adapter has to share what it gets from the Mac." = "Le maximum que peut fournir le port sur lequel cet appareil est branché. Un hub sans adaptateur secteur doit répartir ce qu’il reçoit du Mac.";
+"The most this device can draw. Only Apple devices such as an iPhone or iPad report this. If it gets less, it charges slower." = "Le maximum que cet appareil peut accepter. Seuls les appareils Apple comme un iPhone ou un iPad l’indiquent. S’il reçoit moins, la recharge est plus lente.";
+"The power this device may draw from the port (USB runs at 5 V). Most devices use less than this." = "La puissance que cet appareil peut tirer du port (l’USB fonctionne en 5 V). La plupart des appareils consomment moins.";
+"USB power" = "Alimentation USB";
+"What the Mac has allocated to what's plugged into this port, and the most the port can supply (USB runs at 5 V). Devices usually use less than their allocation." = "Ce que le Mac a alloué à ce qui est branché sur ce port, et le maximum que le port peut fournir (l’USB fonctionne en 5 V). Les appareils consomment en général moins que leur allocation.";
+"What the device asked for but did not get, because the port or hub couldn't supply it." = "Ce que l’appareil a demandé sans l’obtenir, parce que le port ou le hub ne pouvait pas le fournir.";
+"What this hub has allocated to the devices plugged into it, and (if the hub reports it) how much it has to share." = "Ce que ce hub a alloué aux appareils qui y sont branchés et, s’il l’indique, ce qu’il a à répartir.";
+"What's plugged into this port asks for %lld mA together, but the port supplies up to %lld mA. Move a device to another port, or use a hub with its own power adapter." = "Ce qui est branché sur ce port demande %1$lld mA au total, mais le port fournit au plus %2$lld mA. Branchez un appareil sur un autre port ou utilisez un hub avec son propre adaptateur secteur.";
+"up to %@" = "jusqu’à %@";
