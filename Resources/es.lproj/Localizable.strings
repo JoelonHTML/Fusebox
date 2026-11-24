@@ -1626,7 +1626,7 @@
 "Fusebox doesn't check by itself. Press Check now." = "Fusebox no lo comprueba por sí solo. Pulsa Comprobar ahora.";
 "A macOS update is waiting (%@). Install it and restart to finish — updates fix security problems and crashes." = "Hay una actualización de macOS pendiente (%@). Instálala y reinicia para terminar — las actualizaciones corrigen problemas de seguridad y fallos.";
 /* feat-hotkey */
-"Another app already uses this shortcut." = "Otra app ya usa este atajo.";
+"macOS didn't accept this shortcut. Pick another one." = "macOS no aceptó este atajo. Elige otro.";
 "macOS already uses this shortcut." = "macOS ya usa este atajo.";
 "Fusebox already uses this shortcut." = "Fusebox ya usa este atajo.";
 "Show details" = "Mostrar detalles";

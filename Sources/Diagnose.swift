@@ -259,7 +259,9 @@ enum Diag {
         guard let r = head.range(of: "\"procPath\"") else { return false }
         let line = head[r.upperBound...].prefix(300).replacingOccurrences(of: "\\/", with: "/")
         let path = line.split(separator: "\"").dropFirst().first.map(String.init) ?? ""
+        // Ook apps in de iOS-simulator en Xcode-proefbouwsels (~/Library/Developer/…): ontwikkelwerk, geen echte crashes
         return ["/tmp/", "/private/tmp/", "/private/var/folders/", "/var/folders/"].contains { path.hasPrefix($0) }
+            || path.contains("/Library/Developer/")
     }
 
     /// Telt rapporten tussen `from` en `to`. Alleen de eerste 4 KB per bestand, hoogstens de nieuwste 300; Retired/ telt niet.
@@ -387,6 +389,7 @@ enum Diag {
     static func selfTest() {
         precondition(testBuild(#"{"procPath" : "\/private\/tmp\/fb\/Fusebox","x":1}"#) && testBuild(#""procPath":"\/private\/var\/folders\/ab\/T\/Fusebox""#), "proefbouw")
         precondition(!testBuild(#""procPath" : "\/Applications\/Safari.app\/Contents\/MacOS\/Safari""#) && !testBuild("geen kop"), "echte app")
+        precondition(testBuild(#""procPath":"\/Users\/USER\/Library\/Developer\/CoreSimulator\/Devices\/X\/Fusebox.app\/Fusebox""#), "simulator")
         let t0 = Date(timeIntervalSince1970: 1_790_000_000)
         func pts(_ n: Int, gapAt: Int? = nil, _ f: (Int) -> (Double, Double)) -> [Point] {
             (0..<n).map { i in let (c, m) = f(i); return Point(t: t0.addingTimeInterval(Double(i + (gapAt.map { i >= $0 ? 60 : 0 } ?? 0)) * 60), cpu: c, mem: m) }

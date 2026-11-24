@@ -144,7 +144,7 @@ struct HotkeyRecorder: View {
             Text("Shortcut to show or hide Fusebox")
             Text(recording ? "Esc cancels, ⌫ turns it off. Use ⌘, ⌥ or ⌃." : "Works from any app.")
         }
-        .onAppear { note = Hotkey.conflict ? L("Another app already uses this shortcut.") : nil }
+        .onAppear { note = Hotkey.conflict ? L("macOS didn't accept this shortcut. Pick another one.") : nil }
         .onDisappear { if recording { stop() } }
         // Naar een andere app gegaan tijdens het opnemen: stoppen, anders blijft de sneltoets uit tot je terugkomt
         .onReceive(NotificationCenter.default.publisher(for: NSApplication.didResignActiveNotification)) { _ in if recording { stop() } }
@@ -181,6 +181,6 @@ struct HotkeyRecorder: View {
         if let r = monitor { NSEvent.removeMonitor(r); monitor = nil }
         // Weer registreren met wat er nu staat. Lukt dat niet, dan blijft de keuze staan en komt er alleen een waarschuwing.
         Hotkey.suspended = false; Hotkey.apply()
-        note = Hotkey.conflict ? L("Another app already uses this shortcut.") : nil
+        note = Hotkey.conflict ? L("macOS didn't accept this shortcut. Pick another one.") : nil
     }
 }

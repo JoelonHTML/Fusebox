@@ -1626,7 +1626,7 @@
 "Fusebox doesn't check by itself. Press Check now." = "Fusebox controleert niet uit zichzelf. Klik op Controleer nu.";
 "A macOS update is waiting (%@). Install it and restart to finish — updates fix security problems and crashes." = "Er staat een macOS-update klaar (%@). Installeer hem en herstart om het af te ronden — updates verhelpen beveiligingsproblemen en crashes.";
 /* feat-hotkey */
-"Another app already uses this shortcut." = "Een andere app gebruikt deze toetscombinatie al.";
+"macOS didn't accept this shortcut. Pick another one." = "macOS accepteerde deze toetscombinatie niet. Kies een andere.";
 "macOS already uses this shortcut." = "macOS gebruikt deze toetscombinatie al.";
 "Fusebox already uses this shortcut." = "Fusebox gebruikt deze toetscombinatie al.";
 "Show details" = "Toon details";
