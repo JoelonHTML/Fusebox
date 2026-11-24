@@ -105,8 +105,8 @@ fileprivate struct Tip: Identifiable {
     enum Action { case stop(String), open(URL, String) }
     let id: String, text: String, action: Action?
 
-    /// Iets dat echt aandacht vraagt (crashlus, geheugen op, schijf vol, warm, versleten accu): waarschuwingsdriehoek i.p.v. lampje.
-    var serious: Bool { ["loop", "jetsam", "disk", "mem", "hot", "battery", "leak"].contains { id.hasPrefix($0) } }
+    /// Iets dat echt aandacht vraagt (crashlus, kernel panic, geheugen op, schijf vol, warm, versleten accu): waarschuwingsdriehoek i.p.v. lampje.
+    var serious: Bool { ["loop", "panic", "jetsam", "disk", "mem", "hot", "battery", "leak"].contains { id.hasPrefix($0) } }
 
     /// Wat er is (vet) en wat je kunt doen (klein): splitsen op " — ", anders op de eerste zin.
     var parts: (head: String, rest: String?) {
@@ -120,7 +120,7 @@ fileprivate struct Tip: Identifiable {
     /// In welke Checkup-categorie de tip staat (op het begin van de id): perf, power, stability, storage of history.
     var category: String {
         let starts = { (p: [String]) in p.contains { id.hasPrefix($0) } }
-        if starts(["loop", "crashed", "stopped", "jetsam", "wifidrop", "wifiweak"]) { return "stability" }
+        if starts(["loop", "panic", "crashed", "stopped", "jetsam", "wifidrop", "wifiweak"]) { return "stability" }
         if starts(["battery"]) { return "power" }
         if starts(["disk", "login", "orphan"]) { return "storage" }
         return "perf"   // geheugen, warmte, stof, zware apps, herstarten
@@ -435,6 +435,9 @@ enum Analysis {
         return Array(out.sorted { $0.start > $1.start }.prefix(30))
     }
 
+    /// Systeeminstellingen › Algemeen › Software-update.
+    static let softwareUpdate = URL(string: "x-apple.systempreferences:com.apple.Software-Update-Settings.extension")!
+
     private static let browsers: Set<String> = ["Google Chrome", "Chrome", "Safari", "Brave Browser", "Brave", "Firefox", "Microsoft Edge", "Edge", "Arc"]
 
     @MainActor fileprivate static func tips(_ r: Report, current: [AppUsage]) -> [Tip] {
@@ -466,6 +469,10 @@ enum Analysis {
             out.append(Tip(id: "app" + a.name, text: text, action: stoppable ? .stop(a.name) : nil))
         }
         if let c = r.crashes {
+            if c.panics > 0 {
+                out.append(Tip(id: "panic", text: L("Your Mac restarted after a crash (kernel panic) \(c.panics)× \(r.when). Update macOS and unplug extra USB devices; if it keeps happening, contact Apple Support."),
+                               action: .open(softwareUpdate, L("Open Software Update"))))
+            }
             let loops = c.loops
             for (app, n) in loops.sorted(by: { $0.value > $1.value }).prefix(2) {
                 out.append(Tip(id: "loop" + app, text: L("\(app) keeps crashing and restarting (\(n)× in one hour) — that costs battery. Update or remove it."), action: nil))
@@ -756,8 +763,11 @@ enum Analysis {
         precondition(lk.text.hasPrefix("Leaky grew from 1.0 to 5.0 GB in 4 h") && lk.app?.name == "Leaky" && lk.text.contains("restarted for 20 days") == (20 >= Diag.restartDays), lk.text)
 
         // Deelrapport: geen thuismap of gebruikersnaam
-        r3.crashes = Diag.Crashes(crashes: ["OneDrive": 3])
+        r3.crashes = Diag.Crashes(crashes: ["OneDrive": 3], panics: 2)
         let txt = shareText(r3, period: .week)
+        precondition(txt.contains("Mac restarted by a crash: kernel panic 2×"), txt)
+        let pt = MainActor.assumeIsolated { tips(r3, current: []) }.first { $0.id == "panic" }
+        precondition(pt?.serious == true && pt?.category == "stability" && pt?.text.hasPrefix("Your Mac restarted after a crash (kernel panic) 2× ") == true, "panic-tip")
         precondition(txt.contains("OneDrive: crashed 3×") && txt.contains("Leaky grew from") && txt.contains("By energy: Hog"), txt)
         precondition(!txt.contains("/Users/") && !txt.contains(NSUserName()), "privacy")
 
@@ -907,11 +917,12 @@ private struct AnalysisPage: View, Equatable {
         }
         if shown("crashes") {
             let c = r.crashes ?? Diag.Crashes()
-            let parts = [c.crashes.isEmpty ? nil : c.crashes.count == 1 ? L("1 app crashed") : L("\(c.crashes.count) apps crashed"),
+            let parts = [c.panics == 0 ? nil : c.panics == 1 ? L("1 restart after a crash") : L("\(c.panics) restarts after a crash"),
+                         c.crashes.isEmpty ? nil : c.crashes.count == 1 ? L("1 app crashed") : L("\(c.crashes.count) apps crashed"),
                          c.hangs.isEmpty ? nil : L("\(c.hangs.count) stopped responding"),
                          c.jetsam > 0 ? L("out of memory \(c.jetsam)×") : nil].compactMap { $0 }
             g.append(Group(id: "stability", title: L("Stability"), icon: "exclamationmark.triangle",
-                           summary: parts.isEmpty ? L("No crashes or hangs \(r.when)") : parts.joined(separator: " · "), warn: !c.crashes.isEmpty || !c.hangs.isEmpty))
+                           summary: parts.isEmpty ? L("No crashes or hangs \(r.when)") : parts.joined(separator: " · "), warn: !c.crashes.isEmpty || !c.hangs.isEmpty || c.panics > 0))
         }
         if shown("startup") || shown("disk") || shown("ssdBench") {
             let items = StartupSection.cache
@@ -1000,14 +1011,16 @@ private struct AnalysisPage: View, Equatable {
                 if shown("awake") { AwakeSection(index: 14) }
             }
         case "stability":
-            if let c = r.crashes, !c.isEmpty { part(r, tips, .crashes) }
-            else {
-                VStack(alignment: .leading, spacing: 4) {
-                    CardTitle(icon: "checkmark.seal", title: L("Crashes"), tone: 3)
-                    Headline(big: L("None"), small: L("No apps crashed or stopped responding \(r.when)"), tone: 3)
+            cols {
+                if let c = r.crashes, !c.isEmpty { part(r, tips, .crashes) }
+                else {
+                    VStack(alignment: .leading, spacing: 4) {
+                        CardTitle(icon: "checkmark.seal", title: L("Crashes"), tone: 3)
+                        Headline(big: L("None"), small: L("No apps crashed or stopped responding \(r.when)"), tone: 3)
+                    }
+                    .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8)
                 }
-                .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme, index: 8)
-            }
+            } right: { StabilityStrip(index: 9) }
         case "storage":
             cols { if shown("startup") { StartupSection(index: 9) } } right: { if shown("disk") { DiskSection(index: 10); SSDHealthCard(index: 11) }; if shown("ssdBench") { SSDSpeedCard(index: 12) } }
         default:
@@ -1280,7 +1293,7 @@ fileprivate struct ReportSections: View {
 
     private func crashes(_ c: Diag.Crashes) -> some View {
         VStack(alignment: .leading, spacing: 4) {
-            CardTitle(icon: "exclamationmark.octagon", title: L("Crashes"), tone: c.crashes.isEmpty && c.hangs.isEmpty ? 1 : 2)
+            CardTitle(icon: "exclamationmark.octagon", title: L("Crashes"), tone: c.crashes.isEmpty && c.hangs.isEmpty && c.panics == 0 ? 1 : 2)
             let n = c.crashes.count + c.hangs.count
             if n > 0 { Headline(big: n == 1 ? L("1 app") : L("\(n) apps"), small: L("crashed or stopped responding \(report.when)"), tone: 1) }
             Capped(items: Array(c.rows.enumerated()), id: \.offset, limit: limit) { item($0.element.label, $0.element.value) }

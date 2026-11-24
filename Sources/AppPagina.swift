@@ -379,8 +379,8 @@ struct AppPage: View {
     private func date(_ d: Date) -> String { d.formatted(date: .abbreviated, time: .omitted) }
 }
 
-/// Staafjes (minuten per uur of per weekdag), geschaald op de hoogste.
-private struct Bars: View {
+/// Staafjes (minuten per uur of per weekdag; in Checkup: crashes per dag), geschaald op de hoogste.
+struct Bars: View {
     let values: [Int], labels: [String]
     let help: (Int) -> String
     @Environment(\.theme) private var theme

@@ -1597,3 +1597,13 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Oui avec les données mobiles, le partage de connexion iPhone ou le mode données réduites. macOS et les apps retardent alors les gros téléchargements et les sauvegardes.";
 "busy" = "en charge";
 "top %@" = "max. %@";
+
+/* feat-stability */
+"Mac restarted by a crash" = "Mac redémarré après un plantage";
+"kernel panic %lld×" = "panique du noyau %lld×";
+"Your Mac restarted after a crash (kernel panic) %lld× %@. Update macOS and unplug extra USB devices; if it keeps happening, contact Apple Support." = "Votre Mac a redémarré après un plantage (panique du noyau) %lld× %@. Mettez macOS à jour et débranchez les périphériques USB supplémentaires ; si cela continue, contactez l'assistance Apple.";
+"Open Software Update" = "Ouvrir Mise à jour de logiciels";
+"1 restart after a crash" = "1 redémarrage après un plantage";
+"%lld restarts after a crash" = "%lld redémarrages après un plantage";
+"Last 30 days" = "30 derniers jours";
+"Crashes and hangs per day, from macOS' own reports" = "Plantages et blocages par jour, d'après les rapports de macOS";

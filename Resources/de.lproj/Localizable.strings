@@ -1597,3 +1597,13 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Ja bei mobilen Daten, einem iPhone-Hotspot oder mit Datensparmodus. macOS und Apps halten dann große Downloads und Backups zurück.";
 "busy" = "unter Last";
 "top %@" = "max. %@";
+
+/* feat-stability */
+"Mac restarted by a crash" = "Mac nach einem Absturz neu gestartet";
+"kernel panic %lld×" = "Kernel-Panic %lld×";
+"Your Mac restarted after a crash (kernel panic) %lld× %@. Update macOS and unplug extra USB devices; if it keeps happening, contact Apple Support." = "Dein Mac wurde %2$@ %1$lld× nach einem Absturz (Kernel-Panic) neu gestartet. Aktualisiere macOS und trenne zusätzliche USB-Geräte; wenn es weiter passiert, wende dich an den Apple Support.";
+"Open Software Update" = "Softwareupdate öffnen";
+"1 restart after a crash" = "1 Neustart nach einem Absturz";
+"%lld restarts after a crash" = "%lld Neustarts nach einem Absturz";
+"Last 30 days" = "Letzte 30 Tage";
+"Crashes and hangs per day, from macOS' own reports" = "Abstürze und Hänger pro Tag, aus den eigenen Berichten von macOS";
