@@ -160,10 +160,12 @@ final class AppMonitor: ObservableObject {
     /// GPU-tijd (ns) per pid: elke GPU-client in de IORegistry (kind van een IOAccelerator) heeft "AppUsage"
     /// met "accumulatedGPUTime", en "IOUserClientCreator" = "pid 123, naam". Zelfde bron als `ioreg`, geen toestemming nodig.
     /// Niet gedocumenteerd: ontbreekt het (andere GPU, ander macOS), dan is alles 0. ~3 ms per keer.
-    nonisolated(unsafe) static var gpuNames: [pid_t: String] = [:]
-    static func gpuTimes() -> [pid_t: UInt64] {
-        var out: [pid_t: UInt64] = [:], it: io_iterator_t = 0
-        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else { return out }
+    /// Geeft tijden én namen terug, zonder gedeelde tabel: de meetdraad en de hoofddraad (eigen-verbruik-log) roepen
+    /// dit allebei aan, en een gedeelde `gpuNames` werd dan tegelijk beschreven (crash in 0.13.1).
+    static func gpuTimes() -> [pid_t: UInt64] { gpuUsage().times }
+    static func gpuUsage() -> (times: [pid_t: UInt64], names: [pid_t: String]) {
+        var out: [pid_t: UInt64] = [:], gpuNames: [pid_t: String] = [:], it: io_iterator_t = 0
+        guard IOServiceGetMatchingServices(kIOMainPortDefault, IOServiceMatching("IOAccelerator"), &it) == KERN_SUCCESS else { return (out, gpuNames) }
         defer { IOObjectRelease(it) }
         while case let acc = IOIteratorNext(it), acc != 0 {
             defer { IOObjectRelease(acc) }
@@ -181,7 +183,7 @@ final class AppMonitor: ObservableObject {
                 }
             }
         }
-        return out
+        return (out, gpuNames)
     }
 
     /// "pid 35649, WindowServer" → 35649
