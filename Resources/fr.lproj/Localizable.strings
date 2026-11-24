@@ -1607,3 +1607,12 @@
 "%lld restarts after a crash" = "%lld redémarrages après un plantage";
 "Last 30 days" = "30 derniers jours";
 "Crashes and hangs per day, from macOS' own reports" = "Plantages et blocages par jour, d'après les rapports de macOS";
+"Software Update" = "Mise à jour de logiciels";
+"1 update available" = "1 mise à jour disponible";
+"%lld updates available" = "%lld mises à jour disponibles";
+"Not checked recently" = "Pas vérifié récemment";
+"Up to date" = "À jour";
+"Couldn't check for updates." = "Impossible de rechercher les mises à jour.";
+"Couldn't read the result." = "Impossible de lire le résultat.";
+"Fusebox doesn't check by itself. Press Check now." = "Fusebox ne vérifie pas de lui-même. Cliquez sur Vérifier.";
+"A macOS update is waiting (%@). Install it and restart to finish — updates fix security problems and crashes." = "Une mise à jour de macOS est en attente (%@). Installez-la et redémarrez pour terminer — les mises à jour corrigent des failles de sécurité et des plantages.";

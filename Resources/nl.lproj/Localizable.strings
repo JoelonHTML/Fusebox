@@ -1607,3 +1607,12 @@
 "%lld restarts after a crash" = "%lld herstarts na een crash";
 "Last 30 days" = "Laatste 30 dagen";
 "Crashes and hangs per day, from macOS' own reports" = "Crashes en vastlopers per dag, uit de eigen rapporten van macOS";
+"Software Update" = "Software-update";
+"1 update available" = "1 update beschikbaar";
+"%lld updates available" = "%lld updates beschikbaar";
+"Not checked recently" = "Niet recent gecontroleerd";
+"Up to date" = "Bijgewerkt";
+"Couldn't check for updates." = "Controleren op updates is niet gelukt.";
+"Couldn't read the result." = "De uitslag kon niet worden gelezen.";
+"Fusebox doesn't check by itself. Press Check now." = "Fusebox controleert niet uit zichzelf. Klik op Controleer nu.";
+"A macOS update is waiting (%@). Install it and restart to finish — updates fix security problems and crashes." = "Er staat een macOS-update klaar (%@). Installeer hem en herstart om het af te ronden — updates verhelpen beveiligingsproblemen en crashes.";
