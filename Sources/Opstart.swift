@@ -3,7 +3,8 @@ import IOKit
 import SwiftUI
 
 // MARK: - Checkup: wat start mee met de Mac, en wat neemt schijfruimte in?
-// Alleen lezen en tonen; nooit iets verwijderen. Niets draait tenzij Checkup open is (opstart) of op de knop gedrukt wordt (schijf).
+// Nooit iets verwijderen. Opstartitems van de gebruiker kunnen uit en weer aan (launchctl disable/enable: de plist van de
+// andere app blijft onaangeroerd). Niets draait tenzij Checkup open is (opstart) of op de knop gedrukt wordt (schijf).
 
 struct StartupItem: Identifiable, Sendable, Equatable {
     let label: String, name: String
@@ -14,6 +15,8 @@ struct StartupItem: Identifiable, Sendable, Equatable {
     var running = false
     /// Het programma bestaat niet meer (app weggegooid, de plist bleef staan)
     var orphan = false
+    /// Uitgezet (launchctl disable, of Disabled in de plist): start niet meer, maar blijft in de lijst staan
+    var enabled = true
     /// Wat het kost (alleen te meten bij processen van deze gebruiker; die van het systeem/root niet): gemiddeld sinds de start
     var usage: StartupUsage?
     var id: String { plist.path }
@@ -37,14 +40,83 @@ struct StartupUsage: Sendable, Equatable {
 }
 
 enum Startup {
-    /// Eén plist → item. Apple's eigen (com.apple.*) en uitgeschakelde items tellen niet mee.
+    /// Eén plist → item. Apple's eigen (com.apple.*) telt niet mee; een uitgeschakeld item blijft, als "uit".
     static func item(_ d: [String: Any], plist: URL, user: Bool, agent: Bool) -> StartupItem? {
-        guard let label = d["Label"] as? String, !label.hasPrefix("com.apple."), d["Disabled"] as? Bool != true else { return nil }
+        guard let label = d["Label"] as? String, !label.hasPrefix("com.apple.") else { return nil }
         let program = (d["Program"] as? String) ?? (d["ProgramArguments"] as? [String])?.first
         let keepAlive = (d["KeepAlive"] as? Bool) ?? (d["KeepAlive"] is [String: Any])   // KeepAlive kan ook een voorwaarden-dict zijn
         return StartupItem(label: label, name: friendlyName(program: program, label: label), program: program, plist: plist,
                            user: user, atLogin: agent && (d["RunAtLoad"] as? Bool == true || keepAlive),
-                           orphan: program.map(missing) ?? false)
+                           orphan: program.map(missing) ?? false, enabled: d["Disabled"] as? Bool != true)
+    }
+
+    // MARK: Aan/uit (launchctl, eigen gui-domein: geen beheerdersrechten, omkeerbaar, de plist blijft zoals hij is)
+
+    /// Uitvoer van `launchctl print-disabled` → label → uitgeschakeld. Nieuw: `=> disabled/enabled`, ouder: `=> true/false`.
+    static func parseDisabled(_ s: String) -> [String: Bool] {
+        var out: [String: Bool] = [:]
+        for line in s.split(separator: "\n") {
+            let p = line.components(separatedBy: "=>").map { $0.trimmingCharacters(in: .whitespaces) }
+            guard p.count == 2, p[0].count > 2, p[0].hasPrefix("\""), p[0].hasSuffix("\"") else { continue }
+            switch p[1] {
+            case "disabled", "true": out[String(p[0].dropFirst().dropLast())] = true
+            case "enabled", "false": out[String(p[0].dropFirst().dropLast())] = false
+            default: break
+            }
+        }
+        return out
+    }
+
+    /// Wat launchd onthouden heeft wint van `Disabled` in de plist; niets onthouden → de plist telt.
+    static func enabled(override: Bool?, plistDisabled: Bool) -> Bool { !(override ?? plistDisabled) }
+
+    /// Uit: `disable` (werkt vanaf de volgende keer inloggen) en, als het nu draait, `bootout` (stopt het nu).
+    /// Aan: alleen `enable`; het start weer bij de volgende keer inloggen.
+    static func toggleCommands(label: String, uid: uid_t, on: Bool, running: Bool) -> [[String]] {
+        let target = "gui/\(uid)/\(label)"
+        return on ? [["enable", target]] : [["disable", target]] + (running ? [["bootout", target]] : [])
+    }
+
+    static func disabledLabels() -> [String: Bool] {
+        parseDisabled(Diag.run("/bin/launchctl", ["print-disabled", "gui/\(getuid())"], timeout: 5))
+    }
+
+    /// Zet een item van de gebruiker uit of aan. Daarna opnieuw lezen: true alleen als launchd het nu ook zo zegt
+    /// (fouten van `bootout` bij een item dat niet geladen is tellen dus niet). Synchroon: buiten de hoofdthread aanroepen.
+    static func set(_ item: StartupItem, on: Bool) -> Bool {
+        guard item.user else { return false }
+        for c in toggleCommands(label: item.label, uid: getuid(), on: on, running: item.running) { _ = Diag.run("/bin/launchctl", c, timeout: 5) }
+        return disabledLabels()[item.label] == !on
+    }
+
+    /// Namen die bij inloggen starten: aan, niet achtergelaten; dezelfde app één keer. Voor de teller en het rapport
+    /// (alleen namen: geen labels, geen paden).
+    static func loginNames(_ items: [StartupItem]) -> [String] {
+        Set(items.filter { $0.atLogin && !$0.orphan && $0.enabled }.map(\.name)).sorted { $0.localizedCaseInsensitiveCompare($1) == .orderedAscending }
+    }
+
+    /// Eén regel per app (bijv. 3× OneDrive); de schakelaar geldt voor alle items van de gebruiker erin.
+    struct Row: Identifiable, Equatable {
+        var item: StartupItem          // wat de regel toont (bij voorkeur het item van de gebruiker)
+        var members: [StartupItem]
+        var id: String { item.id }
+        var switchable: [StartupItem] { members.filter(\.user) }
+    }
+
+    /// Samenvoegen op naam: draait als er één draait, aan als er één aan staat. Aan vóór uit, dan wat het meest kost (energie), dan op naam.
+    static func rows(_ list: [StartupItem]) -> [Row] {
+        Dictionary(grouping: list, by: \.name).values
+            .map { g in
+                var f = g.first(where: \.user) ?? g[0]
+                f.running = g.contains(where: \.running); f.enabled = g.contains(where: \.enabled)
+                f.usage = f.enabled ? g.compactMap(\.usage).reduce(nil) { ($0 ?? StartupUsage()) + $1 } : nil
+                return Row(item: f, members: g)
+            }
+            .sorted { a, b in
+                if a.item.enabled != b.item.enabled { return a.item.enabled }
+                let x = a.item.usage?.watt ?? -1, y = b.item.usage?.watt ?? -1
+                return x != y ? x > y : a.item.name.localizedCaseInsensitiveCompare(b.item.name) == .orderedAscending
+            }
     }
 
     /// Absoluut pad dat niet (meer) bestaat; fileExists volgt symlinks, dus een kapotte link telt ook als weg.
@@ -68,11 +140,13 @@ enum Startup {
     static func read() -> [StartupItem] {
         let home = FileManager.default.homeDirectoryForCurrentUser.path
         let running = runningPIDs()
+        let off = disabledLabels()   // één keer; geldt voor agents (gui-domein), niet voor daemons (systeemdomein)
         var out: [StartupItem] = []
         for (dir, user, agent) in [(home + "/Library/LaunchAgents", true, true), ("/Library/LaunchAgents", false, true), ("/Library/LaunchDaemons", false, false)] {
             for f in (try? FileManager.default.contentsOfDirectory(atPath: dir)) ?? [] where f.hasSuffix(".plist") {
                 let url = URL(fileURLWithPath: dir).appendingPathComponent(f)
                 guard let d = NSDictionary(contentsOf: url) as? [String: Any], var it = item(d, plist: url, user: user, agent: agent) else { continue }
+                if agent { it.enabled = enabled(override: off[it.label], plistDisabled: !it.enabled) }
                 let pids = it.program.map { running[$0] ?? running[URL(fileURLWithPath: $0).resolvingSymlinksInPath().path] ?? [] } ?? []
                 it.running = !pids.isEmpty
                 // Eigen processen: proc_pid_rusage (met energie). Die van root (systeemhelpers) mag dat niet: dan `ps`.
@@ -286,8 +360,30 @@ enum DiskScan {
         precondition(Startup.item(["Label": "x.y", "KeepAlive": ["SuccessfulExit": false]], plist: p, user: false, agent: true)?.atLogin == true, "KeepAlive-dict")
         precondition(Startup.item(["Label": "x.y", "RunAtLoad": true], plist: p, user: false, agent: false)?.atLogin == false, "daemon = achtergrond")
         precondition(Startup.item(["Label": "com.apple.foo"], plist: p, user: true, agent: true) == nil
-                     && Startup.item(["Label": "x.y", "Disabled": true], plist: p, user: true, agent: true) == nil
-                     && Startup.item(["Program": "/bin/x"], plist: p, user: true, agent: true) == nil, "apple/uit/geen label")
+                     && Startup.item(["Program": "/bin/x"], plist: p, user: true, agent: true) == nil, "apple/geen label")
+        // Uitgeschakeld blijft in de lijst, als "uit"
+        let offItem = Startup.item(["Label": "x.y", "Disabled": true, "RunAtLoad": true], plist: p, user: true, agent: true)
+        precondition(offItem?.enabled == false && i?.enabled == true, "Disabled = uit, niet weg")
+        // print-disabled: nieuw (disabled/enabled) en oud (true/false), lege regels, labels met punten en streepjes
+        let pd = Startup.parseDisabled("\tdisabled services = {\n\t\t\"com.vendor.thing-helper_2\" => disabled\n\n\t\t\"com.a.b\" => enabled\n\t\t\"old.one\" => true\n\t\t\"old-two\" => false\n\t\t\"x\" => maybe\n\t}\n\tlogin item associations = {\n\t}\n")
+        precondition(pd == ["com.vendor.thing-helper_2": true, "com.a.b": false, "old.one": true, "old-two": false] && Startup.parseDisabled("").isEmpty, "print-disabled \(pd)")
+        precondition(Startup.enabled(override: nil, plistDisabled: false) && !Startup.enabled(override: nil, plistDisabled: true)
+                     && Startup.enabled(override: false, plistDisabled: true) && !Startup.enabled(override: true, plistDisabled: false), "launchd wint van de plist")
+        precondition(Startup.toggleCommands(label: "a.b", uid: 501, on: false, running: true) == [["disable", "gui/501/a.b"], ["bootout", "gui/501/a.b"]]
+                     && Startup.toggleCommands(label: "a.b", uid: 501, on: false, running: false) == [["disable", "gui/501/a.b"]]
+                     && Startup.toggleCommands(label: "a.b", uid: 501, on: true, running: true) == [["enable", "gui/501/a.b"]]
+                     && Startup.toggleCommands(label: "a.b", uid: 501, on: true, running: false) == [["enable", "gui/501/a.b"]], "aan/uit-opdrachten")
+        // Teller en rapport: alleen wat aan staat, zelfde app één keer; systeemitems zijn nooit te schakelen
+        func it(_ name: String, user: Bool = true, on: Bool = true, running: Bool = false, watt: Double? = nil, orphan: Bool = false) -> StartupItem {
+            StartupItem(label: "l." + name, name: name, program: nil, plist: URL(fileURLWithPath: "/\(user ? "u" : "s")/\(name).plist"), user: user, atLogin: true,
+                        running: running, orphan: orphan, enabled: on, usage: watt.map { StartupUsage(watt: $0) })
+        }
+        let all = [it("B"), it("A", on: false), it("C", user: false, running: true, watt: 2), it("C", on: false, watt: 1), it("D", orphan: true), it("E", watt: 0.5)]
+        precondition(Startup.loginNames(all) == ["B", "C", "E"], "teller zonder uit \(Startup.loginNames(all))")
+        let rows = Startup.rows(all.filter { !$0.orphan })
+        precondition(rows.map(\.item.name) == ["C", "E", "B", "A"] && rows[0].item.user && rows[0].item.running && rows[0].item.enabled
+                     && rows[0].members.count == 2 && rows[0].switchable.map(\.enabled) == [false] && rows[3].item.usage == nil, "opstartregels \(rows.map(\.item.name))")
+        precondition(!Startup.set(it("C", user: false), on: false), "systeemitem niet schakelen")
         // Achtergelaten: programma bestaat niet meer; wel bestaand, zonder pad of op een losse schijf: niet
         let gone: [String: Any] = ["Label": "com.vendor.gone", "Program": "/Applications/Weg-\(UUID().uuidString).app/Contents/MacOS/helper"]
         precondition(Startup.item(gone, plist: p, user: true, agent: true)?.orphan == true
@@ -318,20 +414,25 @@ struct StartupSection: View {
     let index: Int
     @MainActor static var cache: [StartupItem]?
     @State private var items: [StartupItem]? = MainActor.assumeIsolated { StartupSection.cache }
+    /// Plist-paden die nu geschakeld worden (schakelaar even vast) en regels waar het niet lukte
+    @State private var busy: Set<String> = []
+    @State private var failed: Set<String> = []
+    /// Kaart breed genoeg voor naam + verbruik + "Show in Finder" + schakelaar op één regel
+    @State private var roomy = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
             HStack {
-                CardTitle(icon: "power", title: L("Startup & background items"), tone: items?.contains(where: \.orphan) == true ? 1 : 0)
+                CardTitle(icon: "power", title: L("Startup & background items"), tone: items?.contains { $0.orphan && $0.enabled } == true ? 1 : 0)
                 Spacer()
                 Button("Login Items…") { NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.LoginItems-Settings.extension")!) }
                     .buttonStyle(Pill(color: theme.onRow()))
             }
             if let items {
-                let login = Set(items.filter { $0.atLogin && !$0.orphan }.map(\.name)).count
+                let login = Startup.loginNames(items).count
                 Headline(big: "\(login)", small: login == 1 ? L("app starts at login") : L("apps start at login"))
             }
-            Text("Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items.")
+            Text("Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use.")
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             if let items {
                 orphans(items.filter(\.orphan))
@@ -342,6 +443,7 @@ struct StartupSection: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+        .onGeometryChange(for: Bool.self) { $0.size.width >= 520 } action: { roomy = $0 }
         .themedRow(theme, index: index)
         .task {
             guard items == nil else { return }
@@ -349,6 +451,36 @@ struct StartupSection: View {
             Self.cache = r
             items = r
         }
+    }
+
+    /// Schakelaar voor de items van de gebruiker in een regel. Het werk loopt op een utility-taak; daarna telt wat launchd zegt:
+    /// lukt het niet (of zet de app zichzelf terug), dan blijft de schakelaar waar hij stond, met een melding eronder.
+    private func toggle(_ name: String, _ members: [StartupItem], id: String) -> some View {
+        let on = members.contains(where: \.enabled)
+        return Toggle("", isOn: Binding(get: { on }, set: { v in
+            busy.formUnion(members.map(\.id)); failed.remove(id)
+            Task {
+                let done = await Task.detached(priority: .utility) { Set(members.filter { Startup.set($0, on: v) }.map(\.id)) }.value
+                // Uitgezet = ook gestopt (bootout); aangezet start pas bij de volgende keer inloggen
+                let r = (items ?? []).map { i -> StartupItem in
+                    guard done.contains(i.id) else { return i }
+                    var i = i; i.enabled = v
+                    if !v { i.running = false; i.usage = nil }
+                    return i
+                }
+                items = r; Self.cache = r
+                busy.subtract(members.map(\.id))
+                if done.count < members.count { failed.insert(id) }
+            }
+        }))
+        .toggleStyle(.switch).labelsHidden().controlSize(.mini)
+        .disabled(!busy.isDisjoint(with: members.map(\.id)))
+        .accessibilityLabel(name)
+        .help(on ? "" : L("Off. Switch on to start it again at your next login."))
+    }
+
+    @ViewBuilder private func failure(_ id: String) -> some View {
+        if failed.contains(id) { Text("Couldn't change this item.").font(theme.label(10)).foregroundStyle(theme.tone(1, icon: false)) }
     }
 
     /// Achtergelaten door weggegooide apps: opvallend (warn), alleen tonen als er iets is. Wij verwijderen niets.
@@ -359,47 +491,55 @@ struct StartupSection: View {
                 .font(theme.label(11)).foregroundStyle(theme.onRow(true)).fixedSize(horizontal: false, vertical: true)
             ForEach(list) { i in
                 HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(theme.tone(1))
-                    Text(i.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
+                    Image(systemName: "exclamationmark.triangle.fill").foregroundStyle(i.enabled ? theme.tone(1) : theme.onRow(true).opacity(0.35))
+                    Text(i.name).foregroundStyle(theme.onRow(!i.enabled)).lineLimit(1).truncationMode(.middle)
+                    if !i.enabled { Text("off").font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1) }
                     if !i.user { Text("needs your password to remove").font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1) }
                     Spacer(minLength: 4)
                     Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow()))
+                    if i.user { toggle(i.name, [i], id: i.id) }
                 }
                 .font(theme.label(11))
                 .help(i.plist.path + (i.program.map { "\n" + L("Missing: \($0)") } ?? ""))
+                failure(i.id)
             }
         }
     }
 
     @ViewBuilder private func group(_ title: String, _ list: [StartupItem]) -> some View {
         Text(title).font(theme.label(11).weight(.semibold)).foregroundStyle(theme.onRow()).padding(.top, 4)
-        // Zelfde app meerdere keren (bijv. 3× OneDrive): één regel; draait als er één draait
-        let list: [StartupItem] = Dictionary(grouping: list, by: \.name).values
-            .map { (g: [StartupItem]) -> StartupItem in
-                var f = g.first(where: \.user) ?? g[0]; f.running = g.contains(where: \.running)
-                f.usage = g.compactMap(\.usage).reduce(nil) { ($0 ?? StartupUsage()) + $1 }; return f
-            }
-            // Wat het meest kost bovenaan (energie), daarna op naam
-            .sorted { (a: StartupItem, b: StartupItem) in
-                let x = a.usage?.watt ?? -1, y = b.usage?.watt ?? -1
-                return x != y ? x > y : a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
-            }
+        let list = Startup.rows(list)
         if list.isEmpty { Text("None").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
-        Capped(items: list, id: \.id) { i in
-            HStack(spacing: 6) {
-                Circle().fill(i.running ? (theme.rowStyle == .blocks ? .white : theme.good) : theme.onRow(true).opacity(0.35)).frame(width: 6, height: 6)
-                Text(i.name).foregroundStyle(theme.onRow()).lineLimit(1).truncationMode(.middle)
-                Text(i.running ? "running" : i.user ? "you" : "all users").font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
-                Spacer(minLength: 4)
-                if let u = i.usage {
-                    Text(u.text).font(theme.number(11)).foregroundStyle(u.watt >= 1 || u.cpu >= 5 ? theme.warn : theme.onRow(true)).lineLimit(1)
-                        .help("Average since it started (memory: now)")
-                }
-                if i.user { Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow())) }
-            }
-            .font(theme.label(11))
-            .help(i.label + (i.program.map { "\n" + $0 } ?? ""))
+        Capped(items: list, id: \.id) { r in
+            row(r)
+            failure(r.id)
         }
+    }
+
+    private func row(_ r: Startup.Row) -> some View {
+        let i = r.item
+        return HStack(spacing: 6) {
+            Circle().fill(i.running && i.enabled ? (theme.rowStyle == .blocks ? .white : theme.good) : theme.onRow(true).opacity(0.35)).frame(width: 6, height: 6)
+            Text(i.name).foregroundStyle(theme.onRow(!i.enabled)).lineLimit(1).truncationMode(.middle)
+            Text(!i.enabled ? "off" : i.running ? "running" : i.user ? "you" : "all users").font(theme.label(10)).foregroundStyle(theme.onRow(true)).lineLimit(1)
+            Spacer(minLength: 4)
+            if let u = i.usage {
+                Text(u.text).font(theme.number(11)).foregroundStyle(u.watt >= 1 || u.cpu >= 5 ? theme.warn : theme.onRow(true)).lineLimit(1)
+                    .layoutPriority(1)   // de naam kort eerder in dan de getallen
+                    .help("Average since it started (memory: now)")
+            }
+            // Krap (smal venster, twee kolommen): naast het verbruik past de knop niet meer; naam en getallen gaan voor
+            if i.user, roomy || i.usage == nil { Button("Show in Finder") { NSWorkspace.shared.activateFileViewerSelecting([i.plist]) }.buttonStyle(Pill(color: theme.onRow())) }
+            if r.switchable.isEmpty {
+                // Van het systeem (/Library): niet door ons te schakelen
+                Image(systemName: "lock").font(.system(size: 10)).foregroundStyle(theme.onRow(true))
+                    .help("Managed by macOS: change it in System Settings › General › Login Items & Extensions")
+            } else {
+                toggle(i.name, r.switchable, id: r.id)
+            }
+        }
+        .font(theme.label(11))
+        .help(i.label + (i.program.map { "\n" + $0 } ?? ""))
     }
 }
 

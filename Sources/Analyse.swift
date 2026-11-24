@@ -565,7 +565,8 @@ enum Analysis {
     fileprivate static func mins(_ m: Int) -> String { m < 60 ? "\(m) min" : duration(m) }
 
     /// Platte tekst om te delen (~60 regels). Alleen namen van apps; geen gebruikersnaam, paden, computernaam of adressen.
-    fileprivate static func shareText(_ r: Report, period: Period, now: Date = Date()) -> String {
+    /// `startup` = namen van opstartitems die aan staan (alleen als Checkup ze al gelezen heeft; nooit labels of paden).
+    fileprivate static func shareText(_ r: Report, period: Period, startup: [String] = [], now: Date = Date()) -> String {
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.dateFormat = "EEE d MMM yyyy HH:mm"
         let v = ProcessInfo.processInfo.operatingSystemVersion
         func names(_ l: [AppStat]) -> String { l.isEmpty ? "–" : l.map(\.name).joined(separator: ", ") }
@@ -588,6 +589,7 @@ enum Analysis {
         let found = r.leaks.prefix(5).map { "- \($0.app) grew from \(one($0.from)) to \(one($0.to)) GB in \($0.hours) h" }
             + r.runaways.prefix(5).map { "- \($0.app) used a full processor core for \(mins($0.minutes)) (\(span($0.start, $0.end)))" }
         if !found.isEmpty { o += ["", "FINDINGS"] + found }
+        if !startup.isEmpty { o += ["", "STARTS AT LOGIN", startup.joined(separator: ", ")] }
         if let c = r.crashes, !c.isEmpty { o += ["", "CRASHES AND REPORTS FROM MACOS"] + c.rows.map { "- \($0.label): \($0.value)" } }
         if !r.jobMinutes.isEmpty {
             o += ["", "MACOS HOUSEKEEPING SEEN"] + r.jobMinutes.sorted { $0.value > $1.value }.map { "- \($0.key): \(duration($0.value))" }
@@ -915,8 +917,8 @@ private struct AnalysisPage: View, Equatable {
         }
         if shown("startup") || shown("disk") || shown("ssdBench") {
             let items = StartupSection.cache
-            let login = items.map { l in L("\(l.filter { $0.atLogin && !$0.orphan }.count) items start at login") }
-            let orphans = items.map { $0.filter(\.orphan).count } ?? 0
+            let login = items.map { l in L("\(l.filter { $0.atLogin && !$0.orphan && $0.enabled }.count) items start at login") }
+            let orphans = items.map { $0.filter { $0.orphan && $0.enabled }.count } ?? 0
             let free = r.diskFreeGB.map { L("\(Int($0)) GB free") }
             let parts = [login, orphans > 0 ? L("\(orphans) left behind") : nil, free].compactMap { $0 }
             g.append(Group(id: "storage", title: L("Startup & storage"), icon: "internaldrive",
@@ -1089,7 +1091,7 @@ private struct AnalysisPage: View, Equatable {
     private func exportBar(_ r: Report, _ tips: [Tip]) -> some View {
         HStack(spacing: 8) {
             Spacer()
-            Button("Share report…") { share = Analysis.shareText(r, period: period) }
+            Button("Share report…") { share = Analysis.shareText(r, period: period, startup: Startup.loginNames(StartupSection.cache ?? [])) }
             Button("Export CSV") { exportCSV() }
             Button("Export PDF") { exportPDF(r, tips) }
         }

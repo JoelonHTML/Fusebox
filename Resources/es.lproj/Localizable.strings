@@ -236,7 +236,6 @@
 "Apps" = "Apps";
 "Apps are measured every minute — the first measurement is coming soon." = "Las apps se miden cada minuto — la primera medición llegará pronto.";
 "Apps at that moment" = "Apps en ese momento";
-"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items." = "Apps de otros fabricantes que se abren con tu Mac o esperan en segundo plano. Desactiva lo que no uses en Ítems de inicio y extensiones.";
 "Apps that minute (no snapshot at the moment itself)" = "Apps en ese minuto (sin captura del momento exacto)";
 "Apps that start at login" = "Apps que se abren al iniciar sesión";
 "Architecture" = "Arquitectura";
@@ -1603,3 +1602,8 @@
 "Fusebox went back to the previous version" = "Fusebox ha vuelto a la versión anterior";
 "The update didn't start properly. Fusebox will not try version %@ again automatically." = "La actualización no se inició correctamente. Fusebox no volverá a intentar instalar la versión %@ automáticamente.";
 "The update didn't start properly. Fusebox will not try that version again automatically." = "La actualización no se inició correctamente. Fusebox no volverá a intentar instalar esa versión automáticamente.";
+/* feat-startup */
+"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use." = "Apps de otros fabricantes que se abren con tu Mac o esperan en segundo plano. Desactiva lo que no uses.";
+"Off. Switch on to start it again at your next login." = "Desactivado. Actívalo para que vuelva a abrirse la próxima vez que inicies sesión.";
+"Couldn't change this item." = "No se pudo cambiar este ítem.";
+"Managed by macOS: change it in System Settings › General › Login Items & Extensions" = "Gestionado por macOS: cámbialo en Ajustes del Sistema › General › Ítems de inicio y extensiones";
