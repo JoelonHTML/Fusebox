@@ -177,20 +177,23 @@ enum Diag {
 
     // MARK: Crashes en meldingen van macOS (DiagnosticReports)
 
-    enum Entry: Equatable { case crash(String), hang(String), jetsam, resource(String), none }
+    /// `panic` = kernel panic: de hele Mac crashte en startte opnieuw op.
+    enum Entry: Equatable { case crash(String), hang(String), jetsam, resource(String), panic, none }
 
     struct Crashes: Sendable {
         var crashes: [String: Int] = [:], hangs: [String: Int] = [:], resource: [String: Int] = [:]
-        var jetsam = 0
+        var jetsam = 0, panics = 0
         var times: [String: [Date]] = [:]   // tijdstippen per gecrashte app (voor crashlussen)
-        var isEmpty: Bool { crashes.isEmpty && hangs.isEmpty && resource.isEmpty && jetsam == 0 }
+        var stamps: [Date] = []             // elk tijdstip van een crash, vastloper of kernel panic (strook per dag)
+        var isEmpty: Bool { crashes.isEmpty && hangs.isEmpty && resource.isEmpty && jetsam == 0 && panics == 0 }
         /// Regels voor scherm en rapport, meeste eerst.
         var rows: [(label: String, value: String)] {
             func list(_ d: [String: Int], _ what: (Int) -> String) -> [(label: String, value: String)] {
                 d.sorted { $0.value == $1.value ? $0.key < $1.key : $0.value > $1.value }.map { ($0.key, what($0.value)) }
             }
             let loops = self.loops
-            return list(crashes, { L("crashed \($0)×") }).map { ($0.label, $0.value + (loops[$0.label].map { L(", \($0)× in one hour") } ?? "")) }
+            return (panics > 0 ? [(L("Mac restarted by a crash"), L("kernel panic \(panics)×"))] : [])
+                + list(crashes, { L("crashed \($0)×") }).map { ($0.label, $0.value + (loops[$0.label].map { L(", \($0)× in one hour") } ?? "")) }
                 + list(hangs, { L("stopped responding \($0)×") })
                 + (jetsam > 0 ? [(L("Out of memory"), L("macOS closed apps \(jetsam)×"))] : [])
                 + list(resource, { L("flagged by macOS \($0)×") }).prefix(5)
@@ -208,20 +211,27 @@ enum Diag {
     }
 
     /// Kop van een rapport: .ips = JSON op regel 1; .diag/.hang/.spin = tekst met "Command:" en "Event:".
+    /// Kernel panic: bug_type 210 (oud: 10) volgens de tabel van macOS zelf (OSAnalytics, submissionConfig.plist),
+    /// of een bestand dat "panic-…" of "….panic" heet. Van een panic lezen we alleen deze kopregel, nooit de tekst
+    /// (daar staan serienummers en paden in).
     static func parseHeader(_ head: String, fileName: String) -> (entry: Entry, time: Date?) {
+        let panicName = fileName.hasPrefix("panic-") || fileName.hasSuffix(".panic")
         if fileName.hasSuffix(".ips") {
             guard let line = head.split(separator: "\n").first,
-                  let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return (.none, nil) }
+                  let j = try? JSONSerialization.jsonObject(with: Data(line.utf8)) as? [String: Any] else { return (panicName ? .panic : .none, nil) }
             let time = (j["timestamp"] as? String).flatMap(stamp)
             if fileName.hasPrefix("JetsamEvent") { return (.jetsam, time) }
             if (j["is_simulated"] as? Int) == 1 { return (.none, time) }   // nagebootst rapport, geen echte crash
             let name = (j["app_name"] as? String) ?? (j["name"] as? String)
+            if panicName { return (.panic, time) }
             switch "\(j["bug_type"] ?? "")" {
+            case "210", "10": return (.panic, time)
             case "309", "109": return (name.map(Entry.crash) ?? .none, time)
             case "298": return (.jetsam, time)
             default: return (.none, time)
             }
         }
+        if panicName { return (.panic, nil) }   // tekstbestand zonder vaste kop: de bestandsdatum telt
         var app: String?, proc: String?, event = "", time: Date?
         for line in head.split(separator: "\n").prefix(40) {
             let parts = line.split(separator: ":", maxSplits: 1)
@@ -273,17 +283,30 @@ enum Diag {
             try? h.close()
             guard let data else { continue }
             let head = String(decoding: data, as: UTF8.self)
-            if testBuild(head) { continue }   // proefversies uit een tijdelijke map (bouwen/testen) zijn geen echte crashes
             let (entry, time) = parseHeader(head, fileName: f.url.lastPathComponent)
+            // proefversies uit een tijdelijke map (bouwen/testen) zijn geen echte crashes; een kernel panic is altijd echt
+            if entry != .panic, testBuild(head) { continue }
             let t = time ?? f.date
             guard t >= from, t < to else { continue }
             switch entry {
-            case .crash(let a): out.crashes[a, default: 0] += 1; out.times[a, default: []].append(t)
-            case .hang(let a): out.hangs[a, default: 0] += 1
+            case .crash(let a): out.crashes[a, default: 0] += 1; out.times[a, default: []].append(t); out.stamps.append(t)
+            case .hang(let a): out.hangs[a, default: 0] += 1; out.stamps.append(t)
+            case .panic: out.panics += 1; out.stamps.append(t)
             case .jetsam: out.jetsam += 1
             case .resource(let a): out.resource[a, default: 0] += 1
             case .none: break
             }
+        }
+        return out
+    }
+
+    /// Aantal tijdstippen per kalenderdag over de laatste `days` dagen: oudste dag eerst, vandaag als laatste.
+    static func perDay(_ stamps: [Date], days: Int, now: Date, calendar: Calendar = .current) -> [Int] {
+        let today = calendar.startOfDay(for: now)
+        var out = Array(repeating: 0, count: days)
+        for s in stamps {
+            let back = calendar.dateComponents([.day], from: calendar.startOfDay(for: s), to: today).day ?? -1
+            if (0..<days).contains(back) { out[days - 1 - back] += 1 }
         }
         return out
     }
@@ -405,6 +428,22 @@ enum Diag {
         precondition(parseHeader("nonsense", fileName: "x.ips").entry == .none, "kapot")
         var cr = Crashes(); cr.crashes = ["A": 1, "B": 3]; cr.jetsam = 2
         precondition(cr.rows.map(\.label) == ["B", "A", "Out of memory"], "volgorde")
+        // Kernel panic: alleen een nagemaakte kopregel (op deze Mac lag geen echt panic-rapport om mee te vergelijken)
+        let pn = parseHeader(#"{"bug_type":"210","timestamp":"2026-11-20 08:15:02.00 +0100","os_version":"macOS 26.1 (25B78)","incident_id":"X"}"# + "\n{\n", fileName: "panic-full-2026-11-20-081502.0002.ips")
+        precondition(pn.entry == .panic && pn.time == stamp("2026-11-20 08:15:02 +0100") && pn.time != nil, "panic \(pn)")
+        precondition(parseHeader(#"{"bug_type":"210","timestamp":"2026-11-20 08:15:02.00 +0100"}"#, fileName: "Kernel-2026-11-20-081502.ips").entry == .panic
+                     && parseHeader(#"{"bug_type":"10"}"#, fileName: "x.ips").entry == .panic, "panic op bug_type")
+        precondition(parseHeader("panic(cpu 2 caller 0xfffffe00): geheim\n", fileName: "Kernel-2026-11-20-081502.panic") == (.panic, nil)
+                     && parseHeader("geen json", fileName: "panic-full-2026-11-20.ips").entry == .panic, "panic op bestandsnaam")
+        precondition(parseHeader(#"{"is_simulated":1,"bug_type":"210"}"#, fileName: "panic-full-x.ips").entry == .none, "nagebootste panic")
+        precondition(parseHeader(#"{"bug_type":"115"}"#, fileName: "ResetCounter-2026-11-20.ips").entry == .none, "reset tellen we niet")
+        cr.panics = 2
+        precondition(!Crashes(panics: 1).isEmpty && cr.rows.first.map { $0 == ("Mac restarted by a crash", "kernel panic 2×") } == true, "panic-regel")
+        // Per dag: vandaag als laatste, buiten het venster en in de toekomst telt niet
+        var utc = Calendar(identifier: .gregorian); utc.timeZone = TimeZone(identifier: "UTC")!
+        let noon = Date(timeIntervalSince1970: 1_789_992_000)   // 12:00 UTC
+        let pd = perDay([noon, noon.addingTimeInterval(-3600), noon.addingTimeInterval(-86_400 * 2), noon.addingTimeInterval(-86_400 * 5), noon.addingTimeInterval(86_400)], days: 4, now: noon, calendar: utc)
+        precondition(pd == [0, 1, 0, 2] && perDay([], days: 30, now: noon).count == 30, "per dag \(pd)")
 
         // Batterij
         let b = battery(ps: [:], smart: ["CycleCount": 31, "DesignCycleCount9C": 1000, "BatteryData": ["NominalChargeCapacity": 5957, "DesignCapacity": 5760]])

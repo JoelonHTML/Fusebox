@@ -1607,3 +1607,21 @@
 "Off. Switch on to start it again at your next login." = "Aus. Schalte es ein, damit es bei der nächsten Anmeldung wieder startet.";
 "Couldn't change this item." = "Dieses Objekt konnte nicht geändert werden.";
 "Managed by macOS: change it in System Settings › General › Login Items & Extensions" = "Von macOS verwaltet: Ändere es in Systemeinstellungen › Allgemein › Anmeldeobjekte & Erweiterungen";
+/* feat-stability */
+"Mac restarted by a crash" = "Mac nach einem Absturz neu gestartet";
+"kernel panic %lld×" = "Kernel-Panic %lld×";
+"Your Mac restarted after a crash (kernel panic) %lld× %@. Update macOS and unplug extra USB devices; if it keeps happening, contact Apple Support." = "Dein Mac wurde %2$@ %1$lld× nach einem Absturz (Kernel-Panic) neu gestartet. Aktualisiere macOS und trenne zusätzliche USB-Geräte; wenn es weiter passiert, wende dich an den Apple Support.";
+"Open Software Update" = "Softwareupdate öffnen";
+"1 restart after a crash" = "1 Neustart nach einem Absturz";
+"%lld restarts after a crash" = "%lld Neustarts nach einem Absturz";
+"Last 30 days" = "Letzte 30 Tage";
+"Crashes and hangs per day, from macOS' own reports" = "Abstürze und Hänger pro Tag, aus den eigenen Berichten von macOS";
+"Software Update" = "Softwareupdate";
+"1 update available" = "1 Update verfügbar";
+"%lld updates available" = "%lld Updates verfügbar";
+"Not checked recently" = "Länger nicht geprüft";
+"Up to date" = "Auf dem neuesten Stand";
+"Couldn't check for updates." = "Die Suche nach Updates ist fehlgeschlagen.";
+"Couldn't read the result." = "Das Ergebnis konnte nicht gelesen werden.";
+"Fusebox doesn't check by itself. Press Check now." = "Fusebox prüft nicht von selbst. Klicke auf „Jetzt prüfen“.";
+"A macOS update is waiting (%@). Install it and restart to finish — updates fix security problems and crashes." = "Ein macOS-Update wartet (%@). Installiere es und starte neu, um es abzuschließen — Updates beheben Sicherheitsprobleme und Abstürze.";
