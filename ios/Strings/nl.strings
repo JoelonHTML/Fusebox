@@ -29,7 +29,6 @@
 "Line out" = "Lijnuitgang";
 "Low Power Mode is on: the iPhone does less in the background to save battery" = "De energiebesparingsmodus staat aan: de iPhone doet minder op de achtergrond om de batterij te sparen";
 "Low Power Mode saves battery by doing less in the background. Fusebox then measures this iPhone less often and stops animating." = "De energiebesparingsmodus spaart de batterij door minder op de achtergrond te doen. Fusebox meet deze iPhone dan minder vaak en animeert niet meer.";
-"Low Power Mode" = "Energiebesparingsmodus";
 "Mobile data is slow or unsteady here (internet %@ ms): a spot with better reception, or Wi-Fi, helps" = "Mobiele data is hier traag of onrustig (internet %@ ms): een plek met betere ontvangst, of wifi, helpt";
 "Mobile data was %@× faster than Wi-Fi in your last tests" = "Mobiele data was %@× sneller dan wifi in je laatste tests";
 "Mobile data" = "Mobiele data";

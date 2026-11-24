@@ -29,7 +29,6 @@
 "Line out" = "Salida de línea";
 "Low Power Mode is on: the iPhone does less in the background to save battery" = "El modo de bajo consumo está activado: el iPhone hace menos en segundo plano para ahorrar batería";
 "Low Power Mode saves battery by doing less in the background. Fusebox then measures this iPhone less often and stops animating." = "El modo de bajo consumo ahorra batería haciendo menos en segundo plano. Fusebox mide entonces este iPhone con menos frecuencia y deja de animar.";
-"Low Power Mode" = "Modo de bajo consumo";
 "Mobile data is slow or unsteady here (internet %@ ms): a spot with better reception, or Wi-Fi, helps" = "Los datos móviles van lentos o inestables aquí (internet %@ ms): un sitio con mejor cobertura, o el Wi-Fi, ayuda";
 "Mobile data was %@× faster than Wi-Fi in your last tests" = "Los datos móviles fueron %@× más rápidos que el Wi-Fi en tus últimas pruebas";
 "Mobile data" = "Datos móviles";
