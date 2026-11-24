@@ -14,6 +14,10 @@ targets:
   Fusebox:
     type: application
     platform: iOS
+    # Je Apple-team staat in Local.xcconfig (niet in git, zie Team.xcconfig); zonder dat bestand bouwt alleen de simulator.
+    configFiles:
+      Debug: Team.xcconfig
+      Release: Team.xcconfig
     sources:
       - path: Fusebox
       - { path: ../Sources/Taal.swift, group: Shared }
@@ -71,7 +75,6 @@ targets:
         ENABLE_USER_SCRIPT_SANDBOXING: "NO"
         SWIFT_EMIT_LOC_STRINGS: "YES"
         CODE_SIGN_STYLE: Automatic
-        # DEVELOPMENT_TEAM: zie Local.xcconfig (staat niet in git)
     postBuildScripts:
       - name: Vertalingen samenvoegen
         basedOnDependencyAnalysis: false

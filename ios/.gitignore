@@ -1,3 +1,5 @@
 # Worden door ./build.sh (xcodegen) gemaakt uit project.yml
 Fusebox.xcodeproj/
 Info.plist
+# Persoonlijk Apple-team (zie Team.xcconfig)
+Local.xcconfig

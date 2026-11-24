@@ -308,7 +308,7 @@ Mac-app gecontroleerd na de wijzigingen: bouwt, `--selftest` slaagt, `scripts/st
 
 ### Op een echte iPhone (iPhone 17 Pro Max)
 
-- Geïnstalleerd met het gratis team (team-ID, staat in `project.yml`). Verloopt na 7 dagen.
+- Geïnstalleerd met het gratis team (het team-ID staat lokaal in `Local.xcconfig`, niet in git). Verloopt na 7 dagen.
 - Zelftest slaagt op het toestel.
 - iOS geeft hier het routeradres wel door (192.168.1.1); de ping met één stap is dus alleen reserve.
 

@@ -1,0 +1,4 @@
+// Ondertekening: het Apple-team hoort bij een persoon en staat daarom niet in git.
+// Maak ios/Local.xcconfig met één regel:  DEVELOPMENT_TEAM = <jouw team-ID>
+// (te vinden in Xcode › Settings › Accounts, of kies het team één keer bij Signing & Capabilities).
+#include? "Local.xcconfig"
