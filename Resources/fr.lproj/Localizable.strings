@@ -236,7 +236,6 @@
 "Apps" = "Apps";
 "Apps are measured every minute — the first measurement is coming soon." = "Les apps sont mesurées chaque minute — la première mesure arrive bientôt.";
 "Apps at that moment" = "Apps à ce moment-là";
-"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items." = "Apps d’autres éditeurs qui démarrent avec votre Mac ou attendent en arrière-plan. Désactivez ce que vous n’utilisez pas dans Ouverture et extensions.";
 "Apps that minute (no snapshot at the moment itself)" = "Apps durant cette minute (pas d’instantané au moment même)";
 "Apps that start at login" = "Apps ouvertes à l’ouverture de session";
 "Architecture" = "Architecture";
@@ -1597,3 +1596,9 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Oui avec les données mobiles, le partage de connexion iPhone ou le mode données réduites. macOS et les apps retardent alors les gros téléchargements et les sauvegardes.";
 "busy" = "en charge";
 "top %@" = "max. %@";
+
+/* feat-startup */
+"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use." = "Apps d’autres éditeurs qui démarrent avec votre Mac ou attendent en arrière-plan. Désactivez ce que vous n’utilisez pas.";
+"Off. Switch on to start it again at your next login." = "Désactivé. Activez-le pour qu’il redémarre à la prochaine ouverture de session.";
+"Couldn't change this item." = "Impossible de modifier cet élément.";
+"Managed by macOS: change it in System Settings › General › Login Items & Extensions" = "Géré par macOS : modifiez-le dans Réglages Système › Général › Ouverture et extensions";

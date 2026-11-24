@@ -236,7 +236,6 @@
 "Apps" = "Apps";
 "Apps are measured every minute — the first measurement is coming soon." = "Apps worden elke minuut gemeten — de eerste meting komt zo.";
 "Apps at that moment" = "Apps op dat moment";
-"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use in Login Items." = "Apps van andere makers die met je Mac starten of op de achtergrond wachten. Zet uit wat je niet gebruikt in Inlogonderdelen en extensies.";
 "Apps that minute (no snapshot at the moment itself)" = "Apps in die minuut (geen momentopname van het moment zelf)";
 "Apps that start at login" = "Apps die starten bij inloggen";
 "Architecture" = "Architectuur";
@@ -1597,3 +1596,9 @@
 "Yes on mobile data, an iPhone hotspot or with Low Data Mode. macOS and apps then hold back big downloads and backups." = "Ja bij mobiele data, een iPhone-hotspot of met modus voor weinig data. macOS en apps houden dan grote downloads en back-ups tegen.";
 "busy" = "bij drukte";
 "top %@" = "top %@";
+
+/* feat-startup */
+"Apps from other makers that start with your Mac or wait in the background. Turn off what you don't use." = "Apps van andere makers die met je Mac starten of op de achtergrond wachten. Zet uit wat je niet gebruikt.";
+"Off. Switch on to start it again at your next login." = "Uit. Zet aan om het bij de volgende keer inloggen weer te laten starten.";
+"Couldn't change this item." = "Kon dit onderdeel niet wijzigen.";
+"Managed by macOS: change it in System Settings › General › Login Items & Extensions" = "Beheerd door macOS: wijzig het in Systeeminstellingen › Algemeen › Inlogonderdelen en extensies";
