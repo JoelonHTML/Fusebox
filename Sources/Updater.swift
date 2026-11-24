@@ -18,12 +18,15 @@ import CryptoKit
     private var latest: (tag: String, build: Int, zip: URL)?
 
     static var repo: String? { Bundle.main.object(forInfoDictionaryKey: "FuseboxUpdateRepo") as? String }
-    static var currentBuild: Int { Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
+    nonisolated static var currentBuild: Int { Int(Bundle.main.object(forInfoDictionaryKey: "CFBundleVersion") as? String ?? "") ?? 0 }
     static var currentVersion: String {
         let v = Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String ?? "?"
         return "\(v)\(v.hasPrefix("0.") ? " beta" : "") (\(currentBuild))"
     }
-    private var auto: Bool { UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true }
+    /// Vanzelf installeren alleen vanuit een Programma's-map (niet vanuit Downloads, een bouwmap of een door macOS verplaatste kopie): daar alleen melden.
+    private var auto: Bool {
+        (UserDefaults.standard.object(forKey: "autoUpdate") as? Bool ?? true) && Installer.isInApplications(Bundle.main.bundleURL.resolvingSymlinksInPath())
+    }
 
     // MARK: Changelog (release-notes van GitHub, zo hoef je ze maar op één plek te schrijven)
 
@@ -71,6 +74,18 @@ import CryptoKit
     /// Eén keer bij het opstarten aanroepen.
     func start() {
         guard Self.repo != nil, timer == nil else { return }
+        // Draaide de vorige update terug (waakhond of rollBackIfNeverConfirmed)? Die build niet nog eens vanzelf proberen, en één melding.
+        if let bad = Self.takeFailed(.live) {
+            UserDefaults.standard.set(bad.build, forKey: "failedUpdateBuild")
+            if UserDefaults.standard.bool(forKey: "notify") {
+                Notify.send(title: L("Fusebox went back to the previous version"),
+                            body: bad.version.isEmpty ? L("The update didn't start properly. Fusebox will not try that version again automatically.")
+                                : L("The update didn't start properly. Fusebox will not try version \(bad.version) again automatically."))
+            }
+        }
+        // 3 s in leven met een werkende main-runloop = deze versie start: marker en back-up weg. Netjes afsluiten binnen die 3 s telt ook.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 3) { Self.confirm() }
+        NotificationCenter.default.addObserver(forName: NSApplication.willTerminateNotification, object: nil, queue: nil) { _ in Self.confirm() }
         announceIfUpdated()
         DispatchQueue.main.asyncAfter(deadline: .now() + 15) { [weak self] in self?.check(userInitiated: false) }
         let t = Timer(timeInterval: 15 * 60, repeats: true) { [weak self] _ in
@@ -197,22 +212,142 @@ import CryptoKit
     }
 
     private func replaceAndRelaunch(with newApp: URL) {
-        let current = Bundle.main.bundleURL
-        do {
-            _ = try FileManager.default.replaceItemAt(current, withItemAt: newApp, backupItemName: nil, options: [])
-        } catch {
-            try? FileManager.default.removeItem(at: newApp.deletingLastPathComponent())
+        let p = Paths.live, fm = FileManager.default, tmp = newApp.deletingLastPathComponent()
+        func fail(_ why: String) {
+            try? fm.removeItem(at: tmp)
+            try? fm.removeItem(at: p.backup.deletingLastPathComponent())
             if let b = latest?.build { UserDefaults.standard.set(b, forKey: "failedUpdateBuild") }
-            state = .failed(L("Couldn't replace the app: \(error.localizedDescription)"))
-            return
+            state = .failed(why)
         }
-        try? FileManager.default.removeItem(at: newApp.deletingLastPathComponent())   // lege tijdelijke map opruimen
-        // Pas starten als dit proces echt weg is (afsluiten kan >1 s duren: logboek, ventilator-helper)
-        let p = Process()
-        p.executableURL = URL(fileURLWithPath: "/bin/sh")
-        p.arguments = ["-c", "while kill -0 \"$1\" 2>/dev/null; do sleep 0.2; done; /usr/bin/open \"$0\"", current.path, String(getpid())]
-        try? p.run()
+        // Eerst een kopie van de huidige app (APFS-kloon, kost niets). Lukt dat niet (schijf vol): niet bijwerken.
+        do { try Self.backUp(p) } catch { return fail(L("Couldn't back up the current version")) }
+        do {
+            _ = try fm.replaceItemAt(p.app, withItemAt: newApp, backupItemName: nil, options: [])
+        } catch {
+            return fail(L("Couldn't replace the app: \(error.localizedDescription)"))
+        }
+        try? fm.removeItem(at: tmp)   // lege tijdelijke map opruimen
+        let build = latest?.build ?? 0
+        try? JSONEncoder().encode(Marker(build: build, from: Self.currentBuild, at: Int(Date().timeIntervalSince1970))).write(to: p.marker)
+        Self.relaunch(p, failedNote: latest?.tag ?? String(build))
         NSApp.terminate(nil)
+    }
+
+    // MARK: Terugdraaien als een update niet start
+    //
+    // Vóór het vervangen gaat er een kopie van de huidige app naar update-previous/, daarna komt de marker update-pending.
+    // De nieuwe versie wist beide zodra ze 3 s draait (confirm). Staat de marker er dan nog, dan zet de waakhond in het
+    // herstartscript de vorige versie terug (na 20 s; vangt ook crashes vóór er Swift-code draait), en anders doet de
+    // volgende start dat (rollBackIfNeverConfirmed). Beide schrijven update-failed; de oude versie leest dat in start().
+
+    struct Paths {
+        let app: URL, dir: URL
+        var backup: URL { dir.appendingPathComponent("update-previous/Fusebox.app") }
+        var marker: URL { dir.appendingPathComponent("update-pending") }
+        var failed: URL { dir.appendingPathComponent("update-failed") }
+        static var live: Paths {
+            Paths(app: Bundle.main.bundleURL,
+                  dir: FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask)[0].appendingPathComponent("Fusebox"))
+        }
+    }
+    /// update-pending: {"build": nieuw, "from": oud, "at": epoch}
+    struct Marker: Codable, Equatable { let build: Int, from: Int, at: Int }
+
+    nonisolated static func readMarker(_ p: Paths) -> Marker? {
+        (try? Data(contentsOf: p.marker)).flatMap { try? JSONDecoder().decode(Marker.self, from: $0) }
+    }
+
+    /// Spiegel van UpdateSafety.ShouldRollBack (Windows): marker van déze build, ouder dan 2 min, en er is iets om terug te zetten.
+    nonisolated static func shouldRollBack(markerAge: TimeInterval, backupExists: Bool, markerBuild: Int, currentBuild: Int) -> Bool {
+        backupExists && markerBuild == currentBuild && markerAge > 120
+    }
+
+    nonisolated static func backUp(_ p: Paths) throws {
+        let fm = FileManager.default, dir = p.backup.deletingLastPathComponent()
+        try? fm.removeItem(at: dir)
+        try fm.createDirectory(at: dir, withIntermediateDirectories: true)
+        do { try fm.copyItem(at: p.app, to: p.backup) } catch { try? fm.removeItem(at: dir); throw error }
+    }
+
+    /// Deze versie draait echt: marker, back-up en uitgepakte resten weg. Alleen op de main queue (bewijs dat de runloop werkt).
+    nonisolated static func confirm(_ p: Paths = .live, build: Int = currentBuild, temp: URL = FileManager.default.temporaryDirectory) {
+        let fm = FileManager.default
+        if let m = readMarker(p), m.build != build { return }   // marker van een andere build (de update die nu klaarstaat): niet van ons
+        try? fm.removeItem(at: p.marker)
+        try? fm.removeItem(at: p.backup.deletingLastPathComponent())
+        for f in (try? fm.contentsOfDirectory(atPath: temp.path)) ?? [] where f.hasPrefix("fusebox-update-") {
+            try? fm.removeItem(at: temp.appendingPathComponent(f))
+        }
+    }
+
+    /// Vorige versie terugzetten: slechte app opzij, back-up op zijn plek, marker weg, update-failed voor de oude versie.
+    /// false = niets veranderd (back-up zonder geldige handtekening, of verplaatsen lukte niet): dan blijft de nieuwe staan.
+    nonisolated static func restore(_ p: Paths, badBuild: Int, verify: (URL) -> Bool = signed) -> Bool {
+        let fm = FileManager.default, bad = p.backup.appendingPathExtension("bad")
+        guard verify(p.backup) else { return false }
+        try? fm.removeItem(at: bad)
+        do { try fm.moveItem(at: p.app, to: bad) } catch { return false }
+        do { try fm.moveItem(at: p.backup, to: p.app) } catch { try? fm.moveItem(at: bad, to: p.app); return false }
+        try? fm.removeItem(at: p.marker)
+        try? Data(String(badBuild).utf8).write(to: p.failed)
+        try? fm.removeItem(at: p.backup.deletingLastPathComponent())   // met de slechte versie erin
+        return true
+    }
+
+    nonisolated static func signed(_ app: URL) -> Bool {
+        (try? run("/usr/bin/codesign", ["--verify", "--deep", "--strict", app.path])) != nil
+    }
+
+    /// Tweede laag, vóór er UI is (Entry.main): deze build is ooit gestart maar heeft nooit bevestigd → vorige versie terug en die starten.
+    nonisolated static func rollBackIfNeverConfirmed(_ p: Paths = .live) {
+        guard let m = readMarker(p), Installer.isInApplications(p.app.resolvingSymlinksInPath()),
+              shouldRollBack(markerAge: Date().timeIntervalSince1970 - Double(m.at), backupExists: FileManager.default.fileExists(atPath: p.backup.path),
+                             markerBuild: m.build, currentBuild: currentBuild),
+              restore(p, badBuild: m.build) else { return }
+        relaunch(p)
+        exit(0)
+    }
+
+    /// Wacht tot dit proces echt weg is (afsluiten kan >1 s duren: logboek, ventilator-helper) en start de app.
+    /// Na een update (met $2…) ook de waakhond: staat de marker er na 20 s nog en draait de app niet, dan startte de nieuwe
+    /// versie niet → vorige versie terugzetten (alleen met geldige handtekening) en die openen. Het script gooit zelf niets weg:
+    /// de teruggezette versie ruimt op (takeFailed wist de marker, confirm de map update-previous met de slechte kopie erin).
+    /// "Draait niet" = geen proces uit Contents/MacOS van die app (de ventilator-helper staat in Resources); letterlijk vergeleken,
+    /// want pgrep -f leest haakjes of een + in de mapnaam als patroon. Zo telt een app die nog bezig is met starten niet als mislukt.
+    /// $0 app, $1 pid, $2 marker, $3 back-up, $4 update-failed, $5 wat daarin komt (tag of bouwnummer). Paden nooit in de scripttekst.
+    nonisolated static let relaunchScript = """
+        while kill -0 "$1" 2>/dev/null; do sleep 0.2; done
+        /usr/bin/open "$0"
+        [ -n "$2" ] || exit 0
+        sleep 20
+        [ -e "$2" ] || exit 0
+        /bin/ps -axo comm= | /usr/bin/grep -qF -- "$0/Contents/MacOS/" && exit 0
+        /usr/bin/codesign --verify --deep --strict "$3" || exit 0
+        mv "$0" "$3.bad" || exit 0
+        mv "$3" "$0" || { mv "$3.bad" "$0"; exit 0; }
+        printf %s "$5" > "$4"
+        /usr/bin/open "$0"
+        """
+
+    nonisolated static func relaunch(_ p: Paths, failedNote: String? = nil) {
+        let proc = Process()
+        proc.executableURL = URL(fileURLWithPath: "/bin/sh")
+        proc.arguments = ["-c", relaunchScript, p.app.path, String(getpid())]
+            + (failedNote.map { [p.marker.path, p.backup.path, p.failed.path, $0] } ?? [])
+        try? proc.run()
+    }
+
+    /// update-failed lezen en weggooien, samen met de marker van die update → (bouwnummer, "0.14 beta" of "" als alleen het nummer bekend is).
+    nonisolated static func takeFailed(_ p: Paths) -> (build: Int, version: String)? {
+        guard let s = try? String(contentsOf: p.failed, encoding: .utf8) else { return nil }
+        try? FileManager.default.removeItem(at: p.failed)
+        try? FileManager.default.removeItem(at: p.marker)
+        return failedInfo(s)
+    }
+    nonisolated static func failedInfo(_ s: String) -> (build: Int, version: String)? {
+        let t = s.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let b = Int(t) { return (b, "") }
+        return buildNumber(in: t).map { ($0, pretty(t)) }
     }
 
     // MARK: Puur (testbaar)
@@ -287,6 +422,51 @@ import CryptoKit
         precondition(parseRelease(Data(evil.utf8)) == nil, "alleen https van GitHub")
         let other = #"{"tag_name":"v9-209912312359","assets":[{"name":"Fusebox.zip","browser_download_url":"https://github.com/someone/else/releases/download/v9/Fusebox.zip"}]}"#
         precondition(parseRelease(Data(other.utf8), repo: "x/y") == nil && parseRelease(Data(json.utf8), repo: "x/y") != nil, "alleen eigen repo")
+        rollbackSelfTest()
         print("updater ok")
+    }
+
+    /// Terugdraaien: beslissing, marker, en back-up → bevestigen / terugzetten in een tijdelijke map (nooit de echte paden).
+    nonisolated static func rollbackSelfTest() {
+        precondition(!shouldRollBack(markerAge: 30, backupExists: true, markerBuild: 7, currentBuild: 7), "marker te vers")
+        precondition(shouldRollBack(markerAge: 180, backupExists: true, markerBuild: 7, currentBuild: 7), "3 min, zelfde build")
+        precondition(!shouldRollBack(markerAge: 180, backupExists: false, markerBuild: 7, currentBuild: 7), "geen back-up")
+        precondition(!shouldRollBack(markerAge: 180, backupExists: true, markerBuild: 8, currentBuild: 7), "andere build")
+        precondition(failedInfo("v0.14-beta-202611241200\n").map { $0 == (202611241200, "0.14 beta") } == true
+                     && failedInfo("1").map { $0 == (1, "") } == true && failedInfo("rommel") == nil, "update-failed")
+
+        let fm = FileManager.default, root = fm.temporaryDirectory.appendingPathComponent("fusebox-selftest-\(UUID().uuidString)")
+        defer { try? fm.removeItem(at: root) }
+        let p = Paths(app: root.appendingPathComponent("cur/Fusebox.app"), dir: root.appendingPathComponent("data"))
+        let x = p.app.appendingPathComponent("x"), temp = root.appendingPathComponent("tmp")
+        func put(_ text: String) { try! fm.createDirectory(at: p.app, withIntermediateDirectories: true); try! Data(text.utf8).write(to: x) }
+        func marker(_ build: Int) { try! JSONEncoder().encode(Marker(build: build, from: 6, at: 1_795_000_000)).write(to: p.marker) }
+        let exists = { (u: URL) in fm.fileExists(atPath: u.path) }
+
+        // Zoals replaceAndRelaunch: back-up van "old", app wordt "new", marker erbij
+        put("old"); try! backUp(p); put("new"); marker(7)
+        precondition(readMarker(p) == Marker(build: 7, from: 6, at: 1_795_000_000), "marker heen en terug")
+        precondition((try? JSONDecoder().decode(Marker.self, from: Data(#"{"build": 7, "from": 6, "at": 1795000000}"#.utf8))) == readMarker(p), "marker-JSON")
+
+        // Bevestigen: niet door een andere build; wel door de nieuwe (marker, back-up en uitgepakte resten weg)
+        try! fm.createDirectory(at: temp.appendingPathComponent("fusebox-update-rest"), withIntermediateDirectories: true)
+        confirm(p, build: 6, temp: temp)
+        precondition(exists(p.marker) && exists(p.backup), "andere build bevestigt niet")
+        confirm(p, build: 7, temp: temp)
+        precondition(!exists(p.marker) && !exists(p.backup) && (try! fm.contentsOfDirectory(atPath: temp.path)).isEmpty, "bevestigd")
+
+        // Terugzetten: ongeldige back-up → niets veranderd; geldige → "old" terug, slechte kopie en marker weg, update-failed voor de oude versie
+        put("old"); try! backUp(p); put("new"); marker(7)
+        precondition(!restore(p, badBuild: 7, verify: { _ in false }) && (try! String(contentsOf: x, encoding: .utf8)) == "new" && exists(p.backup), "ongeldige back-up")
+        precondition(restore(p, badBuild: 7, verify: { _ in true }) && (try! String(contentsOf: x, encoding: .utf8)) == "old", "teruggezet")
+        precondition(!exists(p.marker) && !exists(p.backup.deletingLastPathComponent()), "opgeruimd")
+        precondition(takeFailed(p).map { $0 == (7, "") } == true && !exists(p.failed) && takeFailed(p) == nil, "update-failed één keer")
+
+        // Na de waakhond (script): marker staat er nog, update-failed bevat de tag, slechte kopie in update-previous → de oude versie ruimt op
+        marker(7); try! Data("v0.14-beta-202611241200".utf8).write(to: p.failed)
+        try! fm.createDirectory(at: p.backup.appendingPathExtension("bad"), withIntermediateDirectories: true)
+        precondition(takeFailed(p).map { $0 == (202611241200, "0.14 beta") } == true && !exists(p.marker), "waakhond: marker weg")
+        confirm(p, build: 6, temp: temp)
+        precondition(!exists(p.backup.deletingLastPathComponent()), "waakhond: slechte kopie weg")
     }
 }
