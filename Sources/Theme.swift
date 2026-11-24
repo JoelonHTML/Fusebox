@@ -33,7 +33,8 @@ struct Theme: Identifiable, Equatable {
         rowStyle == .blocks ? .white.opacity(secondaryText ? 0.8 : 1) : (secondaryText ? secondary : text)
     }
     var background: AnyShapeStyle { bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.clear) }
-    static func == (a: Theme, b: Theme) -> Bool { a.id == b.id && a.accent == b.accent && a.scale == b.scale && a.font == b.font && a.rowStyle == b.rowStyle }
+    /// Licht/donker telt mee: zelfde stijl in de andere variant heeft andere kleuren (anders tekent SwiftUI de pagina niet opnieuw).
+    static func == (a: Theme, b: Theme) -> Bool { a.id == b.id && a.accent == b.accent && a.scale == b.scale && a.font == b.font && a.rowStyle == b.rowStyle && a.scheme == b.scheme }
     /// Verticale ruimte per rij bovenop de inhoud (padding + tussenruimte), per rijstijl; voor layout-berekeningen.
     var rowPad: CGFloat {
         switch rowStyle { case .lines: 15; case .plain: 10; case .cards, .blocks, .glass: 22 }
@@ -342,6 +343,7 @@ enum Notify {
     /// nog niet gekozen → de vraag van macOS; uitgezet → eigen venster met een knop naar Systeeminstellingen.
     /// Nodig omdat macOS zijn vraag maar één keer stelt, en een update zonder Apple-handtekening soms als nieuwe app telt.
     static let askRound = 1
+    #if os(macOS)   // de iPhone-app (ios/) deelt dit bestand en stuurt geen meldingen
     @MainActor static func askOnce() {
         let d = UserDefaults.standard
         guard d.integer(forKey: "notifyAskRound") < askRound else { return }
@@ -373,6 +375,7 @@ enum Notify {
         let open = UNNotificationAction(identifier: "open", title: L("What's new"), options: [.foreground])
         UNUserNotificationCenter.current().setNotificationCategories(Set([UNNotificationCategory(identifier: whatsNew, actions: [open], intentIdentifiers: [])] + PeakAlert.registerCategories()))
     }
+    #endif
     static func send(title: String, body: String, category: String? = nil, userInfo: [AnyHashable: Any] = [:]) {
         let c = UNMutableNotificationContent(); c.title = title; c.body = body; c.userInfo = userInfo
         if let category { c.categoryIdentifier = category }

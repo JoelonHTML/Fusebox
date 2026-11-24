@@ -85,7 +85,11 @@ enum NetTerm: String, CaseIterable, Identifiable {
     static let wifi: [NetTerm] = [.signal, .noise, .linkSpeed, .channel, .standard]
     static let wired: [NetTerm] = [.cable, .linkSpeed]
     static let speed: [NetTerm] = [.download, .upload, .delay, .busyDelay, .stability, .kinds]
+    #if os(macOS)
     static let report: [NetTerm] = [.router, .internet, .jitter, .lost, .p95, .dnsLookup, .download, .upload, .delay, .busyDelay, .stability, .signal, .noise, .linkSpeed]
+    #else   // iPhone: geen wifi-signaal, ruis of linksnelheid (iOS geeft die niet)
+    static let report: [NetTerm] = [.router, .internet, .jitter, .lost, .p95, .dnsLookup, .download, .upload, .delay, .busyDelay, .stability]
+    #endif
 }
 
 // MARK: Uitleg-bouwstenen
@@ -141,6 +145,7 @@ struct TermsPopover: View {
     }
 }
 
+#if os(macOS)   // de kaarten hieronder zijn de Mac-indeling; de iPhone (ios/) deelt alleen de uitleg hierboven
 /// Kaartvorm per thema. Bij lijnen/kaal (Instrument, Minimal, Terminal) een eigen zacht kaartvlak; anders de themarij.
 private struct NetCardShape: ViewModifier {
     let theme: Theme, index: Int
@@ -618,3 +623,4 @@ private struct SignalBars: View {
         .accessibilityLabel(Text(verbatim: "\(level)/4"))
     }
 }
+#endif

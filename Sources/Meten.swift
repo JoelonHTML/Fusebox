@@ -1,4 +1,5 @@
 import SwiftUI
+#if os(macOS)   // de iPhone-app (ios/) deelt alleen de opmaak-functies onderaan
 import IOKit
 import IOKit.ps
 import Darwin
@@ -361,6 +362,8 @@ final class Sampler {
     }
 }
 
+#endif
+
 // MARK: - Opmaak
 
 func rate(_ bps: Double) -> String { bytes(bps) + "/s" }
@@ -386,6 +389,7 @@ func downsample(_ v: [Double], to n: Int = 240) -> [Double] {
 }
 
 
+#if os(macOS)
 /// Reactietijd (ms) via een TCP-verbinding naar een vaste server: zelfde orde als "ping", zonder root.
 final class Pinger {
     private(set) var lastMs: Double?
@@ -409,3 +413,4 @@ final class Pinger {
         DispatchQueue.main.asyncAfter(deadline: .now() + 3) { finish(nil) } // geen internet → "–"
     }
 }
+#endif

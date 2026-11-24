@@ -1,7 +1,9 @@
 import SwiftUI
 import Network
+#if os(macOS)
 import CoreWLAN
 import SystemConfiguration
+#endif
 import Darwin
 
 // MARK: - Netwerk: welke apparaten zitten er op je netwerk, hoe heten ze, en hoe goed is je internet
@@ -9,6 +11,7 @@ import Darwin
 // Scant alleen als dit tabblad open is of na "Scan"; niets in de 2-s-tik. Op het lokale netwerk gaan alleen kleine
 // vragen rond (ping, ARP, Bonjour/mDNS, NetBIOS, SSDP/UPnP, poortcheck op verzoek). Internet: zie NetwerkInternet.swift.
 
+#if os(macOS)   // Mac-scherm; de iPhone-app (ios/) deelt het model en de scanner verderop
 struct NetworkView: View {
     @StateObject private var scanner = NetScanner()
     @Environment(\.theme) private var theme
@@ -277,6 +280,7 @@ struct NetworkView: View {
         }
     }
 }
+#endif
 
 private enum NetColumn { case name, ip, mac, vendor, kind, ms }
 /// Breedte-banden: smal Naam/IP/ms, + Vendor, + Type, + MAC.
@@ -344,6 +348,7 @@ struct NetFlow: Layout {
     }
 }
 
+#if os(macOS)
 private struct NetRow: View {
     let device: NetDevice, width: NetWidth, index: Int, isOpen: Bool
     let scanner: NetScanner
@@ -501,6 +506,7 @@ private struct NetRow: View {
         Label { Text(text).fixedSize(horizontal: false, vertical: true) } icon: { Image(systemName: icon).frame(width: 14) }
     }
 }
+#endif
 
 // MARK: - Model
 
@@ -568,6 +574,7 @@ struct NetDevice: Identifiable {
     var firstSeen: Date?, lastSeen: Date?
     var isNew = false
     var remote = false                   // buiten het eigen subnet: geen ARP, dus geen MAC/maker
+    var key: String?                     // sleutel in de onthouden-lijst (NetScanner.storeKey); nil = wordt niet onthouden
 
     static var remoteHelp: String { L("Outside your own network: routers don't pass on hardware addresses, so the MAC address and maker can't be seen") }
     /// Voor in beeld: "Private address" blijft intern Engels (guess() en zoeken), alleen de weergave vertaald.
@@ -591,6 +598,7 @@ struct NetInfo {
     /// Herkent "hetzelfde netwerk" voor offline apparaten (thuis vs. kantoor).
     var networkKey: String { "\(ipString(ip & mask))/\(mask.nonzeroBitCount) via \(router.map(ipString) ?? "-")" }
 
+    #if os(macOS)   // iPhone-versie: ios/Fusebox/Platform.swift
     static func current() -> NetInfo? {
         let global = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
         guard var iface = global?["PrimaryInterface"] as? String else { return nil }
@@ -619,6 +627,7 @@ struct NetInfo {
         guard let ip, ip != 0 else { return nil }
         return NetInfo(iface: iface, ip: ip, mask: mask, mac: mac, router: router)
     }
+    #endif
 }
 
 func ipString(_ ip: UInt32) -> String { "\(ip >> 24).\(ip >> 16 & 255).\(ip >> 8 & 255).\(ip & 255)" }
@@ -659,7 +668,11 @@ final class NetScanner: ObservableObject {
     private var side: [Task<Void, Never>] = []
     private var browsers: [NWBrowser] = []
     private var resolving: [NWEndpoint: NWConnection] = [:]
+    #if os(macOS)
     private lazy var computerName = SCDynamicStoreCopyComputerName(nil, nil) as String? ?? L("This Mac")
+    #else
+    private lazy var computerName = L("This iPhone")   // iOS geeft apps de toestelnaam niet meer
+    #endif
 
     struct Found { var mac: [UInt8]?; var ms: Double?; var loss: Double?; var viaTCP = false }
     struct Bonjour { var name: String?; var types: Set<String> = []; var model: String? }
@@ -675,10 +688,11 @@ final class NetScanner: ObservableObject {
         var out = ips.map { device($0, info) }
         // Onthouden apparaten die nu niet te zien zijn (alleen van dit netwerk, en alleen als we de ARP-tabel echt konden lezen)
         if range == nil, arpDone, !localBlocked {
-            let seen = Set(out.compactMap { $0.mac.map(macString) })
+            let seen = Set(out.compactMap(\.key))
             for (key, k) in store.devices where !seen.contains(key) && (k.net == nil || k.net == net) {
                 var d = NetDevice(id: "off " + key, ip: k.ip.flatMap(parseIP) ?? 0)
                 d.mac = parseMAC(key)
+                d.key = key
                 d.online = false
                 let privateMAC = d.mac.map(Self.isPrivate) ?? false
                 d.vendor = privateMAC ? "Private address" : d.mac.flatMap(Self.vendor) ?? "–"
@@ -706,7 +720,8 @@ final class NetScanner: ObservableObject {
         let privateMAC = d.mac.map(Self.isPrivate) ?? false
         d.vendor = privateMAC ? "Private address" : d.mac.flatMap(Self.vendor) ?? up?.manufacturer.map { String($0.prefix(40)) } ?? "–"
         d.model = Self.modelText(bonjour: bj?.model, upnp: up)
-        let known = d.mac.flatMap { store.devices[macString($0)] }
+        d.key = Self.storeKey(mac: d.mac, ip: ip)
+        let known = d.key.flatMap { store.devices[$0] }
         d.custom = known?.custom
         // Namen op volgorde van betrouwbaarheid; dubbele weg
         var cands: [(String, String?)] = [("Your name", known?.custom), ("This Mac", d.isMe ? computerName : nil), ("Bonjour", bj?.name)]
@@ -716,6 +731,9 @@ final class NetScanner: ObservableObject {
         d.names = cands.compactMap { s, n in n.flatMap { seen.insert($0.lowercased()).inserted ? (s, $0) : nil } }
         let text = (d.names.map(\.name) + [up?.modelName, up?.deviceType, up?.manufacturer].compactMap { $0 }).joined(separator: " ")
         d.kind = Self.guess(name: text, vendor: d.vendor, services: d.services, model: bj?.model, isRouter: d.isRouter, isMe: d.isMe, privateMAC: privateMAC)
+        #if os(iOS)
+        if d.isMe { d.kind = .phone }   // de iPhone-app zelf
+        #endif
         d.name = d.names.first?.name ?? Self.fallbackName(vendor: d.vendor, kind: d.kind, isRouter: d.isRouter, privateMAC: privateMAC)
         d.ports = ports[ip]
         d.checkingPorts = checking.contains(ip)
@@ -723,6 +741,18 @@ final class NetScanner: ObservableObject {
         d.lastSeen = known?.last
         d.isNew = known.map { Calendar.current.isDateInToday($0.first) && $0.first > store.created.addingTimeInterval(60) } ?? false
         return d
+    }
+
+    /// Sleutel in de onthouden-lijst: het MAC-adres. iOS geeft apps geen MAC-adressen; daar het IP-adres. Namen zijn geen
+    /// goede sleutel: per scan komt soms de Bonjour-naam binnen ("iPad (4)") en soms alleen de DNS-naam ("iPad-4").
+    /// Een IP blijft thuis meestal lang hetzelfde; krijgt een apparaat een nieuw, dan lijkt het nieuw. nil = niet onthouden.
+    nonisolated static func storeKey(mac: [UInt8]?, ip: UInt32) -> String? {
+        if let mac { return macString(mac) }
+        #if os(iOS)
+        return ip == 0 ? nil : "ip " + ipString(ip)
+        #else
+        return nil
+        #endif
     }
 
     nonisolated static func fallbackName(vendor: String, kind: DeviceKind, isRouter: Bool, privateMAC: Bool) -> String {
@@ -768,7 +798,7 @@ final class NetScanner: ObservableObject {
             await oui
             guard !Task.isCancelled, let self else { return }
             self.ouiReady = true
-            let arp = await Self.offMain { Self.arpTable() }.filter { $0.ifindex == ifindex && local.contains($0.ip) }
+            let arp = await Self.offMain { Self.arpTable() }.filter { $0.ifindex == ifindex && local.contains($0.ip) }   // iOS: altijd leeg
             var f: [UInt32: Found] = [:]
             for e in arp { f[e.ip] = Found(mac: e.mac) }
             for (ip, r) in sweep.rtt { f[ip, default: Found()].ms = r.min() }
@@ -776,7 +806,11 @@ final class NetScanner: ObservableObject {
             self.found = f
             self.arpDone = true
             // Lokale antwoorden maar lege ARP-tabel: macOS verbergt die zonder Lokaal netwerk-toestemming
+            #if os(macOS)
             self.localBlocked = self.localBlocked || sweep.blocked || (arp.isEmpty && sweep.rtt.keys.contains(where: local.contains))
+            #else
+            self.localBlocked = self.localBlocked || sweep.blocked
+            #endif
             // 1b. Buiten het subnet geen ARP: wie niet op ping antwoordt, zoeken met een TCP-verbinding (SYN-ACK of RST = er is iemand)
             let quiet = hosts.filter { !local.contains($0) && f[$0] == nil }
             if !quiet.isEmpty {
@@ -867,8 +901,8 @@ final class NetScanner: ObservableObject {
     }
 
     func rename(_ d: NetDevice, to name: String) {
-        guard let mac = d.mac else { return }
-        let key = macString(mac), now = Date()
+        guard let key = d.key else { return }
+        let now = Date()
         let clean = String(name.trimmingCharacters(in: .whitespacesAndNewlines).prefix(64))
         var k = store.devices[key] ?? NetDeviceStore.Known(first: now, last: now)
         k.custom = clean.isEmpty ? nil : clean
@@ -877,8 +911,8 @@ final class NetScanner: ObservableObject {
     }
 
     func forget(_ d: NetDevice) {
-        guard let mac = d.mac else { return }
-        store.devices[macString(mac)] = nil
+        guard let key = d.key else { return }
+        store.devices[key] = nil
         store.save()
     }
 
@@ -888,8 +922,7 @@ final class NetScanner: ObservableObject {
         let now = Date(), net = info.networkKey
         var fresh: [NetDevice] = []
         for d in devices where d.online {
-            guard let mac = d.mac else { continue }
-            let key = macString(mac)
+            guard let key = d.key else { continue }
             var k = store.devices[key] ?? NetDeviceStore.Known(first: now, last: now)
             if store.devices[key] == nil, !d.isMe { fresh.append(d) }
             if let n = d.names.first(where: { !["Your name", "Remembered", "This Mac"].contains($0.source) }) { k.name = n.name }
@@ -1029,6 +1062,7 @@ final class NetScanner: ObservableObject {
 
     /// ARP-tabel van de kernel (sysctl, geen root). Zonder Lokaal netwerk-toestemming geeft macOS hier een lege lijst.
     nonisolated static func arpTable() -> [ArpEntry] {
+        #if os(macOS)
         var mib: [Int32] = [CTL_NET, PF_ROUTE, 0, AF_INET, NET_RT_FLAGS, RTF_LLINFO]
         var len = 0
         guard sysctl(&mib, 6, nil, &len, nil, 0) == 0, len > 0 else { return [] }
@@ -1036,8 +1070,12 @@ final class NetScanner: ObservableObject {
         var buf = [UInt8](repeating: 0, count: len)
         guard sysctl(&mib, 6, &buf, &len, nil, 0) == 0 else { return [] }
         return parseARP(Array(buf[0..<len]))
+        #else
+        return []   // iOS schermt de ARP-tabel af
+        #endif
     }
 
+    #if os(macOS)
     /// Reeks rt_msghdr + sockaddr_in (doel) + sockaddr_dl (MAC). Onvolledige regels (geen MAC) en broadcast overslaan.
     nonisolated static func parseARP(_ b: [UInt8]) -> [ArpEntry] {
         let header = MemoryLayout<rt_msghdr>.size
@@ -1061,6 +1099,7 @@ final class NetScanner: ObservableObject {
         }
         return out
     }
+    #endif
 
     /// Omgekeerde DNS (vaak de naam die de router via DHCP kent), alle tegelijk (hooguit 16 tegelijk), hooguit `timeout` s.
     nonisolated static func reverseNames(_ ips: [UInt32], timeout: Double) async -> [UInt32: String] {
@@ -1279,6 +1318,7 @@ final class NetScanner: ObservableObject {
         precondition(parseEchoReply(reply[...])! == (0xBEEF, 7), "echo zonder ip-kop")
         let withIP = [0x45] + [UInt8](repeating: 0, count: 19) + reply
         precondition(parseEchoReply(withIP[...])! == (0xBEEF, 7) && parseEchoReply(pkt[...]) == nil, "echo met ip-kop / request")
+        #if os(macOS)
         // ARP: één volledige regel + één zonder MAC
         func msg(_ ipBytes: [UInt8], mac: [UInt8]) -> [UInt8] {
             let sin: [UInt8] = [16, UInt8(AF_INET), 0, 0] + ipBytes + [UInt8](repeating: 0, count: 8)
@@ -1289,6 +1329,14 @@ final class NetScanner: ObservableObject {
         }
         let arp = parseARP(msg([192, 168, 1, 5], mac: [0xB8, 0x27, 0xEB, 1, 2, 3]) + msg([192, 168, 1, 6], mac: []))
         precondition(arp.count == 1 && arp[0].ip == parseIP("192.168.1.5") && arp[0].mac == [0xB8, 0x27, 0xEB, 1, 2, 3] && arp[0].ifindex == 4, "arp")
+        #endif
+        // Onthouden-sleutel: met MAC altijd het MAC (Mac en iPhone); zonder MAC alleen op de iPhone (naam, anders IP)
+        precondition(storeKey(mac: [0xB8, 0x27, 0xEB, 1, 2, 3], ip: 5) == "B8:27:EB:01:02:03", "sleutel mac")
+        #if os(iOS)
+        precondition(storeKey(mac: nil, ip: parseIP("192.168.1.5")!) == "ip 192.168.1.5" && storeKey(mac: nil, ip: 0) == nil, "sleutel zonder mac")
+        #else
+        precondition(storeKey(mac: nil, ip: 5) == nil, "zonder mac niet onthouden")
+        #endif
         // mDNS: vraag opbouwen, antwoord (met compressie) ontleden
         let q = NetProbe.dnsQuery(NetProbe.reverseName(parseIP("192.168.1.5")!), type: 12, id: 9)
         precondition(NetProbe.reverseName(parseIP("192.168.1.5")!) == "5.1.168.192.in-addr.arpa", "reverse naam")

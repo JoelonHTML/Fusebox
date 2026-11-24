@@ -1,6 +1,8 @@
 import SwiftUI
+#if os(macOS)
 import CoreWLAN
 import SystemConfiguration
+#endif
 import Darwin
 import Network
 import os
@@ -18,6 +20,7 @@ struct NetConnection {
     var name: String? = nil       // naam van macOS, bv. "USB 10/100/1000 LAN" of "Thunderbolt Ethernet"
     var linkMbit: Double? = nil   // kabelsnelheid naar switch/router (if_data), nil = onbekend
 
+    #if os(macOS)   // iPhone-versie: ios/Fusebox/Platform.swift
     static func current() -> NetConnection? {
         let v4 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv4" as CFString) as? [String: Any]
         let v6 = SCDynamicStoreCopyValue(nil, "State:/Network/Global/IPv6" as CFString) as? [String: Any]
@@ -56,6 +59,7 @@ struct NetConnection {
                              ipv6Internet: !ipv6.isEmpty && v6?["Router"] != nil, vpn: vpnOn(primary: iface, services: services),
                              name: name, linkMbit: !wifi && baud > 0 ? Double(baud) / 1e6 : nil)
     }
+    #endif
 
     /// Tunnel-interfaces van VPN's (WireGuard/IKEv2-apps: utun, oude IPsec: ipsec, L2TP/PPTP: ppp). macOS heeft zelf ook
     /// altijd een paar utun's (iCloud, Continuïteit), maar die hebben geen dienst met een adres: daarom alleen hoofdroute of dienst.
@@ -77,6 +81,7 @@ struct WifiDetail {
     var word: String { rssi >= -60 ? L("good") : rssi >= -70 ? L("fair") : L("weak") }
 
     static func current(_ iface: String) -> WifiDetail? {
+        #if os(macOS)
         guard let w = CWWiFiClient.shared().interface(withName: iface), w.rssiValue() != 0 else { return nil }
         let ch = w.wlanChannel()   // kan nil zijn zonder locatietoestemming: dan weglaten
         let band: String? = switch ch?.channelBand.rawValue { case 1: "2.4 GHz"; case 2: "5 GHz"; case 3: "6 GHz"; default: nil }
@@ -87,6 +92,9 @@ struct WifiDetail {
         }
         return WifiDetail(rssi: w.rssiValue(), noise: w.noiseMeasurement(), rate: w.transmitRate(),
                           channel: ch.map(\.channelNumber), band: band, width: width, phy: phy)
+        #else
+        return nil   // iOS geeft apps geen signaalsterkte, ruis, kanaal of snelheid
+        #endif
     }
 }
 
@@ -107,6 +115,7 @@ struct SpeedResult: Codable, Equatable {
     var downPeak: Double? = nil, upPeak: Double? = nil
     var loadedPing: Double? = nil      // ms tijdens de overdracht (slechtste richting)
     var variation: Double? = nil       // spreiding per seconde, 0.1 = ±10% (slechtste richting)
+    var net: String? = nil             // alleen iPhone: "wifi" of "mobile" (om wifi met mobiel te vergelijken)
 }
 
 /// Rekenwerk van de snelheidstest, los van het netwerk (zelftest op verzonnen data).
@@ -355,6 +364,9 @@ final class InternetStats: ObservableObject {
                     r.loadedPing = [SpeedMath.median(down.pings), SpeedMath.median(up.pings)].compactMap { $0 }.max()
                     r.variation = [SpeedMath.variation(d), SpeedMath.variation(u)].compactMap { $0 }.max()
                 }
+                #if os(iOS)
+                r.net = self.conn?.kind == "Wi-Fi" ? "wifi" : self.conn?.kind == NetConnection.mobile ? "mobile" : nil
+                #endif
                 self.history = Array(([r] + self.history).prefix(10))
                 if let data = try? JSONEncoder().encode(self.history) { UserDefaults.standard.set(data, forKey: "speedHistory") }
             } catch {
@@ -552,6 +564,13 @@ final class InternetStats: ObservableObject {
             }
             let d = await dns
             guard let self, !Task.isCancelled else { return }
+            #if os(iOS)   // mobiele data: geen router en geen wifi, alleen internet en DNS (ios/Fusebox/Platform.swift)
+            if c.kind == NetConnection.mobile {
+                self.finding = Self.findMobile(internet: inet, dnsMs: d)
+                self.findBusy = false; self.findTask = nil
+                return
+            }
+            #endif
             self.finding = Self.find(wired: c.kind != "Wi-Fi", rssi: w?.rssi, snr: w?.snr, band: w?.band, channel: w?.channel,
                                      router: c.router.map { PingStats(r.rtt[$0] ?? [], sent: 20) }, internet: inet, dnsMs: d)
             self.findBusy = false
@@ -719,7 +738,11 @@ private struct NetReportPage: View {
 
     @ViewBuilder private var numbers: some View {
         section(L("Connection")) {
+            #if os(iOS)
+            row(L("Type"), r.kind.map { $0 == NetConnection.mobile ? L("Mobile data") : $0 } ?? L("Not connected"))
+            #else
             row(L("Type"), r.kind.map { $0 == "Wi-Fi" || $0 == "Ethernet" ? $0 : L("Other (\($0))") } ?? L("Not connected"))
+            #endif
         }
         if let w = r.wifi {
             section("Wi-Fi") {

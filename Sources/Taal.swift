@@ -31,6 +31,7 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         else { UserDefaults.standard.set([l.rawValue], forKey: "AppleLanguages") }
     }
 
+    #if os(macOS)   // iPhone: taal kiezen gaat via Instellingen › Fusebox van iOS zelf
     /// Fusebox opnieuw starten (zelfde truc als na een update: wachten tot dit proces weg is, dan openen).
     static func relaunch() {
         let p = Process()
@@ -39,8 +40,10 @@ enum AppLanguage: String, CaseIterable, Identifiable {
         try? p.run()
         NSApp.terminate(nil)
     }
+    #endif
 }
 
+#if os(macOS)
 struct LanguagePicker: View {
     @AppStorage("appLanguage") private var lang = ""
     @State private var changed = false
@@ -59,6 +62,7 @@ struct LanguagePicker: View {
         }
     }
 }
+#endif
 
 /// Taal van de schermteksten, voor dag- en maandnamen op het scherm ("do 16:31" i.p.v. "Thu 16:31").
 /// Niet voor bestanden of logs: die houden en_US_POSIX.
