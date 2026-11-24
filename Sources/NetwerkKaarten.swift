@@ -100,8 +100,10 @@ enum NetTerm: String, CaseIterable, Identifiable {
 
 /// Label met uitleg: na 0,4 s zweven een klein popover (stippellijn als hint), klikken zet het vast (ook voor toetsenbord).
 struct TermLabel: View {
-    let term: NetTerm
-    var title: String? = nil
+    let label: String, item: (title: String, text: String)
+    init(term: NetTerm, title: String? = nil) { label = title ?? term.title; item = (term.title, term.text) }
+    /// Zelfde label voor een waarde die geen netwerkterm is ("More details" op Live).
+    init(_ title: String, hint: String) { label = title; item = (title, hint) }
     @Environment(\.theme) private var theme
     @State private var hover = false
     @State private var show = false
@@ -109,7 +111,7 @@ struct TermLabel: View {
 
     var body: some View {
         Button { pinned.toggle(); show = pinned } label: {
-            Text(title ?? term.title).underline(hover, pattern: .dot, color: theme.onRow(true).opacity(0.7))
+            Text(label).underline(hover, pattern: .dot, color: theme.onRow(true).opacity(0.7))
         }
         .buttonStyle(.plain)
         .onHover { inside in
@@ -119,31 +121,33 @@ struct TermLabel: View {
             } else if !pinned { show = false }
         }
         .onChange(of: show) { if !show { pinned = false } }
-        .popover(isPresented: $show, arrowEdge: .bottom) { TermsPopover(terms: [term]) }
-        .accessibilityHint(term.text)
+        .popover(isPresented: $show, arrowEdge: .bottom) { TermsPopover(items: [item]) }
+        .accessibilityHint(item.text)
     }
 }
 
 /// Inhoud van de uitleg-popovers: één term (label) of alle termen van een kaart (ⓘ).
 struct TermsPopover: View {
     var title: String? = nil
-    let terms: [NetTerm]
+    let items: [(title: String, text: String)]
+    init(title: String? = nil, terms: [NetTerm]) { self.title = title; items = terms.map { ($0.title, $0.text) } }
+    init(items: [(title: String, text: String)]) { self.items = items }
     @Environment(\.theme) private var theme
 
     var body: some View {
         let body = theme.font.font(11.5 * theme.scale, weight: .regular, style: theme.design)
         let list = VStack(alignment: .leading, spacing: 10) {
             if let title { Text(title).font(theme.label(13)).foregroundStyle(theme.text) }
-            ForEach(terms) { t in
+            ForEach(items.indices, id: \.self) { i in
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(t.title).font(theme.label(11.5)).foregroundStyle(theme.text)
-                    Text(t.text).font(body).foregroundStyle(theme.secondary).fixedSize(horizontal: false, vertical: true)
+                    Text(items[i].title).font(theme.label(11.5)).foregroundStyle(theme.text)
+                    Text(items[i].text).font(body).foregroundStyle(theme.secondary).fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
         .padding(14).frame(width: 300, alignment: .leading)
         Group {
-            if terms.count > 3 { ScrollView { list }.frame(maxHeight: 460) } else { list }
+            if items.count > 3 { ScrollView { list }.frame(maxHeight: 460) } else { list }
         }
         .presentationBackground(theme.bg.map { AnyShapeStyle($0) } ?? AnyShapeStyle(.regularMaterial))
     }

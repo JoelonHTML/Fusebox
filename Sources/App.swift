@@ -165,6 +165,7 @@ struct MeterkastApp: App {
         Efficiency.selfTest()
         NetConnection.selfTest()
         EtherMedia.selfTest()
+        MoreInfo.selfTest()
         Power.selfTest()
         let s = Sampler()
         _ = s.sample()
