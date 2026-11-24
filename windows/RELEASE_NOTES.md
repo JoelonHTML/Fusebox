@@ -1,4 +1,4 @@
-- Network: redone like the Mac — Connection, Wi-Fi and Speed test as three cards, each with its own details, an ⓘ explanation and an explanation on every value when you point at it
-- Network: the Devices list sits below the cards in one scroll area, and its toolbar stays at the top while you scroll
-- Cable and Wi-Fi both on: Fusebox now shows the connection Windows actually uses
-- Light accent colours stay readable on Color blocks pages too
+- Window: after a restart it opens on the screen where you left it, at the right size when your screens use different scaling (for example 100 % and 200 %)
+- Network: a long network adapter name now wraps instead of being cut off
+- Steadier: the last minute of measurements is no longer lost when Fusebox quits at the same moment it saves, and the app page no longer waits while new apps are read
+- Checkup no longer asks Windows twice for the same reliability history when you switch quickly

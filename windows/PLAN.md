@@ -288,13 +288,7 @@ Vrijwel alle schermen worden opnieuw opgezet volgens de spec. Concreet de groots
   - Openen op het bewaarde scherm: deed Windows al; **fix**: eerst naar dat scherm, dan de maat met díe schaal (100 % ↔ 200 %).
   - Crash GPU-namen (gedeelde dictionary, twee threads): op Windows is die map lokaal, dus geen tweeling. Audit van alle gedeelde staat gaf geen crash-race. **Fixes**: CSV-schrijver met een slot (laatste minuut kon wegvallen bij afsluiten), Reliability-cache met een slot, app-beschrijving leest het bestand buiten het slot (UI wachtte). Latent, niet gefixt: `Notify.handlers` (wordt nu alleen bij start gevuld).
 
-**Windows mist nog (kan wel):**
-- Efficiëntiemodus heeft Windows al; de Mac-variant per app is gelijk. Niets te doen.
-- "Transparantie-effecten uit" van Windows volgen (Mac: Reduce transparency) [S]
-- Wifi-signaal zonder locatietoestemming (24H2): nu "geen signaalinformatie" als Windows de BSSID weigert; het signaalpercentage kan zonder BSSID [S] (?)
-- Klassiek menu als alternatief voor het systeemvak-paneel (Mac `richPanel` uit); nu alleen het rechtsklikmenu [S] (?)
-- Opruimknoppen bij opslag (Prullenbak legen / Schijfopruiming openen) als de Mac die heeft [S] (?)
-- Netwerkgebruik per app [M] (?: nagaan of de Mac dit toont)
+**Windows mist nog (kan wel):** niets meer. Nagekeken in de code (24 nov.): klassiek menu zit er al (Instellingen › Systeemvak › Type), wifi-signaal heeft een terugval zonder BSSID, opruimknoppen en "minder transparantie" heeft de Mac ook niet.
 
 **Windows heeft, de Mac niet:**
 - Opstart-apps aan/uit (Run, Opstartmap, Taakplanner, services) met terugzetten
@@ -312,4 +306,6 @@ Vrijwel alle schermen worden opnieuw opgezet volgens de spec. Concreet de groots
 - Laadlimiet: geen merkonafhankelijke Windows-API
 - Wifi-naam/BSSID: bewust nooit getoond (privacy); ruisniveau/SNR geeft Windows niet
 - USB-C-vermogen, lader en kabel: Windows geeft het niet
+- Netwerkgebruik per app (Mac: nettop): Windows geeft dit alleen aan programma's die als beheerder draaien (ETW), en Fusebox draait nooit als beheerder
 - Mac-vensterfixes, Liquid Glass (→ Mica/Acrylic), Dock-icoon (→ taakbalkknop), Sparkle (→ eigen updater met SHA-256)
+- Mac krijgt de Windows-functies via de Mac-chat (keuze Joël 24 nov.): opstart-items aan/uit, updates + herstart nodig, Checkup op dag één, SSD-gezondheid, update-terugdraaien, versleutelde DNS, sneltoets-conflicten. Opdracht: `docs/WINDOWS-TO-MAC.md`.

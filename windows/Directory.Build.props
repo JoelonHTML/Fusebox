@@ -4,7 +4,7 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
-    <Version>0.2.5</Version>
+    <Version>0.2.6</Version>
     <Company>ClaudIA Software &amp; Development</Company>
     <Product>Fusebox</Product>
     <Copyright>Joël Nieuwkoop</Copyright>
