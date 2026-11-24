@@ -1625,3 +1625,7 @@
 "Couldn't read the result." = "Das Ergebnis konnte nicht gelesen werden.";
 "Fusebox doesn't check by itself. Press Check now." = "Fusebox prüft nicht von selbst. Klicke auf „Jetzt prüfen“.";
 "A macOS update is waiting (%@). Install it and restart to finish — updates fix security problems and crashes." = "Ein macOS-Update wartet (%@). Installiere es und starte neu, um es abzuschließen — Updates beheben Sicherheitsprobleme und Abstürze.";
+/* feat-hotkey */
+"Another app already uses this shortcut." = "Eine andere App verwendet diesen Kurzbefehl bereits.";
+"macOS already uses this shortcut." = "macOS verwendet diesen Kurzbefehl bereits.";
+"Fusebox already uses this shortcut." = "Fusebox verwendet diesen Kurzbefehl bereits.";
