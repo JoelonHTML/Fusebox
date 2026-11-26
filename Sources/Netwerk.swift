@@ -1456,8 +1456,11 @@ final class NetScanner: ObservableObject {
         precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: PingStats([], sent: 10), internet: PingStats([], sent: 10), dnsMs: nil, internetCheck: true).text.hasPrefix("No answer"), "niets")
         precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: good, internet: nil, dnsMs: nil, internetCheck: false).ok == true, "internet uit")
         precondition(InternetStats.verdict(wired: true, rssi: nil, snr: nil, router: good, internet: net, dnsMs: 400, internetCheck: true).text.contains("DNS"), "trage dns")
-        let meta = InternetStats.parseMeta(Data(#"{"clientIp":"203.0.113.7","asOrganization":"Example ISP","city":"Utrecht","country":"NL","colo":"AMS"}"#.utf8))
-        precondition(meta?.ip == "203.0.113.7" && meta?.isp == "Example ISP" && meta?.place == "Utrecht, NL (Cloudflare AMS)" && InternetStats.parseMeta(Data("[]".utf8)) == nil, "meta")
+        let tr = InternetStats.parseTrace("fl=1\nip=203.0.113.7\nloc=NL\ncolo=AMS\n")
+        precondition(tr?.ip == "203.0.113.7" && tr?.place != nil && InternetStats.parseTrace("nothing") == nil, "trace")
+        let holder = { (h: String) in InternetStats.parseHolder(Data(#"{"data":{"asns":[{"asn":1,"holder":"\#(h)"}]}}"#.utf8)) }
+        precondition(holder("GTT-BACKBONE GTT Communications Inc.") == "GTT Communications Inc." && holder("KPN KPN B.V.") == "KPN B.V."
+                     && holder("Ziggo") == "Ziggo" && InternetStats.parseHolder(Data("{}".utf8)) == nil, "provider")
         SpeedMath.selfTest()
         // Opslag: oude bestanden (zonder nieuwe velden) blijven leesbaar
         let old = Data(#"{"created":"2025-01-01T00:00:00Z","devices":{"B8:27:EB:01:02:03":{"name":"pi","first":"2025-01-01T00:00:00Z","last":"2025-01-02T00:00:00Z"}}}"#.utf8)

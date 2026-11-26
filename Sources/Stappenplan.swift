@@ -1,3 +1,4 @@
+import CoreBluetooth
 import SwiftUI
 import UserNotifications
 
@@ -92,6 +93,17 @@ struct SetupView: View {
                 }
                 .buttonStyle(.link)
                 if let message { Text(message).foregroundStyle(.secondary) }
+            }
+            // Profiel: alleen hier bij de eerste start (en via "Run setup again"); de volgende stappen stellen het verder bij
+            Section("Start with a profile (you can still change everything afterwards)") {
+                HStack(spacing: 8) {
+                    ForEach(Prefs.presets) { p in
+                        PresetCard(preset: p) {
+                            Prefs.applyPreset(p); message = L("Profile \(p.title) is on")
+                            if let meter { prefsChanged(meter, open: openWindow, dismiss: dismissWindow) }
+                        }
+                    }
+                }
             }
         case 1: Section { ThemeTiles() }
         case 2: TextSizeStep()
@@ -413,12 +425,12 @@ struct MenubarPreview: View {
 }
 
 private struct PrivacyStep: View {
-    @AppStorage("keepDays") private var keepDays = 30
+    @AppStorage("keepDays") private var keepDays = 365
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
     var body: some View {
         Section {
             Picker("Keep measurement history for", selection: $keepDays) {
-                Text("7 days").tag(7); Text("30 days").tag(30); Text("90 days").tag(90); Text("Forever").tag(0)
+                Text("7 days").tag(7); Text("30 days").tag(30); Text("90 days").tag(90); Text("1 year").tag(365); Text("Forever").tag(0)
             }
             .pickerStyle(.segmented)
         }
@@ -439,7 +451,7 @@ private struct Summary: View {
     @AppStorage("metrics") private var metrics = Metric.defaultOrder
     @AppStorage("menubarStyle") private var menubar: MenubarStyle = .text
     @AppStorage("notify") private var notify = true
-    @AppStorage("keepDays") private var keepDays = 30
+    @AppStorage("keepDays") private var keepDays = 365
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
 
     var body: some View {
@@ -483,11 +495,12 @@ struct FontCards: View {
 }
 
 
-/// Alle toestemmingen op één plek, met de stand en een knop. Niets wordt stiekem gevraagd: elke vraag na een klik.
+/// Alle toestemmingen op één plek, met de stand en een knop. Meldingen, lokaal netwerk en Bluetooth vraagt Fusebox ook zelf bij de eerste start (App.swift).
 private struct PermissionsStep: View {
     @State private var notif: UNAuthorizationStatus = .notDetermined
     @State private var fda = DiskScan.fullDiskAccess
     @State private var lanAsked = UserDefaults.standard.bool(forKey: "lanAsked")
+    @State private var bt = CBManager.authorization
     @State private var helper = FanHelper.installed
     @State private var helperNote: String?
     @AppStorage("notify") private var notify = true
@@ -504,6 +517,11 @@ private struct PermissionsStep: View {
                 lanAsked ? L("Asked") : nil, lanAsked ? L("Open Settings") : L("Allow")) {
                 if lanAsked { open("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_LocalNetwork") }
                 else { LocalNetworkNudge.ask(); lanAsked = true; UserDefaults.standard.set(true, forKey: "lanAsked") }
+            }
+            row("antenna.radiowaves.left.and.right", L("Bluetooth"), L("To list Bluetooth devices nearby (Docked tab, only when you press Listen)"),
+                bt == .allowedAlways ? L("Allowed") : bt == .denied || bt == .restricted ? L("Off") : nil,
+                bt == .notDetermined ? L("Allow") : L("Open Settings")) {
+                if bt == .notDetermined { BluetoothNudge.ask() } else { open("x-apple.systempreferences:com.apple.settings.PrivacySecurity.extension?Privacy_Bluetooth") }
             }
             row("internaldrive", L("Full Disk Access"), L("So Checkup can measure all your folders (Photos, Mail, app data)"),
                 fda ? L("Allowed") : nil, L("Open Settings")) {
@@ -523,7 +541,7 @@ private struct PermissionsStep: View {
     }
 
     private func refresh() {
-        fda = DiskScan.fullDiskAccess; helper = FanHelper.installed
+        fda = DiskScan.fullDiskAccess; helper = FanHelper.installed; bt = CBManager.authorization
         UNUserNotificationCenter.current().getNotificationSettings { s in let st = s.authorizationStatus; Task { @MainActor in notif = st } }
     }
 
@@ -540,6 +558,17 @@ private struct PermissionsStep: View {
             if let state { Label(state, systemImage: "checkmark.circle.fill").labelStyle(.titleAndIcon).foregroundStyle(.green).font(.callout) }
             if state == nil || button == L("Open Settings") && state != L("Allowed") { Button(button, action: action) }
         }
+    }
+}
+
+/// macOS vraagt om Bluetooth zodra een app een CBCentralManager maakt; zonder delegate wordt er niets gescand.
+@MainActor
+enum BluetoothNudge {
+    private static var probe: CBCentralManager?
+    static func ask() {
+        guard CBManager.authorization == .notDetermined, probe == nil else { return }
+        probe = CBCentralManager(delegate: nil, queue: .main)
+        DispatchQueue.main.asyncAfter(deadline: .now() + 120) { probe = nil }
     }
 }
 

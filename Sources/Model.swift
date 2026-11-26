@@ -90,6 +90,7 @@ final class Meter: ObservableObject {
         DispatchQueue.global(qos: .utility).async { [weak self] in
             guard let self else { return }
             if keep > 0 { self.deleteLogs(olderThan: keep) }
+            Logs.pack(dir: self.logDir)   // daglogs ouder dan een week inpakken (.csv.xz, ~6× kleiner)
             Self.migrate(f)
             Self.migrate(self.file(for: Date(), prefix: "apps"), header: AppUsage.csvHeader)   // apps-log van vandaag: nieuwe kolommen
             let loaded = self.loadToday()
@@ -165,7 +166,9 @@ final class Meter: ObservableObject {
         // Aan het laden maar macOS heeft (nog) geen schatting: zelf uitrekenen uit hoe snel het % de laatste minuten steeg
         if s.charging, s.batteryMinutes == nil, let b = s.battery { s.batteryMinutes = Self.timeToFull(now: b, at: s.time, history: recent) }
         // Op de accu: liever het tempo uit je eigen gebruik (instelling "learnedBattery"), gemengd met de laatste 15 min
-        if !s.charging, !s.onAC, let b = s.battery, UserDefaults.standard.bool(forKey: "learnedBattery"), let rate = LearnedBattery.cached {
+        s.brightness = Brightness.builtin(now: s.time)
+        if !s.charging, !s.onAC, let b = s.battery, UserDefaults.standard.bool(forKey: "learnedBattery"), let learned = LearnedBattery.cached {
+            let rate = LearnedBattery.adjusted(learned, brightness: s.brightness)   // helderder dan gewoonlijk: sneller leeg
             let since = recent.reversed().prefix { !$0.onAC && s.time.timeIntervalSince($0.time) <= 900 }.last
             if let m = LearnedBattery.minutes(pct: b, at: s.time, learned: rate, since: since.flatMap { o in o.battery.map { (o.time, $0) } }) {
                 s.batteryMinutes = m; s.batteryLearned = true
@@ -283,14 +286,14 @@ final class Meter: ObservableObject {
         }
     }
 
-    /// CSV-logs weggooien: ouder dan `days` dagen, of allemaal (nil).
+    /// CSV-logs (ook ingepakte) weggooien: ouder dan `days` dagen, of allemaal (nil).
     func deleteLogs(olderThan days: Int?) {
         let fm = FileManager.default
         guard let files = try? fm.contentsOfDirectory(at: logDir, includingPropertiesForKeys: nil) else { return }
         let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"
         let cutoff = days.flatMap { Calendar.current.date(byAdding: .day, value: -$0, to: Calendar.current.startOfDay(for: Date())) }
-        for u in files where u.pathExtension == "csv" {
-            let name = u.deletingPathExtension().lastPathComponent
+        for u in files where u.pathExtension == "csv" || u.lastPathComponent.hasSuffix(".csv.xz") {
+            let name = u.lastPathComponent.replacingOccurrences(of: ".csv.xz", with: "").replacingOccurrences(of: ".csv", with: "")
             guard name.hasPrefix("meterkast-") || name.hasPrefix("apps-") || name.hasPrefix("peaks-") || name.hasPrefix("self-"), let day = f.date(from: String(name.suffix(10))) else { continue }
             if cutoff.map({ day < $0 }) ?? true { try? fm.removeItem(at: u) }
         }
@@ -524,5 +527,61 @@ enum Alert: String, CaseIterable, Identifiable {
         precondition(Alert.net.check(hot, top: nil, limit: 300, minutes: 3, pingOn: false) == nil, "ping uit = geen melding")
         precondition(Alert.net.check(hot, top: nil, limit: 300, minutes: 3, pingOn: true) != nil, "offline")
         print("meldingen: ok")
+    }
+}
+
+// MARK: - Daglogs: de laatste week als gewone CSV, ouder ingepakt als .csv.xz (LZMA, opent ook met Archiefhulpprogramma).
+// Eén jaar is zo ~230 MB in plaats van ~1,6 GB. Alles wat een daglog leest gaat via `Logs.read`.
+
+enum Logs {
+    static let prefixes = ["meterkast-", "apps-", "peaks-", "self-"]
+
+    static func packed(_ url: URL) -> URL { url.appendingPathExtension("xz") }
+
+    /// Gewone .csv, anders de ingepakte .csv.xz ernaast.
+    static func read(_ url: URL) -> String? {
+        if let t = try? String(contentsOf: url, encoding: .utf8) { return t }
+        guard let d = try? Data(contentsOf: packed(url)), let raw = try? (d as NSData).decompressed(using: .lzma) else { return nil }
+        return String(decoding: raw as Data, as: UTF8.self)
+    }
+
+    /// Wijzigingsdatum van de log (gewoon of ingepakt), voor caches.
+    static func mtime(_ url: URL) -> String {
+        for u in [url, packed(url)] {
+            if let d = try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate { return "\(d.timeIntervalSince1970)" }
+        }
+        return "-"
+    }
+
+    /// Daglogs ouder dan `days` dagen inpakken. Pas weggooien als de ingepakte versie terugleest als precies hetzelfde.
+    static func pack(dir: URL, olderThan days: Int = 7, now: Date = Date()) {
+        let fm = FileManager.default
+        guard let files = try? fm.contentsOfDirectory(at: dir, includingPropertiesForKeys: nil),
+              let cutoff = Calendar.current.date(byAdding: .day, value: -days, to: Calendar.current.startOfDay(for: now)) else { return }
+        let f = DateFormatter(); f.locale = Locale(identifier: "en_US_POSIX"); f.calendar = Calendar(identifier: .gregorian); f.dateFormat = "yyyy-MM-dd"
+        for u in files where u.pathExtension == "csv" {
+            let name = u.deletingPathExtension().lastPathComponent
+            guard prefixes.contains(where: name.hasPrefix), let day = f.date(from: String(name.suffix(10))), day < cutoff,
+                  let raw = try? Data(contentsOf: u), let z = try? (raw as NSData).compressed(using: .lzma),
+                  (try? (z as NSData).decompressed(using: .lzma)) as Data? == raw,
+                  (try? (z as Data).write(to: packed(u), options: .atomic)) != nil else { continue }
+            try? fm.removeItem(at: u)
+        }
+    }
+
+    static func selfTest() {
+        let dir = FileManager.default.temporaryDirectory.appendingPathComponent("fusebox-logs-\(UUID().uuidString)")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: dir) }
+        let old = dir.appendingPathComponent("meterkast-2020-01-01.csv"), fresh = dir.appendingPathComponent("apps-2099-01-01.csv")
+        let other = dir.appendingPathComponent("battery-health.csv")
+        let text = String(repeating: "2020-01-01 10:00:00,12.5,40\n", count: 500)
+        for u in [old, fresh, other] { try? text.write(to: u, atomically: true, encoding: .utf8) }
+        pack(dir: dir)
+        let fm = FileManager.default
+        precondition(!fm.fileExists(atPath: old.path) && fm.fileExists(atPath: packed(old).path), "oud ingepakt")
+        precondition(fm.fileExists(atPath: fresh.path) && fm.fileExists(atPath: other.path), "nieuw en andere bestanden blijven")
+        precondition(read(old) == text && read(fresh) == text && read(dir.appendingPathComponent("nope.csv")) == nil, "lezen")
+        precondition(mtime(old) != "-", "mtime ingepakt")
     }
 }

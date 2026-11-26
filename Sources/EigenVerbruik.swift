@@ -114,7 +114,7 @@ enum SelfLog {
         var rows: [Row] = []
         for i in 0..<days {
             guard let day = Calendar.current.date(byAdding: .day, value: -i, to: Date()) else { continue }
-            if let t = try? String(contentsOf: logDir.appendingPathComponent("self-\(f.string(from: day)).csv"), encoding: .utf8) { rows += parse(t) }
+            if let t = Logs.read(logDir.appendingPathComponent("self-\(f.string(from: day)).csv")) { rows += parse(t) }
         }
         let text = report(rows: rows, days: days)
         let dl = FileManager.default.urls(for: .downloadsDirectory, in: .userDomainMask)[0]

@@ -1,4 +1,5 @@
 import AppKit
+import SwiftUI
 import CryptoKit
 
 // MARK: - Automatisch bijwerken via GitHub Releases
@@ -136,22 +137,21 @@ import CryptoKit
                     body: auto ? L("Installing now. Fusebox restarts in a moment.") : L("Open Settings › About to install it."))
     }
 
-    /// Eerste start na een update: één melding met in een paar woorden wat er nieuw is, knop naar de changelog.
+    /// Eerste start na een update: een venster in Fusebox met wat er nieuw is (WhatsNew), uit de release-notes op GitHub.
     private func announceIfUpdated() {
         let d = UserDefaults.standard, seen = d.integer(forKey: "lastSeenBuild"), now = Self.currentBuild
         d.set(now, forKey: "lastSeenBuild")
         // Verse installatie (setup nog niet gedaan): niets melden. Oudere versies onthielden de build nog niet (seen = 0).
-        guard now > seen, seen > 0 || d.bool(forKey: "setupDone"), d.bool(forKey: "notify"), let repo = Self.repo else { return }
+        guard now > seen, seen > 0 || d.bool(forKey: "setupDone"), let repo = Self.repo else { return }
         var req = URLRequest(url: URL(string: "https://api.github.com/repos/\(repo)/releases?per_page=10")!, timeoutInterval: 20)
         req.setValue("application/vnd.github+json", forHTTPHeaderField: "Accept")
         req.setValue("Fusebox-Updater", forHTTPHeaderField: "User-Agent")
         URLSession.shared.dataTask(with: req) { data, _, _ in
             let list = Self.parseReleases(data)
-            let mine = list.first { Self.buildNumber(in: $0.id) == now } ?? list.first
-            let version = mine.map { Self.pretty($0.id) } ?? ""
-            Notify.send(title: version.isEmpty ? L("Fusebox updated") : L("Fusebox updated to \(version)"),
-                        body: mine.map { Self.summary($0.notes) }.flatMap { $0.isEmpty ? nil : $0 } ?? L("See what's new in Settings › About."),
-                        category: Notify.whatsNew)
+            let mine = list.first { Self.buildNumber(in: $0.id) == now }   // eigen (test)build zonder release: geen venster
+            guard let mine else { return }
+            let item = WhatsNew.Item(version: Self.pretty(mine.id), points: WhatsNew.points(mine.notes))
+            Task { @MainActor in WhatsNew.shared.item = item }
         }.resume()
     }
 
@@ -468,5 +468,75 @@ import CryptoKit
         precondition(takeFailed(p).map { $0 == (202611241200, "0.14 beta") } == true && !exists(p.marker), "waakhond: marker weg")
         confirm(p, build: 6, temp: temp)
         precondition(!exists(p.backup.deletingLastPathComponent()), "waakhond: slechte kopie weg")
+    }
+}
+
+// MARK: - Wat is er nieuw: rustig venster na een update (over het hoofdvenster)
+
+@MainActor
+final class WhatsNew: ObservableObject {
+    static let shared = WhatsNew()
+    struct Item: Identifiable { let id = UUID(); let version: String; let points: [Point] }
+    struct Point: Equatable { let title: String; let text: String }
+    @Published var item: Item?
+
+    /// Release-notes → punten: "- Titel: uitleg" wordt titel + uitleg; zonder ":" alleen een titel. Losse regels tellen ook.
+    nonisolated static func points(_ notes: String) -> [Point] {
+        notes.split(separator: "\n").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty && !$0.hasPrefix("#") }.map { line in
+            let b = line.hasPrefix("- ") || line.hasPrefix("* ") ? String(line.dropFirst(2)) : line
+            guard let r = b.firstRange(of: ": ") ?? b.firstRange(of: " — ") else { return Point(title: b, text: "") }
+            return Point(title: String(b[..<r.lowerBound]), text: String(b[r.upperBound...]))
+        }
+    }
+
+    static func selfTest() {
+        let p = points("- Network: old scans turn grey\n- Faster tab switch\n\n## Fixes\nAverage never wraps — on all tiles")
+        precondition(p == [Point(title: "Network", text: "old scans turn grey"), Point(title: "Faster tab switch", text: ""),
+                           Point(title: "Average never wraps", text: "on all tiles")], "wat is er nieuw \(p)")
+    }
+}
+
+struct WhatsNewView: View {
+    let item: WhatsNew.Item
+    @Environment(\.dismiss) private var dismiss
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 10) {
+                Image(nsImage: NSApp.applicationIconImage).resizable().frame(width: 40, height: 40)
+                VStack(alignment: .leading, spacing: 1) {
+                    Text("What's new").font(.system(size: 17, weight: .semibold))
+                    Text(verbatim: "Fusebox \(item.version)").font(.system(size: 12)).foregroundStyle(.secondary)
+                }
+            }
+            ScrollView {
+                VStack(alignment: .leading, spacing: 10) {
+                    ForEach(Array(item.points.enumerated()), id: \.offset) { _, p in
+                        HStack(alignment: .firstTextBaseline, spacing: 8) {
+                            Circle().fill(theme.accent).frame(width: 6, height: 6).alignmentGuide(.firstTextBaseline) { $0[.bottom] - 1 }
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(p.title).font(.system(size: 13, weight: .medium))
+                                if !p.text.isEmpty { Text(p.text).font(.system(size: 12)).foregroundStyle(.secondary) }
+                            }
+                            .fixedSize(horizontal: false, vertical: true)
+                        }
+                    }
+                }
+                .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            .frame(maxHeight: 360)
+            HStack {
+                Button("All changes") {
+                    UserDefaults.standard.set("about", forKey: "settingsTab")
+                    NSApp.sendAction(Selector(("showSettingsWindow:")), to: nil, from: nil)
+                    dismiss()
+                }
+                Spacer()
+                Button("Continue") { dismiss() }.keyboardShortcut(.defaultAction)
+            }
+        }
+        .padding(20)
+        .frame(width: 380)
     }
 }

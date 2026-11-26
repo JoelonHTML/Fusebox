@@ -118,6 +118,7 @@ struct RootView: View {
     /// De pagina die al in beeld is. Loopt één stap achter `page` aan: eerst wordt de nieuwe pagina onzichtbaar opgebouwd
     /// (dat kost 0,2–0,6 s rekenwerk), pas daarna starten druppel, vervagen en venstergrootte. Zo slaan ze geen beelden over.
     @State private var shown: Page = .overview
+    @ObservedObject private var whatsNew = WhatsNew.shared
     @State private var window: NSWindow?
     @State private var wide = false          // breed venster: de werkbalk houdt ruimte vrij voor tabknoppen met naam (verspringt meteen)
     @State private var names = false         // namen zichtbaar: loopt met een veer achter `wide` aan
@@ -158,6 +159,7 @@ struct RootView: View {
         .animation(.easeOut(duration: 0.22), value: shown)
         // Low impact: geen enkele animatie in het venster (tabwissel, detail openen, inloop)
         .transaction { if low { $0.disablesAnimations = true; $0.animation = nil } }
+        .sheet(item: $whatsNew.item) { WhatsNewView(item: $0).environment(\.theme, theme) }   // na een update: wat is er nieuw
         // Alleen bij het passeren van een grens iets wijzigen (de werkbalk wordt dan opnieuw opgebouwd)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { w in
             let next = wide ? w >= Self.iconsWidth : w >= Self.namesWidth

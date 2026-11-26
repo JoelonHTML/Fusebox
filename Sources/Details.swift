@@ -239,6 +239,14 @@ enum MoreInfo {
                 r.append(DetailRow(title: L("Coming in now"), value: text,
                                    hint: L("The power your Mac draws from the charger at this moment, for the system and the battery together.")))
             }
+            if let l = (t["SystemLoad"] as? NSNumber)?.intValue, l > 0 {
+                r.append(DetailRow(title: L("Your Mac uses"), value: "\(trim(Double(l) / 1000)) W",
+                                   hint: L("What the Mac itself uses right now. The rest of what comes in goes into the battery.")))
+            }
+            if let x = (t["AdapterEfficiencyLoss"] as? NSNumber)?.intValue, x > 0 {
+                r.append(DetailRow(title: L("Lost as heat"), value: "\(trim(Double(x) / 1000)) W",
+                                   hint: L("macOS's estimate of the power lost while converting the charger's voltage. It turns into heat.")))
+            }
         }
         return r
     }
@@ -259,13 +267,14 @@ enum MoreInfo {
         // Aan de lader, met celspanningen (oudere macOS) en capaciteiten los in het register
         smart = ["Voltage": 12900, "Amperage": 2100, "ExternalConnected": true, "AppleRawMaxCapacity": 5722, "DesignCapacity": 0,
                  "AdapterDetails": ["Watts": 94, "AdapterVoltage": 20000, "Current": 4700, "Name": "96W USB-C Power Adapter"],
-                 "PowerTelemetryData": ["SystemPowerIn": 17529, "SystemVoltageIn": 20400, "SystemCurrentIn": 860],
+                 "PowerTelemetryData": ["SystemPowerIn": 17529, "SystemVoltageIn": 20400, "SystemCurrentIn": 860, "SystemLoad": 12000, "AdapterEfficiencyLoss": 915],
                  "BatteryData": ["CellVoltage": [4301, 4299, 4300]]]
         b = battery(smart, tempC: nil)
         precondition(value(b, "Current") == "2.10 A in" && value(b, "Full charge") == "5722 mAh" && value(b, "Temperature") == nil, "accu laden")
         precondition(value(b, "Cell voltages") == "4.30 · 4.30 · 4.30 V", "cellen \(value(b, "Cell voltages") ?? "")")
         precondition(value(b, "Charger") == "96W USB-C Power Adapter · 94 W" && value(b, "Charger agreed on") == "20 V × 4.7 A"
-                     && value(b, "Coming in now") == "17.5 W (20.4 V × 0.86 A)", "lader \(b.map(\.value))")
+                     && value(b, "Coming in now") == "17.5 W (20.4 V × 0.86 A)"
+                     && value(b, "Your Mac uses") == "12 W" && value(b, "Lost as heat") == "0.9 W", "lader \(b.map(\.value))")
         precondition(battery([:], tempC: nil).isEmpty, "geen batterij")
         // Geheugen: de tellers van deze Mac op een gewoon moment (vm_stat), pagina's van 16 KB
         var vm = vm_statistics64()

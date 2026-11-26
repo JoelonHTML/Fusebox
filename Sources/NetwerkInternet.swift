@@ -220,6 +220,51 @@ struct WifiDetail {
     #endif
 }
 
+/// Wi-Fi-netwerken in de buurt: alleen kanaal en signaal. Zonder locatietoestemming geeft macOS geen namen of BSSID,
+/// en die willen we ook niet. Eén scan duurt ~6 s, dus alleen na een klik.
+struct WifiNearby: Equatable {
+    struct Net: Equatable { let channel: Int, band: Int, rssi: Int }   // band: 1 = 2.4, 2 = 5, 3 = 6 GHz
+    let nets: [Net]
+
+    /// Netwerken die met het eigen kanaal botsen. 2,4 GHz: kanalen binnen 4 van elkaar overlappen. Het eigen netwerk telt mee.
+    func crowd(channel: Int, band: Int) -> Int {
+        nets.filter { $0.band == band && (band == 1 ? abs($0.channel - channel) < 5 : $0.channel == channel) }.count
+    }
+
+    /// Per band: kanalen met hun aantal netwerken en het sterkste signaal, op kanaalvolgorde.
+    func channels(band: Int) -> [(channel: Int, count: Int, best: Int)] {
+        Dictionary(grouping: nets.filter { $0.band == band }, by: \.channel)
+            .map { ($0.key, $0.value.count, $0.value.map(\.rssi).max() ?? 0) }.sorted { $0.0 < $1.0 }
+    }
+
+    /// 2,4 GHz: het rustigste van 1, 6 en 11 (minste netwerken eromheen, dan zwakste buren).
+    var quietest24: Int? {
+        guard nets.contains(where: { $0.band == 1 }) else { return nil }
+        return [1, 6, 11].min { a, b in
+            let ca = crowd(channel: a, band: 1), cb = crowd(channel: b, band: 1)
+            return ca != cb ? ca < cb : a < b
+        }
+    }
+
+    #if os(macOS)
+    static func scan(_ iface: String) -> WifiNearby? {
+        guard let w = CWWiFiClient.shared().interface(withName: iface), let found = try? w.scanForNetworks(withSSID: nil) else { return nil }
+        return WifiNearby(nets: found.compactMap { n in
+            n.wlanChannel.map { Net(channel: $0.channelNumber, band: $0.channelBand.rawValue, rssi: n.rssiValue) }
+        })
+    }
+    #endif
+
+    static func selfTest() {
+        let n = WifiNearby(nets: [Net(channel: 1, band: 1, rssi: -40), Net(channel: 3, band: 1, rssi: -80), Net(channel: 6, band: 1, rssi: -70),
+                                  Net(channel: 40, band: 2, rssi: -47), Net(channel: 40, band: 2, rssi: -75), Net(channel: 44, band: 2, rssi: -60)])
+        precondition(n.crowd(channel: 1, band: 1) == 2 && n.crowd(channel: 6, band: 1) == 2 && n.crowd(channel: 40, band: 2) == 2, "drukte")
+        precondition(n.quietest24 == 11, "rustigste 2,4 GHz-kanaal")
+        precondition(n.channels(band: 2).map(\.channel) == [40, 44] && n.channels(band: 2)[0].count == 2 && n.channels(band: 2)[0].best == -47, "per kanaal")
+        precondition(WifiNearby(nets: []).quietest24 == nil, "geen 2,4 GHz")
+    }
+}
+
 /// Snel of Volledig. Oude metingen (één stroom, vaste bytes) hebben geen soort.
 enum SpeedKind: String, Codable {
     case quick, full
@@ -238,6 +283,8 @@ struct SpeedResult: Codable, Equatable {
     var loadedPing: Double? = nil      // ms tijdens de overdracht (slechtste richting)
     var variation: Double? = nil       // spreiding per seconde, 0.1 = ±10% (slechtste richting)
     var net: String? = nil             // alleen iPhone: "wifi" of "mobile" (om wifi met mobiel te vergelijken)
+    // ponytail: subnet + router-IP als netwerk; twee thuisnetwerken met 192.168.1.x via .1 tellen als één. Router-MAC als dat stoort.
+    var place: String? = nil           // NetInfo.networkKey: op welk netwerk gemeten (nil = van vóór 0.15)
 }
 
 /// Rekenwerk van de snelheidstest, los van het netwerk (zelftest op verzonnen data).
@@ -384,6 +431,7 @@ final class InternetStats: ObservableObject {
     @Published private(set) var speedConfirm: SpeedKind?  // dure verbinding: wacht op ja
     @Published private(set) var history: [SpeedResult] = InternetStats.loadHistory()
     @Published private(set) var publicIP: PublicIP?
+    @Published private(set) var routerMaker: String?   // merk van de router, uit zijn MAC-adres (ARP + IEEE-lijst); nil = onbekend
     @Published private(set) var publicIPState: String?
     private var task: Task<Void, Never>?, speedTask: Task<Void, Never>?, ipTask: Task<Void, Never>?
     private var target: UInt32?
@@ -418,6 +466,12 @@ final class InternetStats: ObservableObject {
             self.internetViaTCP = viaTCP
             self.dnsMs = dnsTime
             self.testing = false
+            if let routerIP {   // de pings hebben de ARP-tabel gevuld; het MAC-adres zelf tonen we nergens
+                self.routerMaker = await NetScanner.offMain {
+                    NetProbe.loadOUI()
+                    return NetScanner.arpTable().first { $0.ip == routerIP }.flatMap { NetScanner.isPrivate($0.mac) ? nil : NetScanner.vendor($0.mac) }
+                }
+            }
             while !Task.isCancelled {
                 try? await Task.sleep(for: .seconds(1))
                 await self.liveTick(router: routerIP, target: target, viaTCP: viaTCP)
@@ -486,10 +540,11 @@ final class InternetStats: ObservableObject {
                     r.loadedPing = [SpeedMath.median(down.pings), SpeedMath.median(up.pings)].compactMap { $0 }.max()
                     r.variation = [SpeedMath.variation(d), SpeedMath.variation(u)].compactMap { $0 }.max()
                 }
+                r.place = NetInfo.current()?.networkKey
                 #if os(iOS)
                 r.net = self.conn?.kind == "Wi-Fi" ? "wifi" : self.conn?.kind == NetConnection.mobile ? "mobile" : nil
                 #endif
-                self.history = Array(([r] + self.history).prefix(10))
+                self.history = Array(([r] + self.history).prefix(40))   // ruim, zodat er per netwerk genoeg overblijft
                 if let data = try? JSONEncoder().encode(self.history) { UserDefaults.standard.set(data, forKey: "speedHistory") }
             } catch {
                 if !Task.isCancelled { self?.speedError = L("Speed test failed: \(error.localizedDescription)") }
@@ -575,7 +630,7 @@ final class InternetStats: ObservableObject {
     /// Momentopname voor het PDF-rapport.
     func report(internetCheck: Bool) -> NetReport {
         NetReport(kind: conn?.kind, wifi: wifi, router: router, internet: internetCheck ? internet : nil, viaTCP: internetViaTCP,
-                  dnsMs: internetCheck ? dnsMs : nil, finding: finding, history: history)
+                  dnsMs: internetCheck ? dnsMs : nil, finding: finding, history: Array(history.prefix(10)))
     }
 
     func cancelSpeedTest() {
@@ -601,22 +656,38 @@ final class InternetStats: ObservableObject {
             cfg.timeoutIntervalForRequest = 8
             let session = URLSession(configuration: cfg)
             defer { session.invalidateAndCancel() }
-            let result = try? await session.data(from: URL(string: "https://speed.cloudflare.com/meta")!)
+            // Adres en land: Cloudflare's trace. Provider: RIPEstat (openbare dienst van het IP-register, alle werelddelen).
+            // (speed.cloudflare.com/meta gaf ook de provider, maar weigert sinds eind 2026 alles behalve hun eigen site.)
+            let trace = try? await session.data(from: URL(string: "https://speed.cloudflare.com/cdn-cgi/trace")!)
+            var ip = trace.flatMap { $0.0.count < 10_000 ? Self.parseTrace(String(decoding: $0.0, as: UTF8.self)) : nil }
+            if let found = ip, let url = URL(string: "https://stat.ripe.net/data/prefix-overview/data.json?resource=\(found.ip)&sourceapp=fusebox") {
+                let ripe = try? await session.data(from: url)
+                ip = PublicIP(ip: found.ip, isp: ripe.flatMap { $0.0.count < 200_000 ? Self.parseHolder($0.0) : nil }, place: found.place)
+            }
             guard let self, !Task.isCancelled else { return }
             self.ipTask = nil
-            guard let data = result?.0, data.count < 100_000, let ip = Self.parseMeta(data) else {
-                self.publicIPState = L("Couldn't reach Cloudflare"); return
-            }
+            guard let ip else { self.publicIPState = L("Couldn't reach Cloudflare"); return }
             self.publicIP = ip
             self.publicIPState = nil
         }
     }
 
-    nonisolated static func parseMeta(_ data: Data) -> PublicIP? {
-        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let ip = j["clientIp"] as? String, ip.count < 64 else { return nil }
-        let place = [j["city"] as? String, j["country"] as? String].compactMap { $0 }.joined(separator: ", ")
-        let colo = (j["colo"] as? String).map { " (Cloudflare \($0))" } ?? ""
-        return PublicIP(ip: ip, isp: j["asOrganization"] as? String, place: place.isEmpty ? nil : place + colo)
+    /// "ip=203.0.113.7\nloc=NL\n…" → adres + land (in de eigen taal).
+    nonisolated static func parseTrace(_ text: String) -> PublicIP? {
+        var kv: [String: String] = [:]
+        for line in text.split(separator: "\n") { let p = line.split(separator: "=", maxSplits: 1); if p.count == 2 { kv[String(p[0])] = String(p[1]) } }
+        guard let ip = kv["ip"], ip.count < 64 else { return nil }
+        return PublicIP(ip: ip, isp: nil, place: kv["loc"].map { Locale.current.localizedString(forRegionCode: $0) ?? $0 })
+    }
+
+    /// RIPEstat prefix-overview → naam van de provider. "GTT-BACKBONE GTT Communications Inc." → "GTT Communications Inc."
+    /// (het eerste woord is de korte netwerknaam in hoofdletters).
+    nonisolated static func parseHolder(_ data: Data) -> String? {
+        guard let j = try? JSONSerialization.jsonObject(with: data) as? [String: Any], let d = j["data"] as? [String: Any],
+              let holder = ((d["asns"] as? [[String: Any]])?.first?["holder"] as? String)?.trimmingCharacters(in: .whitespaces), !holder.isEmpty else { return nil }
+        let words = holder.split(separator: " ")
+        let tag = words.first.map { $0.allSatisfy { $0.isUppercase || $0.isNumber || $0 == "-" || $0 == "_" } } ?? false
+        return String((tag && words.count > 1 ? words.dropFirst().joined(separator: " ") : holder).prefix(80))
     }
 
     // MARK: Oordeel in gewone woorden
@@ -657,6 +728,22 @@ final class InternetStats: ObservableObject {
             return (good + L(", no packet loss"), true)
         }
         return (parts.joined(separator: ". "), rBad || iBad ? false : nil)
+    }
+
+    // MARK: Wi-Fi in de buurt (alleen na een klik)
+
+    @Published private(set) var nearby: WifiNearby?
+    @Published private(set) var nearbyBusy = false
+
+    func scanNearby() {
+        #if os(macOS)
+        guard !nearbyBusy, let iface = conn?.iface else { return }
+        nearbyBusy = true
+        Task { [weak self] in
+            let r = await NetScanner.offMain { WifiNearby.scan(iface) }
+            self?.nearby = r; self?.nearbyBusy = false
+        }
+        #endif
     }
 
     // MARK: Probleem zoeken: Wi-Fi, router, DNS of internet? (alleen na een klik, ~6 s)

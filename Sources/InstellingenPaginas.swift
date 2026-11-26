@@ -107,12 +107,12 @@ struct ProcessesSettings: View {
         }
         Section("Small items") {
             Picker("Hide", selection: $small) {
-                Text("Nothing").tag("all"); Text("Idle").tag("idle"); Text("Under 1% CPU").tag("light")
+                Text("Nothing").tag("all"); Text("Idle").tag("idle"); Text("Small").tag("light")
             }
             .pickerStyle(.segmented)
             caption(small == "all" ? "Every process is listed."
                     : small == "idle" ? "Hides items using almost no CPU (< 0.05%) and under 20 MB memory. \"Show all\" brings them back."
-                    : "Hides items under 1% CPU and under 200 MB memory. \"Show all\" brings them back.")
+                    : "Hides items that use under 1% CPU and under 200 MB memory. Anything holding more memory stays visible, even when it's quiet. \"Show all\" brings them back.")
         }
     }
 }

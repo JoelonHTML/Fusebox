@@ -186,7 +186,7 @@ struct PingToggle: View {
 }
 
 struct KeepDaysPicker: View {
-    @AppStorage("keepDays") private var keepDays = 30
+    @AppStorage("keepDays") private var keepDays = 365
     var body: some View {
         Picker("Keep logs", selection: $keepDays) {
             Text("1 week").tag(7); Text("30 days").tag(30); Text("3 months").tag(90); Text("1 year").tag(365); Text("Forever").tag(0)
@@ -243,14 +243,7 @@ struct ProfileSettings: View {
     @State private var confirmReset = false
 
     var body: some View {
-        Section("Start with a profile (you can still change everything afterwards)") {
-            HStack(spacing: 8) {
-                ForEach(Prefs.presets) { p in
-                    PresetCard(preset: p) { Prefs.applyPreset(p); done(L("Profile \(p.title) is on")) }
-                }
-            }
-            if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
-        }
+        // Profielen kies je alleen bij de eerste start (stappenplan); "Run setup again" hieronder brengt je er weer
         Section { LowImpactPicker() }
         Section("Share with friends") {
             HStack {
@@ -258,6 +251,7 @@ struct ProfileSettings: View {
                 Button("Import…") { if let m = Prefs.importDialog() { done(m) } }
             }
             Text("Your ping server is not included.").font(.caption).foregroundStyle(.secondary)
+            if let message { Text(message).font(.callout).foregroundStyle(.secondary) }
         }
         Section {
             Button("Run setup again") { openWindow(id: "setup"); NSApp.activate() }
@@ -343,6 +337,7 @@ struct LiveSettings: View {
     @AppStorage("perCore") private var perCore = false
     @AppStorage("cpuGraph") private var cpuGraph = "usage"
     @AppStorage("gpuGraph") private var gpuGraph = "usage"
+    @AppStorage("batGraph") private var batGraph = "usage"
     @AppStorage("batteryTime") private var batteryTime = true
     @AppStorage("learnedBattery") private var learnedBattery = true
     @AppStorage("netSpeed") private var netSpeed = false
@@ -360,10 +355,10 @@ struct LiveSettings: View {
                 ForEach([1, 5, 10, 15, 30, 60], id: \.self) { Text($0 == 60 ? "hour" : "\($0) min").tag($0) }
             }
             .disabled(graphs == .never)
-            ForEach([(L("CPU graph"), $cpuGraph), (L("GPU graph"), $gpuGraph)], id: \.0) { title, sel in
+            ForEach([(L("CPU graph"), $cpuGraph), (L("GPU graph"), $gpuGraph)] + (Power.hasBattery ? [(L("Battery graph"), $batGraph)] : []), id: \.0) { title, sel in
                 LabeledContent(title) {
                     Picker(title, selection: sel) {
-                        Text("Usage").tag("usage"); Text("Temperature").tag("temp"); Text("Both").tag("both")
+                        Text(title == L("Battery graph") ? L("Charge") : L("Usage")).tag("usage"); Text("Temperature").tag("temp"); Text("Both").tag("both")
                     }
                     .pickerStyle(.segmented).labelsHidden().fixedSize()
                 }

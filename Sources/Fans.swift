@@ -431,7 +431,7 @@ enum FanDust {
             let name = f.string(from: d)
             lock.lock(); let hit = back > 0 ? cache[name] : nil; lock.unlock()
             if let hit { total += hit; continue }
-            let n = (try? String(contentsOf: dir.appendingPathComponent("meterkast-\(name).csv"), encoding: .utf8)).map(minutes) ?? 0
+            let n = (Logs.read(dir.appendingPathComponent("meterkast-\(name).csv"))).map(minutes) ?? 0
             if back > 0 { lock.lock(); cache[name] = n; lock.unlock() }   // vandaag groeit nog
             total += n
         }

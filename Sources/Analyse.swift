@@ -251,14 +251,14 @@ enum Analysis {
     fileprivate static func day(_ date: Date, dir: URL, withMain: Bool = true) -> Day {
         let name = dayName(date), key = withMain ? name : name + "~apps"
         let main = dir.appendingPathComponent("meterkast-\(name).csv"), apps = dir.appendingPathComponent("apps-\(name).csv")
-        func mtime(_ u: URL) -> String { ((try? u.resourceValues(forKeys: [.contentModificationDateKey]).contentModificationDate)?.timeIntervalSince1970).map { "\($0)" } ?? "-" }
+        func mtime(_ u: URL) -> String { Logs.mtime(u) }
         let stamp = (withMain ? mtime(main) : "") + "|" + mtime(apps)
         cache.lock.lock()
         if let c = cache.days[key], c.stamp == stamp { cache.lock.unlock(); return c.day }
         cache.lock.unlock()
         var d = Day()
-        if withMain, let t = try? String(contentsOf: main, encoding: .utf8) { d.minutes = parseMain(t) }
-        if let t = try? String(contentsOf: apps, encoding: .utf8) {
+        if withMain, let t = Logs.read(main) { d.minutes = parseMain(t) }
+        if let t = Logs.read(apps) {
             parseApps(t, busy: Set(d.minutes.filter { $0.cpu >= busyCPU }.map(\.time)), into: &d)
         }
         cache.lock.lock(); cache.days[key] = (stamp, d); cache.lock.unlock()
@@ -298,13 +298,15 @@ enum Analysis {
         let current = dates(p.offsets, now: now)
         var r = report(merge(current.map { day($0, dir: dir) }))
         r.prevScore = score(merge(dates(p.previous, now: now).map { day($0, dir: dir) }).minutes).score
-        r.peaks = current.flatMap { Peaks.parse((try? String(contentsOf: dir.appendingPathComponent("peaks-\(dayName($0)).csv"), encoding: .utf8)) ?? "") }
+        r.peaks = current.flatMap { Peaks.parse((Logs.read(dir.appendingPathComponent("peaks-\(dayName($0)).csv"))) ?? "") }
         r.peakFrom = current.first.map { Calendar.current.startOfDay(for: $0) }
         r.peakDays = current.count
         r.files = current.flatMap { d in ["meterkast", "apps", "peaks"].compactMap { prefix -> LogFile? in
-            let name = "\(prefix)-\(dayName(d)).csv"
-            let size = (try? dir.appendingPathComponent(name).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? nil
-            return size.map { LogFile(name: name, bytes: $0) }
+            // Gewone CSV, of ingepakt (.csv.xz) als de dag ouder is dan een week
+            for name in ["\(prefix)-\(dayName(d)).csv", "\(prefix)-\(dayName(d)).csv.xz"] {
+                if let size = (try? dir.appendingPathComponent(name).resourceValues(forKeys: [.fileSizeKey]).fileSize) ?? nil { return LogFile(name: name, bytes: size) }
+            }
+            return nil
         } }
         // Alleen bij openen/verversen: rapporten van macOS, batterij, opstarttijd
         let cal = Calendar.current
@@ -617,7 +619,7 @@ enum Analysis {
         let cols = Sample.csvHeader.dropLast().split(separator: ",").map(String.init)
         var out = Sample.csvHeader
         for date in dates(p.offsets, now: Date()) {
-            guard let text = try? String(contentsOf: dir.appendingPathComponent("meterkast-\(dayName(date)).csv"), encoding: .utf8) else { continue }
+            guard let text = Logs.read(dir.appendingPathComponent("meterkast-\(dayName(date)).csv")) else { continue }
             let lines = text.split(separator: "\n")
             guard let head = lines.first else { continue }
             let idx = head.split(separator: ",").map(String.init)

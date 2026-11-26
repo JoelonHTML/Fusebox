@@ -44,6 +44,11 @@ final class AppDelegate: NSObject, NSApplicationDelegate, UNUserNotificationCent
         if UserDefaults.standard.bool(forKey: "notify") { Notify.ask() }
         // Eén keer (nieuwe installatie of deze update): actief om meldingen vragen, even na het openen van het venster
         DispatchQueue.main.asyncAfter(deadline: .now() + 2) { MainActor.assumeIsolated { Notify.askOnce() } }
+        // Ook de andere systeemvragen meteen (na elkaar, niet tegelijk): lokaal netwerk alleen als nog nooit gevraagd, Bluetooth zolang onbeslist
+        DispatchQueue.main.asyncAfter(deadline: .now() + 5) {
+            if !UserDefaults.standard.bool(forKey: "lanAsked") { LocalNetworkNudge.ask(); UserDefaults.standard.set(true, forKey: "lanAsked") }
+        }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { MainActor.assumeIsolated { BluetoothNudge.ask() } }
         MainActor.assumeIsolated { Updater.shared.start() }   // automatisch bijwerken via GitHub Releases
         let d = UserDefaults.standard
         guard !d.bool(forKey: "loginRefreshedFusebox") else { return }
@@ -131,6 +136,9 @@ struct MeterkastApp: App {
         Prefs.selfTest()
         Alert.selfTest()
         LowImpact.selfTest()
+        WifiNearby.selfTest()
+        WhatsNew.selfTest()
+        Logs.selfTest()
         SettingsPlacement.selfTest()
         RootView.fitSelfTest()
         LiveLayout.selfTest()

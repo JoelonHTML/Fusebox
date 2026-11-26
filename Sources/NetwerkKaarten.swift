@@ -68,7 +68,7 @@ enum NetTerm: String, CaseIterable, Identifiable {
         case .gateway: L("The address of your router, the box between your network and the internet. Open it in a browser to reach the router's settings.")
         case .dnsServers: L("The servers that turn names like apple.com into addresses. Usually your router or provider; you can change them in System Settings › Network.")
         case .ipv6Internet: L("Whether you can reach the internet over IPv6. Nice to have; without it everything still works over IPv4.")
-        case .publicIP: L("The address the internet sees for your whole home or office, given by your provider. Fusebox only asks Cloudflare when you click.")
+        case .publicIP: L("The address the internet sees for your whole home or office, given by your provider. Fusebox only asks Cloudflare and the IP registry (RIPE) when you click.")
         case .signal: L("Wi-Fi signal strength in dBm; closer to 0 is stronger. −50 is excellent, −60 good, below −70 weak.")
         case .noise: L("Noise is background radio interference. SNR is the gap between signal and noise: above 25 dB is good, below 20 dB causes errors and slowdowns.")
         case .linkSpeed: L("The speed between this Mac and the router (or switch), not your internet speed. It's usually higher than a speed test shows; on Wi-Fi it drops when the signal is weak.")
@@ -182,6 +182,7 @@ struct InternetCards: View {
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
     @AppStorage("netFindNow") private var findNow = false   // gezet door "Network" in het menubalkpaneel
     @AppStorage("netDetails") private var detailsOpen = false   // één knop klapt alle kaarten tegelijk open
+    @AppStorage("speedAllNets") private var allNets = false   // standaard alleen tests van dit netwerk
     @State private var confirmClear = false
     @State private var reportNote: String?
 
@@ -219,7 +220,7 @@ struct InternetCards: View {
             Button { stats.start() } label: { Label(stats.testing ? L("Testing…") : L("Test again"), systemImage: "arrow.clockwise") }
                 .disabled(stats.testing || stats.conn == nil)
             Button { detailsOpen = true; stats.loadPublicIP() } label: { Label(L("Show public IP"), systemImage: "globe") }
-                .disabled(stats.publicIP != nil).help("Asks speed.cloudflare.com which address and provider you appear as")
+                .disabled(stats.publicIP != nil).help("Asks Cloudflare which address you appear as, and the public IP registry (RIPE) which provider that address belongs to")
             Divider()
             reportItem
         } face: {
@@ -236,13 +237,14 @@ struct InternetCards: View {
             }
             if let reportNote { Text(reportNote).font(theme.label(10)).foregroundStyle(tone(false)) }
         } details: {
+            if let c = stats.conn { route(c) }
             if let c = stats.conn {
+                subhead(L("This Mac"))
                 kv(.type, c.kind == "VPN" ? "VPN" : "\(c.kind) (\(c.iface))")
                 kv(.vpn, c.vpn ? L("VPN on") : L("Off"))
                 if let m = stats.metered { kv(.metered, m ? L("Yes: macOS and apps may hold back big downloads and backups") : L("No")) }
                 kv(.ipv4, c.ipv4 ?? "–")
                 kv(.ipv6, c.ipv6.first.map { $0 + (c.ipv6.count > 1 ? " (+\(c.ipv6.count - 1))" : "") } ?? L("none"))
-                kv(.gateway, c.router.map(ipString) ?? L("unknown"), title: L("Router"))
                 kv(.dnsServers, c.dns.isEmpty ? L("unknown") : c.dns.prefix(3).joined(separator: ", "))
                 kv(.ipv6Internet, c.ipv6Internet ? L("Yes") : L("No"))
             }
@@ -254,14 +256,27 @@ struct InternetCards: View {
             } else {
                 kv(.internet, L("off (Settings)"))
             }
-            if let ip = stats.publicIP {
-                subhead(L("Public IP"))
-                kv(.publicIP, ip.ip)
-                if let isp = ip.isp { kv(.publicIP, isp, title: L("Provider")) }
-                if let place = ip.place { kv(.publicIP, place, title: L("Location")) }
-            } else if let state = stats.publicIPState {
-                status("globe", state, ok: nil).padding(.top, 4)
-            }
+        }
+    }
+
+    /// Waar je verbinding vandaan komt: Wi-Fi of kabel → router (merk, adres) → provider (naam, publiek adres, plaats).
+    @ViewBuilder private func route(_ c: NetConnection) -> some View {
+        subhead(L("Where it comes from"))
+        if let w = stats.wifi {
+            kv(.type, ["Wi-Fi", w.band, w.channel.map { L("channel \($0)") }, w.security].compactMap { $0 }.joined(separator: " · "), title: L("Via"))
+        } else {
+            kv(.type, c.kind == "Ethernet" ? L("Cable") : c.kind, title: L("Via"))
+        }
+        kv(.gateway, [stats.routerMaker, c.router.map(ipString)].compactMap { $0 }.joined(separator: " · ").ifEmpty(L("unknown")), title: L("Router"))
+        if let ip = stats.publicIP {
+            kv(.publicIP, ip.isp ?? L("unknown provider"), title: L("Provider"))
+            kv(.publicIP, ip.ip)
+            if let place = ip.place { kv(.publicIP, place, title: L("Location")) }
+        } else if let state = stats.publicIPState {
+            status("globe", state, ok: nil).padding(.top, 2)
+        } else {
+            Button { stats.loadPublicIP() } label: { NetPill(title: L("Show provider and public IP"), icon: "globe") }
+                .buttonStyle(.plain).help("Asks Cloudflare which address you appear as, and the public IP registry (RIPE) which provider that address belongs to")
         }
     }
 
@@ -354,6 +369,7 @@ struct InternetCards: View {
                 if let ch = w.channel { kv(.channel, ([String(ch)] + [w.band, w.width].compactMap { $0 }).joined(separator: " · ")) }
                 if let phy = w.phy { kv(.standard, phy) }
                 if let sec = w.security { kv(.security, sec) }
+                nearby(w)
             }
         } else {
             let c = stats.conn
@@ -397,16 +413,65 @@ struct InternetCards: View {
 
     private func signalOK(_ rssi: Int) -> Bool? { rssi >= -60 ? true : rssi >= -70 ? nil : false }
 
+    /// Netwerken in de buurt: een oordeel met uitleg, en de lijst (sterkste eerst). Pas na een klik (~6 s).
+    @ViewBuilder private func nearby(_ w: WifiDetail) -> some View {
+        subhead(L("Around you"))
+        let band = ["2.4 GHz": 1, "5 GHz": 2, "6 GHz": 3][w.band ?? ""]
+        if let n = stats.nearby {
+            let others = w.channel.flatMap { ch in band.map { max(0, n.crowd(channel: ch, band: $0) - 1) } }
+            let mine = n.nets.filter { $0.channel == w.channel && abs($0.rssi - w.rssi) <= 8 }.max { $0.rssi < $1.rssi }
+            VStack(alignment: .leading, spacing: 3) {
+                if let others {
+                    status(icon(others == 0 ? true : others >= 3 ? false : nil),
+                           others == 0 ? L("None share your channel") : band == 1 ? L("\(others) on or next to your channel") : L("\(others) on your channel"),
+                           ok: others == 0 ? true : others >= 3 ? false : nil)
+                        .help("Networks on the same channel take turns sending and slow each other down. Weak ones barely matter.")
+                }
+                if band == 1, let q = n.quietest24, q != w.channel {
+                    Text("Quietest 2.4 GHz channel: \(q). Your router can switch to it.").foregroundStyle(theme.onRow(true))
+                }
+                Text("\(n.nets.count) Wi-Fi networks in range").foregroundStyle(theme.onRow(true)).padding(.top, 2)
+                ForEach(Array(n.nets.sorted { $0.rssi > $1.rssi }.prefix(5).enumerated()), id: \.offset) { _, x in
+                    HStack(spacing: 6) {
+                        SignalBars(rssi: x.rssi, color: x.channel == w.channel ? theme.onRow() : theme.onRow(true))
+                        Text(L("channel \(x.channel)") + (x == mine ? " · " + L("probably yours") : ""))
+                            .foregroundStyle(x.channel == w.channel ? theme.onRow() : theme.onRow(true))
+                        Spacer(minLength: 4)
+                        Text(verbatim: "\(x.rssi) dBm").font(theme.number(10)).foregroundStyle(theme.onRow(true))
+                    }
+                }
+            }
+            .font(theme.label(11)).fixedSize(horizontal: false, vertical: true)
+        }
+        HStack(spacing: 6) {
+            Button { stats.scanNearby() } label: { NetPill(title: stats.nearby == nil ? L("Look around") : L("Look again"), icon: "dot.radiowaves.left.and.right") }
+                .buttonStyle(.plain).disabled(stats.nearbyBusy)
+                .help("Lists the Wi-Fi networks in range by channel and signal (about 6 s). Fusebox doesn't read their names.")
+            if stats.nearbyBusy { ProgressView().controlSize(.small) }
+        }
+        .padding(.top, 2)
+    }
+
     // MARK: Snelheidstest
 
+    /// Tests op de tegel: van dit netwerk, of alles ("Alle netwerken" in ⋯). Laatste 10.
+    private var shown: [SpeedResult] {
+        guard !allNets else { return Array(stats.history.prefix(10)) }
+        let here = NetInfo.current()?.networkKey
+        return Array(stats.history.filter { $0.place != nil && $0.place == here }.prefix(10))
+    }
+
     private var speed: some View {
-        card(L("Speed test"), icon: "speedometer", index: 2, terms: NetTerm.speed, open: stats.history.isEmpty ? nil : $detailsOpen,
+        let shown = shown
+        return card(L("Speed test"), icon: "speedometer", index: 2, terms: NetTerm.speed, open: shown.isEmpty ? nil : $detailsOpen,
              extra: [(L("Data use"), L("Quick uses \(usage(.quick)), Full \(usage(.full)) (via Cloudflare)"))]) {
             reportItem
+            Toggle(L("All networks"), isOn: $allNets)
+                .help("Show speed tests from every network together, instead of only this one")
             Button(role: .destructive) { confirmClear = true } label: { Label(L("Clear history…"), systemImage: "trash") }
                 .disabled(stats.history.isEmpty).help("Deletes the saved speed tests, so fastest and average start fresh")
         } face: {
-            if let last = stats.history.first {
+            if let last = shown.first {
                 HStack(alignment: .top, spacing: 18) {
                     VStack(alignment: .leading, spacing: 1) {
                         TermLabel(term: .download, title: "↓ " + L("Download")).font(theme.label(10)).foregroundStyle(theme.onRow(true))
@@ -433,11 +498,11 @@ struct InternetCards: View {
                 Text(last.date.formatted(date: .abbreviated, time: .shortened) + " · " + kindName(last.kind))
                     .font(theme.label(10)).foregroundStyle(theme.onRow(true))
             } else if stats.speedPhase == nil {
-                Text("No speed test yet").font(theme.label(12)).foregroundStyle(theme.onRow(true))
+                Text(stats.history.isEmpty ? "No speed test yet" : "No speed test on this network yet").font(theme.label(12)).foregroundStyle(theme.onRow(true))
             }
             speedControls
         } details: {
-            if let last = stats.history.first {
+            if let last = shown.first {
                 if let d = last.downPeak { kv(.download, L("top \(mbitText(d))")) }
                 if let u = last.upPeak { kv(.upload, L("top \(mbitText(u))")) }
                 if let v = last.variation { kv(.stability, SpeedMath.stabilityText(v)) }
@@ -445,7 +510,7 @@ struct InternetCards: View {
                     let v = SpeedMath.loadVerdict(idle: idle, loaded: busy)
                     status(icon(v.ok), v.text, ok: v.ok).padding(.top, 2)
                 }
-                if stats.history.count > 1 { historyBars.padding(.top, 4) }
+                if shown.count > 1 { historyBars(shown).padding(.top, 4) }
             }
         }
         .confirmationDialog("Clear speed test history?", isPresented: $confirmClear) {
@@ -485,23 +550,23 @@ struct InternetCards: View {
     }
 
     /// Laatste 10 metingen als staafjes (download), oudste links. Volledig = brede staaf.
-    private var historyBars: some View {
-        let list = Array(stats.history.reversed()), top = max(list.map(\.down).max() ?? 1, 1)
+    private func historyBars(_ shown: [SpeedResult]) -> some View {
+        let list = Array(shown.reversed()), top = max(list.map(\.down).max() ?? 1, 1)
         let color = blocks ? Color.white : theme.accent
         return HStack(alignment: .bottom, spacing: 3) {
             ForEach(Array(list.enumerated()), id: \.offset) { _, r in
-                Capsule().fill(color.opacity(r == stats.history.first ? 1 : 0.45))
+                Capsule().fill(color.opacity(r == shown.first ? 1 : 0.45))
                     .frame(width: r.kind == .full ? 9 : 5, height: max(3, 24 * r.down / top))
                     .help("\(r.date.formatted(date: .abbreviated, time: .shortened)) · \(kindName(r.kind)): ↓\(mbitText(r.down)) ↑\(mbitText(r.up))")
             }
-            Text("last \(list.count) · wide = Full").font(theme.label(9)).foregroundStyle(theme.onRow(true)).padding(.leading, 4)
+            Text(allNets ? "last \(list.count), all networks · wide = Full" : "last \(list.count) · wide = Full").font(theme.label(9)).foregroundStyle(theme.onRow(true)).padding(.leading, 4)
         }
         .frame(height: 26, alignment: .bottom)
     }
 
     /// Geschat verbruik: op basis van de vorige uitslag, anders het plafond (beide richtingen).
     private func usage(_ kind: SpeedKind) -> String {
-        SpeedMath.estimate(kind, last: stats.history.first).map { L("about \(bytes(Double($0)))") } ?? L("at most \(bytes(Double(kind.cap * 2)))")
+        SpeedMath.estimate(kind, last: shown.first).map { L("about \(bytes(Double($0)))") } ?? L("at most \(bytes(Double(kind.cap * 2)))")
     }
 
     private func kindName(_ k: SpeedKind?) -> String { k.map { L("\($0.title) test") } ?? L("single connection") }
@@ -628,7 +693,7 @@ private struct CardFrame<M: View, F: View, D: View>: View {
 }
 
 /// Vier streepjes zoals in de menubalk: hoe sterker het signaal, hoe meer gevuld.
-private struct SignalBars: View {
+struct SignalBars: View {
     let rssi: Int, color: Color
     @Environment(\.theme) private var theme
     var body: some View {

@@ -240,7 +240,6 @@
 "Architecture" = "Arquitectura";
 "Asking Cloudflare…" = "Consultando a Cloudflare…";
 "Asking devices…" = "Consultando dispositivos…";
-"Asks speed.cloudflare.com which address and provider you appear as" = "Pregunta a speed.cloudflare.com con qué dirección y proveedor apareces";
 "Audio playing" = "Reproduciendo audio";
 "Automatic" = "Automático";
 "Automatic (macOS)" = "Automático (macOS)";
@@ -485,8 +484,6 @@
 "Fusebox shows how busy your Mac is: processor, memory, storage, internet and battery.\nIn a small window, in your menu bar, or both." = "Fusebox muestra lo ocupado que está tu Mac: procesador, memoria, almacenamiento, internet y batería.\nEn una ventana pequeña, en la barra de menús, o en ambas.";
 "Fusebox tells you when an update is ready and when an app keeps your Mac busy. Notifications for Fusebox are off in System Settings." = "Fusebox te avisa cuando hay una actualización lista y cuando una app mantiene ocupado tu Mac. Las notificaciones de Fusebox están desactivadas en Ajustes del Sistema.";
 "Fusebox update available (test)" = "Actualización de Fusebox disponible (prueba)";
-"Fusebox updated" = "Fusebox actualizado";
-"Fusebox updated to %@" = "Fusebox actualizado a %@";
 "Fusebox uses very little power, so it's fine to keep it running." = "Fusebox consume muy poca energía, así que puedes dejarlo abierto.";
 "Fusebox — %@" = "Fusebox — %@";
 "GB free" = "GB libres";
@@ -534,7 +531,6 @@
 "Hide devices on this hub" = "Ocultar dispositivos de este hub";
 "Hide hubs & internals" = "Ocultar hubs e internos";
 "Hide small items" = "Ocultar ítems pequeños";
-"Hides items under 1% CPU and under 200 MB memory. \"Show all\" brings them back." = "Oculta los ítems con menos del 1% de CPU y menos de 200 MB de memoria. «Mostrar todo» los recupera.";
 "Hides items using almost no CPU (< 0.05%) and under 20 MB memory. \"Show all\" brings them back." = "Oculta los ítems que casi no usan CPU (< 0,05%) y menos de 20 MB de memoria. «Mostrar todo» los recupera.";
 "High" = "Alto";
 "History" = "Historial";
@@ -956,7 +952,6 @@
 "Search" = "Buscar";
 "Search apps" = "Buscar apps";
 "Sections" = "Secciones";
-"See what's new in Settings › About." = "Consulta las novedades en Ajustes › Acerca de.";
 "Seen active longest" = "Activa durante más tiempo";
 "Seen from" = "Detectado por";
 "Send a wake-up packet; works for computers and NAS that have Wake on LAN turned on" = "Enviar un paquete de activación; funciona con ordenadores y NAS que tengan activado Wake on LAN";
@@ -1115,7 +1110,6 @@
 "USB 3.2 Gen 2 (10 Gbit/s; 20 Gbit/s for Thunderbolt)" = "USB 3.2 Gen 2 (10 Gbit/s; 20 Gbit/s para Thunderbolt)";
 "USB device" = "Dispositivo USB";
 "USB hub" = "Hub USB";
-"Under 1% CPU" = "Menos del 1% de CPU";
 "Uninstall helper…" = "Desinstalar auxiliar…";
 "Unit" = "Unidad";
 "Units" = "Unidades";
@@ -1581,7 +1575,6 @@
 "Router address" = "Dirección del router";
 "The Wi-Fi generation in use. Wi-Fi 6 and 7 are faster and cope better with many devices than Wi-Fi 4 or 5." = "La generación de Wi-Fi en uso. Wi-Fi 6 y 7 son más rápidos y llevan mejor muchos dispositivos que Wi-Fi 4 o 5.";
 "The address of your router, the box between your network and the internet. Open it in a browser to reach the router's settings." = "La dirección de tu router, el aparato entre tu red e internet. Ábrela en un navegador para llegar a los ajustes del router.";
-"The address the internet sees for your whole home or office, given by your provider. Fusebox only asks Cloudflare when you click." = "La dirección que internet ve para toda tu casa u oficina, asignada por tu proveedor. Fusebox solo la pide a Cloudflare cuando haces clic.";
 "The delay to the test server while the line is quiet. Below 20 ms is very good, below 50 ms fine." = "El retardo hasta el servidor de prueba con la línea tranquila. Menos de 20 ms es muy bueno, menos de 50 ms está bien.";
 "The radio channel, band and width. 5 and 6 GHz are faster and less crowded; 2.4 GHz reaches further but is often busy. Wider channels are faster." = "El canal de radio, la banda y la anchura. 5 y 6 GHz son más rápidos y menos saturados; 2,4 GHz llega más lejos pero suele estar saturado. Los canales más anchos son más rápidos.";
 "The servers that turn names like apple.com into addresses. Usually your router or provider; you can change them in System Settings › Network." = "Los servidores que convierten nombres como apple.com en direcciones. Normalmente tu router o tu proveedor; puedes cambiarlos en Ajustes del Sistema › Red.";
@@ -1739,3 +1732,49 @@
 "Yes, heavily" = "Sí, mucho";
 "Found on the previous network. Press Scan to look on this one." = "Encontrado en la red anterior. Pulsa Escanear para buscar en esta.";
 "Data use" = "Uso de datos";
+"All networks" = "Todas las redes";
+"Show speed tests from every network together, instead of only this one" = "Mostrar juntas las pruebas de todas las redes, en lugar de solo esta";
+"No speed test on this network yet" = "Aún no hay prueba de velocidad en esta red";
+"last %lld, all networks · wide = Full" = "últimas %lld, todas las redes · ancha = Completa";
+"%lld Wi-Fi networks in range" = "%lld redes Wi-Fi al alcance";
+"%lld devices nearby, %lld of them close (within a few metres)" = "%lld dispositivos cerca, %lld de ellos muy cerca (a pocos metros)";
+"%lld on or next to your channel" = "%lld en tu canal o al lado";
+"%lld on your channel" = "%lld en tu canal";
+"Around you" = "A tu alrededor";
+"Bluetooth" = "Bluetooth";
+"Bluetooth · nearby" = "Bluetooth · cerca";
+"Fusebox may not use Bluetooth. Allow it under Privacy & Security › Bluetooth." = "Fusebox no puede usar Bluetooth. Permítelo en Privacidad y seguridad › Bluetooth.";
+"Listen" = "Escuchar";
+"Listen again" = "Escuchar de nuevo";
+"Listens for 8 s to Bluetooth devices around you: phones, watches, headphones, trackers. Nothing is saved." = "Escucha durante 8 s los dispositivos Bluetooth a tu alrededor: teléfonos, relojes, auriculares, localizadores. No se guarda nada.";
+"Lists the Wi-Fi networks in range by channel and signal (about 6 s). Fusebox doesn't read their names." = "Muestra las redes Wi-Fi al alcance por canal y señal (unos 6 s). Fusebox no lee sus nombres.";
+"Look again" = "Buscar de nuevo";
+"Look around" = "Mirar alrededor";
+"Lost as heat" = "Perdido como calor";
+"None share your channel" = "Nadie más en tu canal";
+"Nothing nearby is sending Bluetooth signals" = "Nada cerca emite señales Bluetooth";
+"Quietest 2.4 GHz channel: %lld. Your router can switch to it." = "Canal de 2,4 GHz más tranquilo: %lld. Tu router puede cambiar a él.";
+"To list Bluetooth devices nearby (Docked tab, only when you press Listen)" = "Para mostrar los dispositivos Bluetooth cercanos (pestaña Docked, solo al pulsar Escuchar)";
+"Unnamed device" = "Dispositivo sin nombre";
+"What the Mac itself uses right now. The rest of what comes in goes into the battery." = "Lo que usa el Mac ahora mismo. El resto va a la batería.";
+"Your Mac uses" = "Tu Mac usa";
+"and %lld more" = "y %lld más";
+"macOS's estimate of the power lost while converting the charger's voltage. It turns into heat." = "Estimación de macOS de la potencia perdida al convertir el voltaje del cargador. Se convierte en calor.";
+
+" · 10%% dimmer ≈ %@ longer" = " · 10%% menos brillo ≈ %@ más";
+"All changes" = "Todos los cambios";
+"Continue" = "Continuar";
+"Hides items that use under 1% CPU and under 200 MB memory. Anything holding more memory stays visible, even when it's quiet. \"Show all\" brings them back." = "Oculta los elementos con menos del 1 % de CPU y menos de 200 MB de memoria. Lo que ocupa más memoria sigue visible, aunque esté inactivo. «Mostrar todo» los recupera.";
+"Networks on the same channel take turns sending and slow each other down. Weak ones barely matter." = "Las redes en el mismo canal transmiten por turnos y se frenan entre sí. Las débiles apenas cuentan.";
+"Screen brightness" = "Brillo de pantalla";
+"Show provider and public IP" = "Mostrar proveedor e IP pública";
+"Small" = "Pequeños";
+"Via" = "Vía";
+"Where it comes from" = "De dónde viene";
+"channel %lld" = "canal %lld";
+"probably yours" = "probablemente la tuya";
+"unknown provider" = "proveedor desconocido";
+
+"Asks Cloudflare which address you appear as, and the public IP registry (RIPE) which provider that address belongs to" = "Pregunta a Cloudflare con qué dirección apareces y al registro público de IP (RIPE) a qué proveedor pertenece";
+"The address the internet sees for your whole home or office, given by your provider. Fusebox only asks Cloudflare and the IP registry (RIPE) when you click." = "La dirección con la que internet ve toda tu casa u oficina, asignada por tu proveedor. Fusebox solo pregunta a Cloudflare y al registro de IP (RIPE) cuando haces clic.";
+"Battery graph" = "Gráfico de batería";

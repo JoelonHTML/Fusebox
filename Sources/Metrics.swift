@@ -227,6 +227,15 @@ extension Metric {
             var row = MetricRowData(label: abbr, value: pct(b), side: left ?? "", level: !s.charging && b <= 10 ? 2 : !s.charging && b <= 20 ? 1 : 0,
                                  detail: time.isEmpty ? L("on power adapter") : time, values: h.compactMap(\.battery), valueSize: 24)
             row.sideIcon = s.charging ? "battery.100percent.bolt" : batteryIcon(b)
+            // Optie "batGraph": lading, accutemperatuur of beide (zelfde metingen als de lading, dus even lang)
+            let mode = d.string(forKey: "batGraph")
+            row = row.graph(usage: row.values, temp: h.filter { $0.battery != nil }.map(\.batteryTemp), mode: mode, lo: 15, hi: 55)
+            // Temperatuur in de grafiek: ook het getal naast BAT (zoals bij CPU). Vanaf 40 °C oranje, vanaf 45 °C rood
+            // (rond 45 °C pauzeert macOS het laden; accu's verouderen het traagst tussen 10 en 35 °C).
+            if mode == "temp" || mode == "both", let t = s.batteryTemp {
+                row.side = [left, deg(t)].compactMap { $0 }.joined(separator: " · ")
+                row.sideLevel = t >= 45 ? 2 : t >= 40 ? 1 : 0
+            }
             return row
         case .fan:
             guard let rpm = s.fanRPM else { return MetricRowData(label: abbr, value: "–", detail: L("no fans"), valueSize: 24) }
@@ -322,12 +331,13 @@ func total(_ h: [Sample], _ rate: KeyPath<Sample, Double>) -> Double {
 extension MetricRowData {
     /// CPU/GPU-grafiek: "usage" (standaard), "temp" of "both" (temperatuur als tweede, dunne lijn).
     /// Temperatuur wordt elke 10 s gemeten: tussenliggende punten krijgen de laatst bekende waarde.
-    func graph(usage: [Double], temp: [Double?], mode: String?) -> MetricRowData {
+    /// `lo`–`hi`: temperatuurschaal (°C). Chips 20–110, de accu 15–55 (daarbuiten pauzeert macOS het laden al).
+    func graph(usage: [Double], temp: [Double?], mode: String?, lo: Double = 20, hi: Double = 110) -> MetricRowData {
         var r = self, last: Double?
         let t = temp.map { v -> Double in if let v { last = v }; return last ?? v ?? 0 }
         switch mode {
-        case "temp": r.values = t; r.second = []; r.top = 110; r.bottom = 20; r.graphIsTemp = true
-        case "both": r.values = usage; r.second = t.map { min(max(($0 - 20) / 90 * 100, 0), 100) }   // 20–110 °C op de %-schaal
+        case "temp": r.values = t; r.second = []; r.top = hi; r.bottom = lo; r.graphIsTemp = true
+        case "both": r.values = usage; r.second = t.map { min(max(($0 - lo) / (hi - lo) * 100, 0), 100) }   // temperatuur op de %-schaal
         default: r.values = usage
         }
         return r

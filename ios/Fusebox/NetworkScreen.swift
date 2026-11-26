@@ -295,7 +295,7 @@ private struct SpeedCard: View {
 
     /// Laatste 10 metingen als staafjes (download), oudste links. Volledig = brede staaf.
     private var historyBars: some View {
-        let list = Array(stats.history.reversed()), top = max(list.map(\.down).max() ?? 1, 1)
+        let list = Array(stats.history.prefix(10).reversed()), top = max(list.map(\.down).max() ?? 1, 1)
         return HStack(alignment: .bottom, spacing: 4) {
             ForEach(Array(list.enumerated()), id: \.offset) { _, r in
                 Capsule().fill(theme.onRowAccent.opacity(r == stats.history.first ? 1 : 0.45))

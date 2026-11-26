@@ -1,4 +1,5 @@
 import SwiftUI
+import CoreBluetooth
 
 // MARK: - Docked-pagina: bovenaan wat de Mac binnenkrijgt, daaronder per poort een korte lijst poort → kabel → lader/dock → apparaten
 //
@@ -417,6 +418,7 @@ private struct DockedList: View {
                     }
                     .padding(.leading, 4)
                 }
+                BLENearbyView().padding(.leading, 4)
             }
         }
     }
@@ -660,6 +662,96 @@ private struct Disclosure<Content: View>: View {
             if open { content.transition(.opacity) }
         }
         .clipped()
+    }
+}
+
+// MARK: - Bluetooth in de buurt (alleen na een klik)
+
+/// Luistert 8 s naar Bluetooth LE-uitzendingen in de buurt: hoeveel apparaten, hoe dichtbij, en een naam als ze die zelf uitzenden.
+/// De manager pas maken bij de klik, want dan vraagt macOS één keer om Bluetooth-toestemming. Niets wordt opgeslagen.
+@MainActor
+final class BLENearby: NSObject, ObservableObject, CBCentralManagerDelegate {
+    struct Seen: Identifiable { let id: UUID; var name: String?; var rssi: Int }
+    @Published private(set) var seen: [Seen]?
+    @Published private(set) var busy = false
+    @Published private(set) var denied = false
+    private var central: CBCentralManager?
+    private var found: [UUID: Seen] = [:]
+
+    func scan() {
+        guard !busy else { return }
+        busy = true; found = [:]
+        guard let central else { central = CBCentralManager(delegate: self, queue: .main); return }   // start volgt in didUpdateState
+        if central.state == .poweredOn { start(central) } else { centralManagerDidUpdateState(central) ; busy = false }
+    }
+
+    private func start(_ c: CBCentralManager) {
+        c.scanForPeripherals(withServices: nil, options: [CBCentralManagerScanOptionAllowDuplicatesKey: false])
+        DispatchQueue.main.asyncAfter(deadline: .now() + 8) { [weak self] in
+            guard let self else { return }
+            c.stopScan()
+            self.seen = self.found.values.sorted { $0.rssi > $1.rssi }
+            self.busy = false
+        }
+    }
+
+    nonisolated func centralManagerDidUpdateState(_ c: CBCentralManager) {
+        MainActor.assumeIsolated {
+            switch c.state {
+            case .poweredOn: if busy { start(c) }
+            case .unauthorized: denied = true; busy = false
+            case .poweredOff, .unsupported: busy = false; seen = []
+            default: break
+            }
+        }
+    }
+
+    nonisolated func centralManager(_ c: CBCentralManager, didDiscover p: CBPeripheral, advertisementData a: [String: Any], rssi: NSNumber) {
+        let r = rssi.intValue, name = (a[CBAdvertisementDataLocalNameKey] as? String) ?? p.name, id = p.identifier
+        MainActor.assumeIsolated {
+            guard r < 0, r > -100 else { return }   // 127 = onbekend
+            var s = found[id] ?? Seen(id: id, rssi: r)
+            s.rssi = max(s.rssi, r)
+            if let name, !name.isEmpty { s.name = String(name.prefix(40)) }
+            found[id] = s
+        }
+    }
+}
+
+/// Ingeklapte regel onder WIRELESS: "Bluetooth nearby", met een knop om te luisteren.
+private struct BLENearbyView: View {
+    @StateObject private var ble = BLENearby()
+    @Environment(\.theme) private var theme
+
+    var body: some View {
+        Disclosure(title: L("Bluetooth · nearby"), count: ble.seen?.count) {
+            VStack(alignment: .leading, spacing: 4) {
+                if ble.denied {
+                    Text("Fusebox may not use Bluetooth. Allow it under Privacy & Security › Bluetooth.").foregroundStyle(theme.warn)
+                } else if let seen = ble.seen {
+                    let close = seen.filter { $0.rssi >= -60 }.count
+                    Text(seen.isEmpty ? "Nothing nearby is sending Bluetooth signals" : "\(seen.count) devices nearby, \(close) of them close (within a few metres)")
+                        .foregroundStyle(theme.onRow())
+                    ForEach(seen.prefix(12)) { d in
+                        HStack(spacing: 6) {
+                            SignalBars(rssi: d.rssi + 10, color: theme.onRow(true))   // BLE is zwakker dan Wi-Fi: iets ruimer schalen
+                            Text(d.name ?? L("Unnamed device")).foregroundStyle(d.name == nil ? theme.onRow(true) : theme.onRow()).lineLimit(1)
+                            Spacer(minLength: 4)
+                            Text(verbatim: "\(d.rssi) dBm").font(theme.number(10)).foregroundStyle(theme.onRow(true))
+                        }
+                    }
+                    if seen.count > 12 { Text("and \(seen.count - 12) more").foregroundStyle(theme.onRow(true)) }
+                }
+                HStack(spacing: 6) {
+                    Button { ble.scan() } label: { NetPill(title: ble.seen == nil ? L("Listen") : L("Listen again"), icon: "antenna.radiowaves.left.and.right") }
+                        .buttonStyle(.plain).disabled(ble.busy)
+                        .help("Listens for 8 s to Bluetooth devices around you: phones, watches, headphones, trackers. Nothing is saved.")
+                    if ble.busy { ProgressView().controlSize(.small) }
+                }
+                .padding(.top, 2)
+            }
+            .font(theme.label(11)).padding(.leading, 14)
+        }
     }
 }
 

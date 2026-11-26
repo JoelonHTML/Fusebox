@@ -38,6 +38,7 @@ for p in sorted(glob.glob('Resources/*.lproj/Localizable.strings')):
     wrong = [k for k in keys & have.keys() if spec(k) != spec(have[k])]
     print(f"{lang}: {len(miss)} ontbreken, {len(stale)} ongebruikt, {len(wrong)} met andere %-plaatshouders")
     for k in miss: print(f"   - {where[k]}  {k!r}")
+    for k in stale: print(f"   + ongebruikt  {k!r}")
     for k in wrong: print(f"   ! {where[k]}  {k!r} → {have[k]!r}")
     bad += len(miss) + len(wrong)
 if '--suspects' in args:

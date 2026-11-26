@@ -1,5 +1,6 @@
 import SwiftUI
 import IOKit.ps
+import CoreGraphics
 
 // MARK: - Accu en slaap (Checkup-pagina)
 //
@@ -174,7 +175,7 @@ enum Power {
         }
         var texts: [String] = [], day = cal.startOfDay(for: d.from)
         while day <= now {
-            if let t = try? String(contentsOf: dir.appendingPathComponent("apps-\(dayName(day)).csv"), encoding: .utf8) { texts.append(t) }
+            if let t = Logs.read(dir.appendingPathComponent("apps-\(dayName(day)).csv")) { texts.append(t) }
             day = cal.date(byAdding: .day, value: 1, to: day)!
         }
         let r = rank(texts, from: Sample.stamp.string(from: d.from), to: Sample.stamp.string(from: d.to ?? now))
@@ -516,6 +517,28 @@ struct BatteryHealthSection: View {
     }
 }
 
+// MARK: - Helderheid van het ingebouwde scherm (DisplayServices, geen toestemming nodig). Hooguit eens per 30 s echt gelezen.
+
+enum Brightness {
+    private typealias GetFn = @convention(c) (UInt32, UnsafeMutablePointer<Float>) -> Int32
+    private static let get: GetFn? = dlopen("/System/Library/PrivateFrameworks/DisplayServices.framework/DisplayServices", RTLD_LAZY)
+        .flatMap { dlsym($0, "DisplayServicesGetBrightness") }.map { unsafeBitCast($0, to: GetFn.self) }
+    nonisolated(unsafe) private static var last: (at: Date, v: Double?) = (.distantPast, nil)
+
+    /// 0–100, of nil als het deksel dicht is of er geen ingebouwd scherm is.
+    static func builtin(now: Date = Date()) -> Double? {
+        if abs(now.timeIntervalSince(last.at)) < 30 { return last.v }
+        var v: Double?
+        var ids = [CGDirectDisplayID](repeating: 0, count: 16), n: UInt32 = 0
+        if let get, CGGetOnlineDisplayList(16, &ids, &n) == .success, let id = ids.prefix(Int(n)).first(where: { CGDisplayIsBuiltin($0) != 0 }) {
+            var b: Float = -1
+            if get(id, &b) == 0, b >= 0, b <= 1 { v = Double(b) * 100 }
+        }
+        last = (now, v)
+        return v
+    }
+}
+
 // MARK: - Geleerde accutijd: hoe snel jóuw accu leegloopt, uit de eigen minuutlog (meterkast-*.csv, laatste 7 dagen).
 // Hooguit eens per 30 min opnieuw uitgerekend, buiten de hoofdthread; per meting alleen een mengsom met de laatste 15 min.
 
@@ -528,7 +551,22 @@ enum LearnedBattery {
     static func rate(_ pts: [Point], now: Date) -> (perHour: Double, hours: Double)? {
         let cal = Calendar.current
         let hourNow = Double(cal.component(.hour, from: now)) + Double(cal.component(.minute, from: now)) / 60
-        var wDrop = 0.0, wHours = 0.0, hours = 0.0, i = 0
+        var wDrop = 0.0, wHours = 0.0, hours = 0.0
+        for (a, b) in pieces(pts) {
+            let h = pts[b].t.timeIntervalSince(pts[a].t) / 3600, drop = pts[a].pct - pts[b].pct
+            let mid = pts[a].t.addingTimeInterval(h * 1800)
+            let age = now.timeIntervalSince(mid) / 86400
+            let hourThen = Double(cal.component(.hour, from: mid)) + Double(cal.component(.minute, from: mid)) / 60
+            let diff = min(abs(hourNow - hourThen), 24 - abs(hourNow - hourThen))
+            let w = pow(0.5, age / 2) * (0.75 + 0.25 * cos(diff * .pi / 12))   // halveert per 2 dagen; zelfde uur ×1, 12 uur verschil ×0,5
+            wDrop += w * drop; wHours += w * h; hours += h
+        }
+        return wHours > 0 ? (wDrop / wHours, hours) : nil
+    }
+
+    /// Stukken op de accu (begin- en eindindex): aaneengesloten (gat ≤ 3 min), % stijgt niet, vlak begin/eind eraf, ≥ 10 min en ≥ 1%.
+    static func pieces(_ pts: [Point]) -> [(a: Int, b: Int)] {
+        var out: [(a: Int, b: Int)] = [], i = 0
         while i < pts.count {
             var j = i
             while j + 1 < pts.count, pts[j + 1].t.timeIntervalSince(pts[j].t) <= 180, pts[j + 1].pct <= pts[j].pct + 0.05 { j += 1 }
@@ -538,15 +576,35 @@ enum LearnedBattery {
             i = j + 1
             let h = pts[b].t.timeIntervalSince(pts[a].t) / 3600, drop = pts[a].pct - pts[b].pct
             // ponytail: de log weet niet of de lader erin zat; < 1,5 %/uur zien we als "aan de lader" (wakker op de accu is altijd meer)
-            guard h >= 1.0 / 6, drop >= 1, drop / h >= 1.5 else { continue }
-            let mid = pts[a].t.addingTimeInterval(h * 1800)
-            let age = now.timeIntervalSince(mid) / 86400
-            let hourThen = Double(cal.component(.hour, from: mid)) + Double(cal.component(.minute, from: mid)) / 60
-            let diff = min(abs(hourNow - hourThen), 24 - abs(hourNow - hourThen))
-            let w = pow(0.5, age / 2) * (0.75 + 0.25 * cos(diff * .pi / 12))   // halveert per 2 dagen; zelfde uur ×1, 12 uur verschil ×0,5
-            wDrop += w * drop; wHours += w * h; hours += h
+            if h >= 1.0 / 6, drop >= 1, drop / h >= 1.5 { out.append((a, b)) }
         }
-        return wHours > 0 ? (wDrop / wHours, hours) : nil
+        return out
+    }
+
+    /// Wat helderheid jóuw accu kost: per stuk op de accu het tempo (%/uur) tegen de gemiddelde helderheid, rechte lijn erdoor
+    /// (gewogen naar duur). `perPoint` = extra %/uur per procent helderder; `usual` = de gemiddelde helderheid in die stukken.
+    /// Alleen als er genoeg verschil in helderheid was (≥ 20 punten over ≥ 4 stukken, ≥ 3 uur) en helderder ook echt meer kost.
+    /// ponytail: andere drukte (zware app bij fel scherm) telt mee als "helderheid"; met meer weken data middelt dat uit.
+    static func brightnessEffect(_ pts: [Point], _ br: [Double?]) -> (perPoint: Double, usual: Double)? {
+        var xs: [(x: Double, y: Double, w: Double)] = []
+        for (a, b) in pieces(pts) {
+            let v = br[a...b].compactMap { $0 }
+            guard v.count * 2 >= b - a + 1 else { continue }   // deksel meestal dicht: weet niets van helderheid
+            let h = pts[b].t.timeIntervalSince(pts[a].t) / 3600
+            xs.append((v.reduce(0, +) / Double(v.count), (pts[a].pct - pts[b].pct) / h, h))
+        }
+        let w = xs.reduce(0) { $0 + $1.w }
+        guard xs.count >= 4, w >= 3, let lo = xs.map(\.x).min(), let hi = xs.map(\.x).max(), hi - lo >= 20 else { return nil }
+        let mx = xs.reduce(0) { $0 + $1.x * $1.w } / w, my = xs.reduce(0) { $0 + $1.y * $1.w } / w
+        let cov = xs.reduce(0) { $0 + $1.w * ($1.x - mx) * ($1.y - my) }, varx = xs.reduce(0) { $0 + $1.w * ($1.x - mx) * ($1.x - mx) }
+        guard varx > 0, case let slope = cov / varx, slope > 0 else { return nil }
+        return (slope, mx)
+    }
+
+    /// Geleerd tempo bijgesteld voor de helderheid van nu (nooit minder dan de helft).
+    static func adjusted(_ rate: Double, brightness: Double?) -> Double {
+        guard let brightness, let e = effect else { return rate }
+        return max(rate * 0.5, rate + e.perPoint * (brightness - e.usual))
     }
 
     /// Minuten tot leeg: geleerd tempo, gemengd met het tempo sinds `since` (≤ 15 min geleden, al die tijd op de accu).
@@ -562,6 +620,8 @@ enum LearnedBattery {
 
     private static let lock = NSLock()
     nonisolated(unsafe) private static var value: (perHour: Double, hours: Double)?, at = Date.distantPast, busy = false
+    nonisolated(unsafe) private static var learnedEffect: (perPoint: Double, usual: Double)?
+    static var effect: (perPoint: Double, usual: Double)? { lock.lock(); defer { lock.unlock() }; return learnedEffect }
     /// Alleen als er genoeg geschiedenis is (≥ 2 uur op de accu).
     static var cached: Double? { lock.lock(); defer { lock.unlock() }; return value.flatMap { $0.hours >= 2 ? $0.perHour : nil } }
 
@@ -572,24 +632,25 @@ enum LearnedBattery {
         busy = true; at = now
         lock.unlock()
         DispatchQueue.global(qos: .utility).async {
-            let v = rate(load(dir: dir, now: now), now: now)
-            lock.lock(); value = v; busy = false; lock.unlock()
+            let all = load(dir: dir, now: now), pts = all.map { ($0.t, $0.pct) }
+            let v = rate(pts, now: now), e = brightnessEffect(pts, all.map(\.br))
+            lock.lock(); value = v; learnedEffect = e; busy = false; lock.unlock()
         }
     }
 
-    /// (tijd, batterij_pct) uit de laatste 7 dagen, op volgorde.
-    static func load(dir: URL, now: Date) -> [Point] {
+    /// (tijd, batterij_pct, helderheid) uit de laatste 7 dagen, op volgorde. Helderheid nil in oudere logs of met het deksel dicht.
+    static func load(dir: URL, now: Date) -> [(t: Date, pct: Double, br: Double?)] {
         let cal = Calendar.current, from = now.addingTimeInterval(-7 * 86400)
-        var out: [Point] = []
+        var out: [(t: Date, pct: Double, br: Double?)] = []
         for back in (0...7).reversed() {
             guard let day = cal.date(byAdding: .day, value: -back, to: now),
-                  let text = try? String(contentsOf: dir.appendingPathComponent("meterkast-\(Power.dayName(day)).csv"), encoding: .utf8) else { continue }
-            var ti = 0, bi = -1
+                  let text = Logs.read(dir.appendingPathComponent("meterkast-\(Power.dayName(day)).csv")) else { continue }
+            var ti = 0, bi = -1, hi = -1
             for line in text.split(separator: "\n") {
                 let v = line.split(separator: ",", omittingEmptySubsequences: false)
-                if v.first == "tijd" { ti = v.firstIndex(of: "tijd") ?? 0; bi = v.firstIndex(of: "batterij_pct") ?? -1; continue }
+                if v.first == "tijd" { ti = v.firstIndex(of: "tijd") ?? 0; bi = v.firstIndex(of: "batterij_pct") ?? -1; hi = v.firstIndex(of: "helderheid_pct") ?? -1; continue }
                 guard bi >= 0, v.count > max(ti, bi), let p = Double(v[bi]), let t = Sample.stamp.date(from: String(v[ti])), t >= from else { continue }
-                out.append((t, p))
+                out.append((t, p, hi >= 0 && v.count > hi ? Double(v[hi]) : nil))
             }
         }
         return out
@@ -616,6 +677,16 @@ enum LearnedBattery {
         precondition(minutes(pct: 50, at: now, learned: 10, since: (now.addingTimeInterval(-900), 55)) == 200, "mengen")
         precondition(minutes(pct: 50, at: now, learned: 10, since: (now.addingTimeInterval(-120), 51)) == 300, "te kort recent")
         let dir = FileManager.default.homeDirectoryForCurrentUser.appendingPathComponent("Documents/Fusebox")
-        if let real = rate(load(dir: dir, now: Date()), now: Date()) { print("accu geleerd: \(one(real.perHour)) %/uur over \(one(real.hours)) uur") } else { print("accu geleerd: te weinig geschiedenis") }
+        // Helderheid: 4 stukken van 1 uur; 40% → 8 %/uur, 100% → 14 %/uur, dus 0,1 %/uur per punt, gewoonlijk 70%
+        var bp: [Point] = [], bb: [Double?] = []
+        var st = now.addingTimeInterval(-20 * 3600)
+        for (br, r) in [(40.0, 8.0), (100.0, 14.0), (40.0, 8.0), (100.0, 14.0)] {
+            for m in 0...60 { bp.append((st.addingTimeInterval(Double(m) * 60), 90 - r * Double(m) / 60)); bb.append(br) }
+            st = st.addingTimeInterval(5 * 3600)
+        }
+        let e = brightnessEffect(bp, bb)!
+        precondition(abs(e.perPoint - 0.1) < 0.005 && abs(e.usual - 70) < 0.5, "helderheid \(e)")
+        precondition(brightnessEffect(bp, bb.map { _ in 70 }) == nil && brightnessEffect(bp, bb.map { _ in nil }) == nil, "geen verschil, geen gok")
+        if let real = rate(load(dir: dir, now: Date()).map { ($0.t, $0.pct) }, now: Date()) { print("accu geleerd: \(one(real.perHour)) %/uur over \(one(real.hours)) uur") } else { print("accu geleerd: te weinig geschiedenis") }
     }
 }

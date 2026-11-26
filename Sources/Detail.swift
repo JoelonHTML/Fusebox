@@ -18,7 +18,8 @@ struct MetricDetail: View {
     @AppStorage("shortMinutes") private var shortMinutes = 5   // zodat "5 min" meteen klopt na wijzigen
     @AppStorage("cpuGraph") private var cpuGraph = "usage"
     @AppStorage("gpuGraph") private var gpuGraph = "usage"
-    private var graphTemp: Bool { (metric == .cpu ? cpuGraph : metric == .gpu ? gpuGraph : "") == "temp" }
+    @AppStorage("batGraph") private var batGraph = "usage"
+    private var graphTemp: Bool { (metric == .cpu ? cpuGraph : metric == .gpu ? gpuGraph : metric == .battery ? batGraph : "") == "temp" }
 
     var body: some View {
         let s = meter.latest, h = meter.samples(range)
@@ -245,7 +246,8 @@ struct MetricDetail: View {
                    (s.charging ? L("Full in") : L("Time left"), s.batteryMinutes.map { duration($0) + (s.batteryLearned ? L(" (learned from your use)") : "") } ?? "–"),
                    (L("Health"), battery?.condition ?? battery?.health ?? "–"),
                    (L("Charge cycles"), battery?.cycles.map { L("\($0) of ~\(battery?.designCycles ?? 1000)") } ?? "–"),
-                   (L("Capacity"), battery?.capacity.map { L("\($0)% of new") } ?? "–")])
+                   (L("Capacity"), battery?.capacity.map { L("\($0)% of new") } ?? "–"),
+                   (L("Screen brightness"), s.brightness.map { brightnessText($0, s) } ?? "–")])
             topApps(L("Most power-hungry apps (last minute)"), sort: { $0.energyW > $1.energyW }) { String(format: "%.1f W", $0.energyW) }
         case .fan:
             facts(s.fans.enumerated().map { i, f in (L("Fan \(i + 1)"), "\(Int(f.rpm.rounded())) rpm (\(Int(f.min))–\(Int(f.max)))") }
@@ -255,6 +257,15 @@ struct MetricDetail: View {
     }
 
     private func facts(_ rows: [(String, String)]) -> some View { Facts(rows: rows) }
+
+    /// "80%", en zodra Fusebox geleerd heeft wat helderheid jouw accu kost (op de accu): wat 10% dimmer oplevert.
+    private func brightnessText(_ br: Double, _ s: Sample) -> String {
+        let now = "\(Int(br.rounded()))%"
+        guard !s.onAC, s.batteryLearned, br >= 15, let b = s.battery, let learned = LearnedBattery.cached, LearnedBattery.effect != nil else { return now }
+        let a = LearnedBattery.adjusted(learned, brightness: br), d = LearnedBattery.adjusted(learned, brightness: br - 10)
+        let gain = Int((b / d * 60 - b / a * 60).rounded())
+        return gain >= 3 ? now + L(" · 10% dimmer ≈ \(duration(gain)) longer") : now
+    }
 
     private func topApps(_ title: String, sort: (AppUsage, AppUsage) -> Bool, _ value: @escaping (AppUsage) -> String) -> some View {
         let apps = Array(meter.minuteApps.apps.sorted(by: sort).prefix(5))

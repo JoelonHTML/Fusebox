@@ -15,10 +15,10 @@ enum Prefs {
             "hotkeyCode": 3, "hotkeyMods": 6400, "hotkeyLabel": "⌃⌥⌘F",   // F met ⌃⌥⌘ (Carbon: 4096+2048+256)
             // Live-pagina
             "metrics": Metric.defaultOrder, "metricsHidden": "",
-            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "learnedBattery": true, "netSpeed": false, "netPing": false, "lastSeenBuild": 0, "dockedInternals": false, "cpuGraph": "usage", "gpuGraph": "usage", "moreDetails": "",
+            "graphs": "auto", "shortMinutes": 5, "absolute": "ram,ssd", "showAdvice": false, "netBits": false, "perCore": false, "batteryTime": true, "learnedBattery": true, "netSpeed": false, "netPing": false, "lastSeenBuild": 0, "dockedInternals": false, "cpuGraph": "usage", "gpuGraph": "usage", "batGraph": "usage", "moreDetails": "",
             "warnCPU": 85.0, "warnTemp": 95.0, "warnPing": 100.0,
             // Pagina's (Instellingen › Processes, Checkup, Network, Docked); "…Hide" = komma-lijst van wat uit staat
-            "procFilter": "all", "procSort": "cpu", "procHide": "", "procSmall": "idle",
+            "procFilter": "apps", "procSort": "cpu", "procHide": "", "procSmall": "idle",
             "checkupStart": "last", "checkupHide": "", "restartDays": 14,
             "netAutoScan": true, "notifyNewDevice": false, "netHide": "", "speedMB": false,
             "dockedEmpty": true, "dockedBytes": false,
@@ -28,7 +28,7 @@ enum Prefs {
             // Meldingen
             "notify": true, "smoothBig": true, "alertCooldown": 30, PeakAlert.key("on"): true, PeakAlert.key("min"): 2,
             // Gegevens en privacy
-            "keepDays": 30, "pingHost": "1.1.1.1", "netPerApp": false,
+            "keepDays": 365, "pingHost": "1.1.1.1", "netPerApp": false,
             // Ventilatoren (alleen Macs met ventilator): "auto" | "curve" | "max", curve = "°C:%,…"
             "fanMode": "auto", "fanCurve": FanCurve.balanced,
             // Oplaadlimiet (alleen Macs met accu, via de helper)

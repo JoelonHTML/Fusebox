@@ -27,7 +27,7 @@ private struct ProgramsList: View {
     let sample: Sample
     @Environment(\.theme) private var theme
     // Beginstand uit Instellingen › Processes (bij elk openen van het tabblad, daarna vrij te wijzigen)
-    @State private var filter = Filter.allCases.first { $0.id == UserDefaults.standard.string(forKey: "procFilter") } ?? .all
+    @State private var filter = Filter.allCases.first { $0.id == UserDefaults.standard.string(forKey: "procFilter") } ?? .apps
     @State private var search = ""
     @State private var sort = Column(rawValue: UserDefaults.standard.string(forKey: "procSort") ?? "") ?? .cpu
     @State private var ascending = UserDefaults.standard.string(forKey: "procSort") == "name"
