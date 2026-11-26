@@ -264,6 +264,15 @@ enum Diag {
             || path.contains("/Library/Developer/")
     }
 
+    /// Rapport over Fusebox zelf: telt niet mee in Checkup (in Live en Processes staat Fusebox wel gewoon).
+    static func own(_ e: Entry, name: String) -> Bool {
+        switch e {
+        case .crash(let a), .hang(let a): a == name
+        case .resource(let a): a.hasPrefix(name + " (")
+        case .jetsam, .panic, .none: false
+        }
+    }
+
     /// Telt rapporten tussen `from` en `to`. Alleen de eerste 4 KB per bestand, hoogstens de nieuwste 300; Retired/ telt niet.
     static func crashes(from: Date, to: Date) -> Crashes {
         let fm = FileManager.default, keys: Set<URLResourceKey> = [.contentModificationDateKey, .isRegularFileKey]
@@ -288,6 +297,7 @@ enum Diag {
             let (entry, time) = parseHeader(head, fileName: f.url.lastPathComponent)
             // proefversies uit een tijdelijke map (bouwen/testen) zijn geen echte crashes; een kernel panic is altijd echt
             if entry != .panic, testBuild(head) { continue }
+            if own(entry, name: ProcessInfo.processInfo.processName) { continue }
             let t = time ?? f.date
             guard t >= from, t < to else { continue }
             switch entry {
@@ -387,6 +397,8 @@ enum Diag {
     // MARK: Zelftest
 
     static func selfTest() {
+        precondition(own(.crash("Fusebox"), name: "Fusebox") && own(.resource("Fusebox (processor)"), name: "Fusebox")
+                     && !own(.crash("Fusebox Helper"), name: "Fusebox") && !own(.panic, name: "Fusebox"), "eigen rapporten")
         precondition(testBuild(#"{"procPath" : "\/private\/tmp\/fb\/Fusebox","x":1}"#) && testBuild(#""procPath":"\/private\/var\/folders\/ab\/T\/Fusebox""#), "proefbouw")
         precondition(!testBuild(#""procPath" : "\/Applications\/Safari.app\/Contents\/MacOS\/Safari""#) && !testBuild("geen kop"), "echte app")
         precondition(testBuild(#""procPath":"\/Users\/USER\/Library\/Developer\/CoreSimulator\/Devices\/X\/Fusebox.app\/Fusebox""#), "simulator")

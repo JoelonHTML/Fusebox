@@ -115,16 +115,20 @@ struct RootView: View {
     @AppStorage("textScale") private var textScale = 1.0
     @AppStorage("font") private var font = "style"   // lettertype gewijzigd → meteen opnieuw tekenen
     @AppStorage("onTop") private var onTop = false
+    /// De pagina die al in beeld is. Loopt één stap achter `page` aan: eerst wordt de nieuwe pagina onzichtbaar opgebouwd
+    /// (dat kost 0,2–0,6 s rekenwerk), pas daarna starten druppel, vervagen en venstergrootte. Zo slaan ze geen beelden over.
+    @State private var shown: Page = .overview
     @State private var window: NSWindow?
-    @State private var wide = false          // breed venster: tabknoppen met naam
+    @State private var wide = false          // breed venster: de werkbalk houdt ruimte vrij voor tabknoppen met naam (verspringt meteen)
+    @State private var names = false         // namen zichtbaar: loopt met een veer achter `wide` aan
     @State private var hover: Page?          // tabknop onder de muis
     @Namespace private var dropNS
     @State private var stretch: CGFloat = 1   // >1 tijdens het verschuiven: druppel rekt even uit
     @State private var stretchFrom: UnitPoint = .leading   // kant van het icoon dat je verlaat: daar "trekt" de druppel uit
     /// Vanaf deze breedte passen alle tabknoppen mét naam; smaller → alleen icoontjes (anders verstopt macOS ze achter ">>").
     /// Terug naar icoontjes pas onder `iconsWidth`: rond de grens niet heen en weer springen tijdens slepen.
-    /// Met naam is ~660 pt nodig (incl. verkeerslichtjes, vijf tabbladen), dus ook bij 700 nooit afgekapt.
-    static let namesWidth: CGFloat = 740, iconsWidth: CGFloat = 700
+    /// Met naam is ~650 pt nodig (incl. verkeerslichtjes, vijf tabbladen; Duits/Nederlands ~690), dus ook bij 700 nooit afgekapt.
+    static let namesWidth: CGFloat = 720, iconsWidth: CGFloat = 700
     @Environment(\.openWindow) private var openWindow
     @State private var baseBehavior: NSWindow.CollectionBehavior?
     @State private var onScreen = true       // venster te zien? Anders animeert er niets (kost processor voor niets)
@@ -147,22 +151,28 @@ struct RootView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
-            // Tabwissel: nieuwe pagina vervaagt en schuift een stukje omhoog in beeld
+            // Tabwissel: nieuwe pagina vervaagt en schuift een stukje omhoog in beeld (zodra hij klaarstaat, zie `shown`)
             .id(page)
-            .transition(.opacity.combined(with: .offset(y: 10)))
+            .opacity(shown == page ? 1 : 0).offset(y: shown == page ? 0 : 10)
         }
-        .animation(.easeOut(duration: 0.22), value: page)
+        .animation(.easeOut(duration: 0.22), value: shown)
         // Low impact: geen enkele animatie in het venster (tabwissel, detail openen, inloop)
         .transaction { if low { $0.disablesAnimations = true; $0.animation = nil } }
         // Alleen bij het passeren van een grens iets wijzigen (de werkbalk wordt dan opnieuw opgebouwd)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { w in
             let next = wide ? w >= Self.iconsWidth : w >= Self.namesWidth
-            if next != wide { wide = next }
+            guard next != wide else { return }
+            if !next { setWide(false); return }
+            // Uitklappen pas als het venster stilstaat op zijn nieuwe breedte: midden in het groeien past de brede balk
+            // nog niet en haalt macOS hem even weg (komt dan "opzwellend" terug)
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.22) {
+                if !wide, let w = window, w.frame.width >= Self.namesWidth { setWide(true) }
+            }
         }
         .frame(minWidth: 316, minHeight: 120)   // 6 tabknoppen (32 pt + 2 pt) + verkeerslichtjes passen altijd, nooit ">>"
         // Tabknoppen als echte werkbalk-items: in de titelbalk vangt macOS gewone klikken af (venster slepen).
-        // .id(wide): bij wissel smal↔breed de knoppen opnieuw opbouwen, anders houdt de werkbalk de oude breedte (afgekapte namen)
-        .toolbar { ToolbarItem(placement: .primaryAction) { header(theme, pages).id(wide) }.sharedBackgroundVisibility(.hidden) }
+        // Geen .id(wide): een nieuw werkbalk-item laat macOS vanuit het midden "opzwellen" (schaal-animatie over de hele balk)
+        .toolbar { ToolbarItem(placement: .primaryAction) { header(theme, pages) }.sharedBackgroundVisibility(.hidden) }
         .toolbar(removing: .title)
         .windowToolbarFullScreenVisibility(.visible)   // ook schermvullend de tabknoppen tonen
         .toolbarBackgroundVisibility(.hidden, for: .windowToolbar)
@@ -198,6 +208,7 @@ struct RootView: View {
         .onAppear {
             Hotkey.openMain = { [openWindow] in openWindow(id: "main") }
             if !pages.contains(page) { page = pages[0] }
+            shown = page
             meter.programsVisible = page == .programs
             // Bij herstelde vensters negeert macOS `defaultLaunchBehavior`; daarom hier expliciet (eenmalig per start).
             if !LaunchOnce.done {
@@ -226,21 +237,31 @@ struct RootView: View {
             LaunchOnce.launched = Date()   // inloop-animatie (rijen, lijnen) opnieuw afspelen op de nieuwe pagina
             LaunchOnce.tabSwitch = true    // … maar sneller dan bij het opstarten
             meter.programsVisible = new == .programs
-            resize(to: new)
+            // Even wachten tot de nieuwe pagina is opgebouwd; dan pas bewegen
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.02) { reveal() }
         }
     }
 
     /// Tabknoppen in de werkbalk, rechts van de verkeerslichtjes; verborgen bij maar één tabblad.
     private func header(_ theme: Theme, _ pages: [Page]) -> some View {
         let shape = RoundedRectangle(cornerRadius: 8, style: .continuous)
+        // De werkbalk meet de onzichtbare maatvoerder (meteen op eindmaat); de echte balk ligt er links uitgelijnd overheen
+        // en schuift met een veer open of dicht. Zo groeit hij vanaf links en niet vanuit het midden.
         return HStack(spacing: 2) {
+            ForEach(pages, id: \.self) { tabLabel($0.title, $0.icon, names: wide) }
+            tabLabel(L("Settings"), "gearshape", names: wide)
+        }
+        .padding(.horizontal, 4).padding(.vertical, theme.rowStyle == .glass ? 2 : 0)
+        .hidden().accessibilityHidden(true)
+        .overlay(alignment: .leading) {
+          HStack(spacing: 2) {
             if pages.count > 1 {
                 ForEach(Array(pages.enumerated()), id: \.element) { i, p in
                     Button { switchTo(p) } label: {
-                        tabLabel(p.title, p.icon)
-                            .foregroundStyle(page == p ? theme.accent : hover == p ? theme.text : theme.secondary)
+                        tabLabel(p.title, p.icon, names: names)
+                            .foregroundStyle(shown == p ? theme.accent : hover == p ? theme.text : theme.secondary)
                             .background {
-                                if page == p {   // de "druppel": SwiftUI schuift hem zelf naar de actieve knop
+                                if shown == p {   // de "druppel": SwiftUI schuift hem zelf naar de actieve knop
                                     shape.fill(theme.accent.opacity(0.15))
                                         .scaleEffect(x: stretch, y: 2 - stretch, anchor: stretchFrom)
                                         .matchedGeometryEffect(id: "drop", in: dropNS)
@@ -256,7 +277,7 @@ struct RootView: View {
                 }
             }
             SettingsLink {
-                tabLabel(L("Settings"), "gearshape").foregroundStyle(theme.secondary).contentShape(.rect)
+                tabLabel(L("Settings"), "gearshape", names: names).foregroundStyle(theme.secondary).contentShape(.rect)
                     // Low impact aan: klein blaadje bij het tandwiel (geen extra knop: de werkbalk is precies breed genoeg)
                     .overlay(alignment: .topTrailing) {
                         if low { Image(systemName: "leaf.fill").font(.system(size: 8)).foregroundStyle(theme.good).padding(3) }
@@ -268,16 +289,30 @@ struct RootView: View {
         // Liquid Glass: de tabbalk is het echte glas (bediening, verandert alleen bij een klik). Low impact: geen glas.
         .padding(.vertical, theme.rowStyle == .glass ? 2 : 0)
         .glassEffect(theme.rowStyle == .glass ? .regular : .identity, in: .capsule)
+        .fixedSize()
         .accessibilityElement(children: .contain)   // elke knop eigen naam (anders noemt de werkbalk ze allemaal "Live")
+        }
     }
 
     /// Vaste maat per knop (groot genoeg om makkelijk te raken); alleen de naam komt erbij als het venster breed is.
-    private func tabLabel(_ title: String, _ icon: String) -> some View {
-        Label(title, systemImage: icon)
-            .labelStyle(wide ? AnyLabelStyle(.titleAndIcon) : AnyLabelStyle(.iconOnly))
+    private func tabLabel(_ title: String, _ icon: String, names: Bool) -> some View {
+        // Naam altijd aanwezig maar smal op breedte 0 (afgesneden): zo schuift hij open in plaats van te verspringen
+        HStack(spacing: 0) {
+            Image(systemName: icon)
+            Text(title).lineLimit(1).fixedSize().padding(.leading, 7)
+                .frame(width: names ? nil : 0, alignment: .leading).clipped()
+        }
             .font(.system(size: 13, weight: .medium))
             .frame(minWidth: 32, minHeight: 28)
-            .padding(.horizontal, wide ? 8 : 0)
+            .padding(.horizontal, names ? 8 : 0)
+    }
+
+    /// Namen in- of uitklappen: ze schuiven met een veer open of dicht (alleen in de breedte).
+    private func setWide(_ next: Bool) {
+        var now = Transaction(); now.disablesAnimations = true
+        withTransaction(now) { wide = next; if low { names = next } }   // de ruimte in de werkbalk: meteen
+        guard !low else { return }
+        DispatchQueue.main.async { withAnimation(.spring(response: 0.38, dampingFraction: 0.7)) { names = next } }
     }
 
     /// Tab wisselen met een "trekkende druppel": verschuiven met een veer, onderweg kort uitrekken en dan bijtrekken.
@@ -285,11 +320,19 @@ struct RootView: View {
         guard p != page else { return }
         let all = Page.allCases, right = (all.firstIndex(of: p) ?? 0) > (all.firstIndex(of: page) ?? 0)
         stretchFrom = right ? .leading : .trailing   // naar rechts: links vast, rekt uit naar rechts (en andersom)
+        page = p
+    }
+
+    /// De opgebouwde pagina in beeld brengen: druppel verschuift met een veer (rekt onderweg kort uit), pagina vervaagt in,
+    /// venster gaat naar zijn grootte.
+    private func reveal() {
+        guard shown != page else { return }
         withAnimation(.easeOut(duration: 0.12)) { stretch = 1.35 }
-        withAnimation(.spring(response: 0.38, dampingFraction: 0.7)) { page = p }
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.7)) { shown = page }
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.12) {
             withAnimation(.spring(response: 0.3, dampingFraction: 0.55)) { stretch = 1 }
         }
+        resize(to: page)
     }
 
     /// "Altijd bovenop": zwevend en op elk bureaublad / naast schermvullende apps. Uit = oorspronkelijk gedrag terug.
@@ -312,7 +355,11 @@ struct RootView: View {
         let d = UserDefaults.standard
         let saved = d.string(forKey: p == .overview ? "liveSize" : "windowSize").map(NSSizeFromString) ?? w.frame.size
         let s = NSSize(width: max(saved.width, p.minSize.width), height: max(saved.height, p.minSize.height))
-        if s != w.frame.size { place(w, size: s, animate: true) }
+        guard s != w.frame.size else { return }
+        // Wordt het venster te smal voor de namen: eerst de balk inklappen, dan pas krimpen. Anders past de balk
+        // onderweg niet meer, haalt macOS hem weg en zet hem met een schaal-animatie terug.
+        if wide, s.width < Self.iconsWidth { setWide(false) }
+        place(w, size: s, animate: true)
     }
 
     private func saveTopLeft(_ w: NSWindow) {

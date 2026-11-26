@@ -51,6 +51,7 @@ struct NetworkView: View {
                                 newName = d.custom ?? d.name
                                 renaming = d
                             }
+                            .saturation(scanner.stale ? 0 : 1).opacity(scanner.stale ? 0.3 : 1)
                         }
                         if rows.isEmpty {
                             Text(scanner.info == nil ? (autoScan ? "Not connected to a network" : "Press Scan to look for devices") : !search.trimmingCharacters(in: .whitespaces).isEmpty ? "Nothing matches “\(search)”"
@@ -66,6 +67,10 @@ struct NetworkView: View {
                             }
                             toolbar
                             if scanner.localBlocked { blockedHint }
+                            if scanner.stale {
+                                Label("Found on the previous network. Press Scan to look on this one.", systemImage: "clock.arrow.circlepath")
+                                    .font(theme.label(11)).foregroundStyle(theme.secondary)
+                            }
                             columnHeader.padding(.horizontal, tight ? 0 : 10)
                         }
                         .padding(.top, 4).padding(.bottom, 6)
@@ -79,8 +84,8 @@ struct NetworkView: View {
         .clipped()   // niet onder de doorzichtige werkbalk doorschuiven (anders staan de rijen achter de tabknoppen)
         .onGeometryChange(for: CGFloat.self) { $0.size.width } action: { stacked = $0 < 700 }
         .onGeometryChange(for: NetWidth.self) { NetWidth($0.size.width - 24) } action: { width = $0 }
-        .onAppear { if autoScan { scanner.scan() } }
-        .onDisappear { scanner.stop() }
+        .onAppear { scanner.watch(); if autoScan { scanner.scan() } }
+        .onDisappear { scanner.stop(); scanner.unwatch() }
         .alert("Rename device", isPresented: Binding(get: { renaming != nil }, set: { if !$0 { renaming = nil } })) {
             TextField("Name", text: $newName)
             Button("Save") { if let d = renaming { scanner.rename(d, to: newName) }; renaming = nil }
@@ -655,6 +660,9 @@ final class NetScanner: ObservableObject {
     @Published private(set) var scanStart: Date?
     @Published private(set) var phase = ""
     @Published private(set) var localBlocked = false
+    /// Deze Mac zit nu op een ander netwerk dan bij de laatste scan: de lijst is oud.
+    @Published private(set) var stale = false
+    private var path: NWPathMonitor?
     @Published private var found: [UInt32: Found] = [:]
     @Published private var arpDone = false
     @Published private var bonjour: [UInt32: Bonjour] = [:]
@@ -777,7 +785,7 @@ final class NetScanner: ObservableObject {
         stop()
         info = NetInfo.current()
         found = [:]; bonjour = [:]; names = [:]; upnp = [:]; ports = [:]; checking = []
-        arpDone = false; localBlocked = false
+        arpDone = false; localBlocked = false; stale = false
         guard let info else { return }
         let start = Date(), me = info.ip
         // Eigen bereik of het eigen subnet; ARP, Bonjour, mDNS en SSDP alleen voor het deel binnen het eigen subnet
@@ -868,6 +876,29 @@ final class NetScanner: ObservableObject {
         checking = []
         stopBrowsing()
         scanStart = nil
+    }
+
+    /// Zolang de pagina open is: bij een netwerkwissel kijken of de lijst nog bij dit netwerk hoort.
+    /// Nog eens na 3 s, want het nieuwe IP-adres (DHCP) komt vaak pas na de melding.
+    func watch() {
+        guard path == nil else { return }
+        let m = NWPathMonitor()
+        m.pathUpdateHandler = { [weak self] _ in
+            MainActor.assumeIsolated {
+                self?.checkNetwork()
+                DispatchQueue.main.asyncAfter(deadline: .now() + 3) { self?.checkNetwork() }
+            }
+        }
+        m.start(queue: .main)
+        path = m
+    }
+
+    func unwatch() { path?.cancel(); path = nil }
+
+    private func checkNetwork() {
+        guard let info else { return }
+        let now = NetInfo.current()?.networkKey != info.networkKey
+        if now != stale { stale = now }
     }
 
     private func stopBrowsing() {

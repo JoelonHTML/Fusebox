@@ -389,7 +389,7 @@ private struct DockedList: View {
                     if let picked { NodeDetails(node: picked, sums: sums) }
                     else { Text("Click a row for its details.").font(theme.label(11)).foregroundStyle(theme.onRow(true)) }
                 }
-                .frame(maxWidth: .infinity, alignment: .leading).themedRow(theme)
+                .frame(maxWidth: .infinity, alignment: .leading).clipped().themedRow(theme)
             }
             .frame(minWidth: 900)
             list(inline: true).frame(maxWidth: 600, alignment: .leading)   // getallen niet ver van de namen
@@ -486,6 +486,7 @@ private struct PortGroupList: View {
             // Smal venster: details onder de regel, binnen dezelfde lijnen
             if on && inline { NodeDetails(node: n, sums: sums).padding(.leading, 29).padding(.bottom, 8).transition(.opacity) }
             }
+            .clipped()   // dichtklappen: details verdwijnen achter de rand in plaats van door de regels eronder te schuiven
         }
         .fixedSize(horizontal: false, vertical: true)
     }
@@ -658,6 +659,7 @@ private struct Disclosure<Content: View>: View {
             .buttonStyle(.plain)
             if open { content.transition(.opacity) }
         }
+        .clipped()
     }
 }
 
@@ -994,6 +996,7 @@ private struct USBRow: View {
             .help("Click for all values")
             if open.contains(dev.id) { RawList(lines: dev.raw).padding(.leading, 34).transition(.opacity) }
         }
+        .clipped()
         .padding(.leading, CGFloat(min(depth, 6)) * 14)
     }
     private var detail: String {
@@ -1024,8 +1027,9 @@ private struct TBRow: View {
             }
             .contentShape(.rect)
             .onTapGesture { withAnimation(.snappy(duration: 0.2)) { toggle(&open, dev.id) } }
-            if open.contains(dev.id) { RawList(lines: dev.raw).padding(.leading, 22) }
+            if open.contains(dev.id) { RawList(lines: dev.raw).padding(.leading, 22).transition(.opacity) }
         }
+        .clipped()
     }
 }
 

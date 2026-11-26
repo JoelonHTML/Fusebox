@@ -3,7 +3,7 @@ import UniformTypeIdentifiers
 
 // MARK: - Netwerk-kaarten: Verbinding, Wi-Fi (of kabel) en Snelheidstest, boven de LAN-scanner
 //
-// Op elke kaart alleen de kerngetallen; de rest onder "Details" (per kaart onthouden). Zeldzame acties in ⋯.
+// Op elke kaart alleen de kerngetallen; de rest onder "Details" (één knop voor alle kaarten, onthouden). Zeldzame acties in ⋯.
 // Elke waarde heeft een label met uitleg (zweven of klikken), de ⓘ in de kop toont alle uitleg van die kaart.
 // Geen eigen timers: alles komt uit InternetStats.
 
@@ -132,7 +132,9 @@ struct TermLabel: View {
 struct TermsPopover: View {
     var title: String? = nil
     let items: [(title: String, text: String)]
-    init(title: String? = nil, terms: [NetTerm]) { self.title = title; items = terms.map { ($0.title, $0.text) } }
+    init(title: String? = nil, terms: [NetTerm], extra: [(title: String, text: String)] = []) {
+        self.title = title; items = terms.map { ($0.title, $0.text) } + extra
+    }
     init(items: [(title: String, text: String)]) { self.items = items }
     @Environment(\.theme) private var theme
 
@@ -179,9 +181,7 @@ struct InternetCards: View {
     @Environment(\.theme) private var theme
     @AppStorage("pingHost") private var pingHost = "1.1.1.1"
     @AppStorage("netFindNow") private var findNow = false   // gezet door "Network" in het menubalkpaneel
-    @AppStorage("netConnDetails") private var connOpen = false
-    @AppStorage("netLinkDetails") private var linkOpen = false
-    @AppStorage("netSpeedDetails") private var speedOpen = false
+    @AppStorage("netDetails") private var detailsOpen = false   // één knop klapt alle kaarten tegelijk open
     @State private var confirmClear = false
     @State private var reportNote: String?
 
@@ -215,10 +215,10 @@ struct InternetCards: View {
     // MARK: Verbinding
 
     private var connection: some View {
-        card(L("Connection"), icon: stats.conn?.vpn == true ? "lock.shield" : "network", index: 0, terms: NetTerm.connection, open: $connOpen) {
+        card(L("Connection"), icon: stats.conn?.vpn == true ? "lock.shield" : "network", index: 0, terms: NetTerm.connection, open: $detailsOpen) {
             Button { stats.start() } label: { Label(stats.testing ? L("Testing…") : L("Test again"), systemImage: "arrow.clockwise") }
                 .disabled(stats.testing || stats.conn == nil)
-            Button { connOpen = true; stats.loadPublicIP() } label: { Label(L("Show public IP"), systemImage: "globe") }
+            Button { detailsOpen = true; stats.loadPublicIP() } label: { Label(L("Show public IP"), systemImage: "globe") }
                 .disabled(stats.publicIP != nil).help("Asks speed.cloudflare.com which address and provider you appear as")
             Divider()
             reportItem
@@ -326,7 +326,7 @@ struct InternetCards: View {
 
     @ViewBuilder private var link: some View {
         if let w = stats.wifi {
-            card("Wi-Fi", icon: "wifi", index: 1, terms: NetTerm.wifi, open: $linkOpen) {
+            card("Wi-Fi", icon: "wifi", index: 1, terms: NetTerm.wifi, open: $detailsOpen) {
                 EmptyView()
             } face: {
                 HStack(alignment: .top, spacing: 18) {
@@ -361,7 +361,7 @@ struct InternetCards: View {
             let note = c?.media?.note(linkMbit: c?.linkMbit)   // loopt de kabel onder wat de adapter kan?
             card(c == nil ? "Wi-Fi" : wired ? L("Cable") : c?.kind == "VPN" ? "VPN" : L("Network link"),
                  icon: c == nil ? "wifi.slash" : wired ? "cable.connector" : c?.kind == "VPN" ? "lock.shield" : "network",
-                 index: 1, terms: NetTerm.wired, open: c?.media?.maxMbit != nil || c?.media?.duplex != nil ? $linkOpen : nil) {
+                 index: 1, terms: NetTerm.wired, open: c?.media?.maxMbit != nil || c?.media?.duplex != nil ? $detailsOpen : nil) {
                 EmptyView()
             } face: {
                 if let c {
@@ -400,7 +400,8 @@ struct InternetCards: View {
     // MARK: Snelheidstest
 
     private var speed: some View {
-        card(L("Speed test"), icon: "speedometer", index: 2, terms: NetTerm.speed, open: stats.history.isEmpty ? nil : $speedOpen) {
+        card(L("Speed test"), icon: "speedometer", index: 2, terms: NetTerm.speed, open: stats.history.isEmpty ? nil : $detailsOpen,
+             extra: [(L("Data use"), L("Quick uses \(usage(.quick)), Full \(usage(.full)) (via Cloudflare)"))]) {
             reportItem
             Button(role: .destructive) { confirmClear = true } label: { Label(L("Clear history…"), systemImage: "trash") }
                 .disabled(stats.history.isEmpty).help("Deletes the saved speed tests, so fastest and average start fresh")
@@ -479,8 +480,6 @@ struct InternetCards: View {
                 Button { stats.requestSpeedTest(.full) } label: { NetPill(title: L("Full"), icon: "gauge.with.dots.needle.67percent") }
                     .buttonStyle(.plain).help("About 30 s, 6 connections: typical and top speed, delay while the line is busy (bufferbloat) and how steady it is.")
             }
-            Text("Quick uses \(usage(.quick)), Full \(usage(.full)) (via Cloudflare)").font(theme.label(9.5)).foregroundStyle(theme.onRow(true))
-                .fixedSize(horizontal: false, vertical: true)
         }
         if let e = stats.speedError { Text(e).font(theme.label(10)).foregroundStyle(tone(false)).fixedSize(horizontal: false, vertical: true) }
     }
@@ -528,8 +527,9 @@ struct InternetCards: View {
 
     /// Kaart: kop (icoon, titel, ⋯, ⓘ), de kerngetallen, en onderaan "Details" (alleen als er details zijn).
     private func card<M: View, F: View, D: View>(_ title: String, icon: String, index: Int, terms: [NetTerm], open: Binding<Bool>?,
+                                                  extra: [(title: String, text: String)] = [],
                                                   @ViewBuilder menu: () -> M, @ViewBuilder face: () -> F, @ViewBuilder details: () -> D) -> some View {
-        CardFrame(title: title, icon: icon, index: index, terms: terms, open: open, menu: menu(), face: face(), details: details())
+        CardFrame(title: title, icon: icon, index: index, terms: terms, open: open, extra: extra, menu: menu(), face: face(), details: details())
     }
 
     private func big(_ value: String, _ unit: String) -> some View {
@@ -578,6 +578,7 @@ struct InternetCards: View {
 private struct CardFrame<M: View, F: View, D: View>: View {
     let title: String, icon: String, index: Int, terms: [NetTerm]
     let open: Binding<Bool>?
+    var extra: [(title: String, text: String)] = []
     let menu: M, face: F, details: D
     @Environment(\.theme) private var theme
     @State private var info = false
@@ -599,7 +600,7 @@ private struct CardFrame<M: View, F: View, D: View>: View {
                     Image(systemName: "info.circle").font(.system(size: 12)).frame(width: 18, height: 18).contentShape(.rect)
                 }
                 .buttonStyle(.plain).foregroundStyle(theme.onRow(true)).help("What these numbers mean")
-                .popover(isPresented: $info, arrowEdge: .bottom) { TermsPopover(title: L("What the numbers mean"), terms: terms) }
+                .popover(isPresented: $info, arrowEdge: .bottom) { TermsPopover(title: L("What the numbers mean"), terms: terms, extra: extra) }
             }
             face
             if let open {

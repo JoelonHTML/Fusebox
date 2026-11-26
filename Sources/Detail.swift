@@ -125,7 +125,7 @@ struct MetricDetail: View {
     private func stat(_ label: String, _ value: String) -> some View {
         card {
             VStack(alignment: .leading, spacing: 2) {
-                Text(label).font(theme.label(11)).foregroundStyle(theme.onRow(true))
+                Text(label).font(theme.label(11)).foregroundStyle(theme.onRow(true)).lineLimit(1).minimumScaleFactor(0.6)   // nooit afbreken ("Averag/e")
                 Text(value).font(theme.number(16)).foregroundStyle(theme.onRow()).lineLimit(1).minimumScaleFactor(0.6)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
